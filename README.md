@@ -20,6 +20,7 @@ Servidor de Inferencia de Modelos de Lenguaje (LLM) de alto rendimiento basado e
 2. **Despliegue Multimodal Integrado**: Capacidad completa para procesar imágenes (Visión y extracción OCR de texto en capturas).
 3. **Optimización Extrema de VRAM**: Ajuste preciso de la caché KV y cuantización NVFP4/Marlin para ejecutar un modelo de 26B de parámetros en una sola tarjeta de 24 GB VRAM.
 4. **Gestión mediante Script Python (`app.py`)**: Carga automática de credenciales y parámetros de configuración desde un archivo `.env` sin exponer datos sensibles.
+5. **Servicio del Sistema (`systemd`)**: Script instalador (`install_service.sh`) para ejecutar el servidor como servicio en segundo plano con autorreinicio automático.
 
 ---
 
@@ -68,11 +69,30 @@ KV_CACHE_DTYPE=bfloat16
 SWAP_SPACE=0
 ```
 
-### 4. Iniciar el servidor
+---
+
+## ⚙️ Modos de Ejecución
+
+### Opción A: Ejecución Manual
 
 ```bash
 python app.py
 ```
+
+### Opción B: Instalación como Servicio Systemd (Recomendado)
+
+Ejecuta el script instalador para registrar e iniciar el servidor como un servicio del sistema Linux:
+
+```bash
+./install_service.sh
+```
+
+#### Comandos de administración de systemd:
+
+* **Ver estado:** `sudo systemctl status vllm`
+* **Ver logs en tiempo real:** `sudo journalctl -u vllm -f`
+* **Detener servicio:** `sudo systemctl stop vllm`
+* **Reiniciar servicio:** `sudo systemctl restart vllm`
 
 ---
 
@@ -118,7 +138,7 @@ Durante el proceso de configuración y depuración de este proyecto se identific
 * **Demostración Empírica:**
   * **GPU Pura (`SWAP_SPACE=0`):** Inferencia ultrarrápida de **~70-80 tokens/segundo** en generación y **~128+ tokens/segundo** en prompt throughput al ejecutarse 100% en la VRAM GDDR6X (~936 GB/s).
   * **CPU Offload (`SWAP_SPACE>0`):** La transferencia continua por el bus PCIe (~32 GB/s) genera un cuello de botella que reduce la tasa de generación a **~4 tokens/segundo**.
-* **Conclusión:** Se configuró `app.py` para omitir la bandera de offloading cuando `SWAP_SPACE=0`, obteniendo el máximo rendimiento nativo de la GPU.
+* **Conclusión:** Se configuró `app.py` para omitir automáticamente la bandera `--cpu-offload-gb` cuando `SWAP_SPACE=0`, obteniendo el máximo rendimiento nativo de la GPU.
 
 ---
 
