@@ -1,0 +1,25 @@
+# Entornos virtuales
+venv/
+.venv/
+env/
+ENV/
+
+# Variables de entorno y credenciales sensibles
+.env
+!.env.example
+
+# Archivos de caché de Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Caché de PyTorch y vLLM
+.cache/
+torch_compile_cache/
+
+# Configuración de IDEs
+.vscode/
+.idea/
+
+# Logs
+*.log
