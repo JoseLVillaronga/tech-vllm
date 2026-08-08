@@ -18,6 +18,7 @@ def main():
     max_num_seqs = os.getenv("MAX_NUM_SEQS", "64")
     kv_cache_dtype = os.getenv("KV_CACHE_DTYPE", "bfloat16")
     swap_space = os.getenv("SWAP_SPACE", "0")
+    quantization = os.getenv("QUANTIZATION")
 
     # Exportar HF_TOKEN si está definido
     if hf_token:
@@ -40,6 +41,10 @@ def main():
         "--trust-remote-code",
         "--api-key", api_key
     ]
+
+    # Agregar --quantization si está definido en .env
+    if quantization:
+        cmd.extend(["--quantization", quantization])
 
     # Solo agregar --cpu-offload-gb si swap_space es mayor a 0
     if float(swap_space) > 0:
