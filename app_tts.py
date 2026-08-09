@@ -2,9 +2,10 @@ import os
 import uuid
 import shutil
 import base64
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, HTTPException, status, Depends, Security
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
 from huggingface_hub import hf_hub_download
 from dotenv import load_dotenv
@@ -55,16 +56,42 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Configurar esquema de seguridad HTTP Bearer para Swagger UI
+security = HTTPBearer()
+
+def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    """
+    Verifica que el token enviado en la cabecera 'Authorization' coincida con la clave API del proyecto.
+    """
+    token = credentials.credentials
+    expected_token = os.getenv("API_KEY", "token-e68f0c0d4d4f4d04d70399323d411290b2bf938a81f26685602140c4f8617939")
+    if token != expected_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="API Key inválida o no proporcionada en la cabecera Authorization."
+        )
+    return token
+
 # Definir la estructura del payload compatible con OpenAI
 class SpeechRequest(BaseModel):
     model: str = Field(default="tts-1", description="Nombre del modelo (por ejemplo, tts-1)")
     input: str = Field(..., description="El texto que quieres convertir a voz.")
-    voice: str = Field(default="jose", description="El identificador de la voz de referencia a clonar (ej: jose)")
+    voice: str = Field(
+        default="jose", 
+        description=(
+            "Identificador de la voz de referencia a clonar. Opciones:\n"
+            "- **'jose'** o **'jose-es'**: Clona tu voz en español usando 'mi_voz_24k_mono.wav' "
+            "y su correspondiente transcripción en español. Nota: F5-TTS soporta clonación cruzada de "
+            "idiomas, lo que significa que puedes enviarle textos en inglés, francés, alemán, etc., "
+            "y tu clon hablará en esos idiomas usando tu timbre de voz nativo.\n"
+            "- **'default'**: Voz predeterminada en base al modelo configurado."
+        )
+    )
     response_format: str = Field(default="mp3", description="Formato del audio de salida (mp3 o wav)")
     speed: float = Field(default=1.0, description="Velocidad del audio generado (por defecto 1.0)")
 
 @app.post("/v1/audio/speech", response_class=FileResponse, summary="Generar Audio desde Texto (OpenAI-compatible)")
-async def text_to_speech(request: SpeechRequest):
+async def text_to_speech(request: SpeechRequest, token: str = Depends(verify_token)):
     """
     Toma un texto de entrada, clona la voz de referencia configurada y genera el archivo de audio.
     """
