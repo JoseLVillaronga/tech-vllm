@@ -26,12 +26,18 @@ except ImportError:
     print("=" * 70)
     sys.exit(1)
 
-# Configuración del micrófono y detección de silencio
-SAMPLE_RATE = 16000     # Frecuencia nativa de Whisper (16 kHz)
-CHANNELS = 1            # Canal único (Mono)
-THRESHOLD = 0.02        # Umbral de volumen para detectar voz (ajustar si tu micrófono es muy sensible)
-SILENCE_LIMIT = 1.5     # Segundos de silencio continuo antes de considerar que la frase terminó
-CHUNK_DURATION = 0.1    # Duración de cada trozo de análisis en segundos
+# Detectar la frecuencia de muestreo predeterminada de tu micrófono
+try:
+    device_info = sd.query_devices(kind='input')
+    REC_SAMPLE_RATE = int(device_info['default_samplerate'])
+except Exception:
+    REC_SAMPLE_RATE = 44100  # Fallback estándar si falla la detección
+
+TARGET_SAMPLE_RATE = 16000  # Frecuencia nativa esperada por Whisper y PyAnnote (16 kHz)
+CHANNELS = 1                # Canal único (Mono)
+THRESHOLD = 0.02            # Umbral de volumen para detectar voz (ajustar si tu micrófono es muy sensible)
+SILENCE_LIMIT = 1.5         # Segundos de silencio continuo antes de considerar que la frase terminó
+CHUNK_DURATION = 0.1        # Duración de cada trozo de análisis en segundos
 
 # Estado del grabador
 recording_buffer = []
@@ -42,6 +48,7 @@ print("=" * 60)
 print("🎙️ Iniciando Asistente de Grabación en Vivo...")
 print(f"🔗 Whisper API: {WHISPER_URL}")
 print(f"🔗 Diarization API: {DIARIZATION_URL}")
+print(f"🎤 Micrófono: {REC_SAMPLE_RATE} Hz (Grabación) -> {TARGET_SAMPLE_RATE} Hz (Procesamiento)")
 print(f"🔊 Umbral de Voz: {THRESHOLD} | Tiempo de silencio límite: {SILENCE_LIMIT}s")
 print("=" * 60)
 print("🔴 Grabador en vivo activo. Empieza a hablar (Presiona Ctrl+C para salir)...")
@@ -51,13 +58,23 @@ def process_audio_chunk(audio_data):
     """
     Guarda el audio capturado, llama a la API de Diarización (8003) y a la de Whisper (8001) en paralelo.
     """
+    # Si la frecuencia de grabación es distinta a 16kHz, remuestreamos en memoria
+    if REC_SAMPLE_RATE != TARGET_SAMPLE_RATE:
+        from scipy import signal
+        num_samples = int(len(audio_data) * TARGET_SAMPLE_RATE / REC_SAMPLE_RATE)
+        # Asegurar de aplanar el array mono
+        audio_data_flat = audio_data.flatten()
+        audio_data = signal.resample(audio_data_flat, num_samples)
+        # Convertir de vuelta a float32 o el tipo de entrada original
+        audio_data = audio_data.astype(np.float32)
+
     # Crear un archivo temporal WAV
     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_file:
         temp_filename = temp_file.name
         
     try:
-        # Guardar los datos en formato WAV a 16kHz
-        wav.write(temp_filename, SAMPLE_RATE, audio_data)
+        # Guardar los datos en formato WAV a 16kHz (TARGET_SAMPLE_RATE)
+        wav.write(temp_filename, TARGET_SAMPLE_RATE, audio_data)
         
         headers = {"Authorization": f"Bearer {API_KEY}"}
         
@@ -148,10 +165,10 @@ def audio_callback(indata, frames, callback_time, status):
 # Iniciar flujo de entrada de audio
 try:
     with sd.InputStream(
-        samplerate=SAMPLE_RATE,
+        samplerate=REC_SAMPLE_RATE,
         channels=CHANNELS,
         callback=audio_callback,
-        blocksize=int(SAMPLE_RATE * CHUNK_DURATION)
+        blocksize=int(REC_SAMPLE_RATE * CHUNK_DURATION)
     ):
         while True:
             time.sleep(0.1)
