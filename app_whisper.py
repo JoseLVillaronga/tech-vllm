@@ -23,7 +23,6 @@ def main():
         "--host", host,
         "--port", str(port),
         "--model", model,
-        "--task", "transcription",
         "--gpu-memory-utilization", gpu_memory_utilization,
         "--trust-remote-code",
         "--api-key", api_key
