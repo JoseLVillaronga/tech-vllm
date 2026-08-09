@@ -14,6 +14,23 @@ Servidor de Inferencia de Modelos de Lenguaje (LLM) de alto rendimiento basado e
 
 ---
 
+## 💾 Arquitectura de Coexistencia de VRAM (RTX 3090 / 24 GB)
+
+Para permitir que los 4 servicios de Inteligencia Artificial corran en caliente en la misma tarjeta sin colisionar por memoria, se definió la siguiente distribución de la VRAM:
+
+| Servicio | Puerto | Parámetro Clave de Memoria | Consumo de VRAM Fijo | Rol en el Ecosistema |
+| :--- | :--- | :--- | :--- | :--- |
+| **Gemma 4-E4B-it** | `8000` | `GPU_MEMORY_UTILIZATION=0.50` | **~13.2 GB** | Chat LLM y Visión (128K tokens context) |
+| **Whisper-large-v3-turbo** | `8001` | `--gpu-memory-utilization 0.10` | **~2.9 GB** | Reconocimiento de Voz (ASR / Transcripción) |
+| **F5-TTS (Texto a Voz)** | `8002` | Precarga estática en GPU | **~1.9 GB** | Inferencia de Audio (Clonación multilingüe) |
+| **PyAnnote 3.1 (Diarizador)** | `8003` | Precarga estática en GPU | **~0.4 GB** | Segmentación e Identificación de Hablantes |
+| **Gnome / Sistema Linux** | - | - | **~1.1 GB** | Entorno gráfico y aplicaciones de usuario |
+
+*   **VRAM Total Usada:** **`~19.5 GB`**
+*   **VRAM Total Libre:** **`~4.5 GB`** (Margen de seguridad perfecto para evitar caídas por *Out Of Memory*).
+
+---
+
 ## 🌟 Características Principales
 
 1. **Cuatro Servidores API locales (Gemma 4 en 8000, Whisper en 8001, F5-TTS en 8002, PyAnnote en 8003)**: Coexistencia de cuatro instancias locales de API en segundo plano que implementan chat, transcripción, generación de voz y separación de interlocutores de forma unificada.
