@@ -320,6 +320,21 @@ curl -X POST http://localhost:8002/v1/audio/speech \
   -o chino_clonado.mp3
 ```
 
+### 3. Probar Transcripción y Diarización en Vivo (Micrófono)
+
+El proyecto incluye el cliente interactivo [live_transcribe.py](file:///home/jose/vllm/live_transcribe.py) para demostrar cómo capturar audio desde el micrófono en vivo, detectar actividad de voz (VAD) para dividir la frase al detectar silencios, y llamar en paralelo a la API de Diarización (puerto 8003) y la API de Whisper (puerto 8001) para transcribir con distinción de interlocutor en tiempo real.
+
+#### Requisitos de grabación:
+```bash
+sudo apt update && sudo apt install -y libportaudio2
+pip install sounddevice numpy scipy requests
+```
+
+#### Ejecución:
+```bash
+python live_transcribe.py
+```
+
 ---
 
 ## 📚 Aprendizajes Técnicos y Optimizaciones
