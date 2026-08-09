@@ -34,7 +34,7 @@ def get_pipeline():
         
     try:
         from pyannote.audio import Pipeline
-        print("🧠 Cargando modelo de diarización PyAnnote 3.1 en CPU...")
+        print("🧠 Cargando modelo de diarización PyAnnote 3.1 en GPU (CUDA)...")
         pipeline = Pipeline.from_pretrained(
             "pyannote/speaker-diarization-3.1",
             token=HF_TOKEN
@@ -42,9 +42,9 @@ def get_pipeline():
         if pipeline is None:
             raise Exception("No se pudo instanciar el pipeline. Revisa que hayas aceptado los términos en Hugging Face.")
             
-        # Forzar ejecución en CPU para no gastar VRAM
-        pipeline.to(torch.device("cpu"))
-        print("✅ Pipeline de PyAnnote cargado correctamente en CPU.")
+        # Forzar ejecución en GPU
+        pipeline.to(torch.device("cuda"))
+        print("✅ Pipeline de PyAnnote cargado correctamente en GPU (CUDA).")
         init_error = None
         return pipeline
     except Exception as e:
@@ -128,14 +128,20 @@ async def diarize_audio(
         with open(temp_filepath, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
 
-        print(f"🎙️ Ejecutando diarización en '{file.filename}' usando CPU...")
+        print(f"🎙️ Ejecutando diarización en '{file.filename}' usando GPU (CUDA)...")
         
         # Ejecutar inferencia
         diarization_result = pyannote_pipeline(temp_filepath)
         
+        # Compatibilidad con PyAnnote v3 (Annotation) y v4 (DiarizeOutput)
+        if hasattr(diarization_result, "speaker_diarization"):
+            annotation = diarization_result.speaker_diarization
+        else:
+            annotation = diarization_result
+            
         # Parsear marcas de tiempo
         segments = []
-        for turn, _, speaker in diarization_result.itertracks(yield_label=True):
+        for turn, _, speaker in annotation.itertracks(yield_label=True):
             segments.append({
                 "start": round(turn.start, 2),
                 "end": round(turn.end, 2),
