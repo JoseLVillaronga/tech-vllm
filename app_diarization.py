@@ -35,10 +35,9 @@ def get_pipeline():
     try:
         from pyannote.audio import Pipeline
         print("🧠 Cargando modelo de diarización PyAnnote 3.1 en CPU...")
-        # Cargar el pipeline con el token
         pipeline = Pipeline.from_pretrained(
             "pyannote/speaker-diarization-3.1",
-            use_auth_token=HF_TOKEN
+            token=HF_TOKEN
         )
         if pipeline is None:
             raise Exception("No se pudo instanciar el pipeline. Revisa que hayas aceptado los términos en Hugging Face.")
