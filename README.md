@@ -119,6 +119,15 @@ Ejecuta el cliente de prueba para mandar un archivo local:
 python test_whisper_api.py
 ```
 
+### 4. Integración con Open-WebUI (Voz a Texto / STT):
+Para habilitar la transcripción por voz local en la interfaz de Open-WebUI, ve a **Ajustes de Administrador > Audio** y configura la sección **Voz a Texto (STT)** con los siguientes valores:
+
+* **Motor Voz a Texto (STT):** `OpenAI`
+* **URL Base API:** `http://localhost:8001/v1` *(Si corres Open-WebUI en Docker, usa `http://host.docker.internal:8001/v1`)*
+* **Clave API:** `token-e68f0c0d4d4f4d04d70399323d411290b2bf938a81f26685602140c4f8617939` *(o la clave configurada en tu `.env`)*
+* **Request Format:** `Multipart Upload`
+* **Modelo STT:** `openai/whisper-large-v3-turbo`
+
 ---
 
 ## 🧪 Pruebas con `curl`
