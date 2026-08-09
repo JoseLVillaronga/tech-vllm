@@ -35,7 +35,7 @@ except Exception:
 
 TARGET_SAMPLE_RATE = 16000  # Frecuencia nativa esperada por Whisper y PyAnnote (16 kHz)
 CHANNELS = 1                # Canal único (Mono)
-THRESHOLD = 0.02            # Umbral de volumen para detectar voz (ajustar si tu micrófono es muy sensible)
+THRESHOLD = 0.02            # Se autocalibrará al inicio
 SILENCE_LIMIT = 1.5         # Segundos de silencio continuo antes de considerar que la frase terminó
 CHUNK_DURATION = 0.1        # Duración de cada trozo de análisis en segundos
 
@@ -44,15 +44,19 @@ recording_buffer = []
 is_speaking = False
 silence_counter = 0
 
+# Variables para autocalibración de ruido ambiente
+calibration_frames = []
+is_calibrated = False
+calibration_limit = 15      # 15 chunks de 0.1s = 1.5 segundos de calibración
+
 print("=" * 60)
 print("🎙️ Iniciando Asistente de Grabación en Vivo...")
 print(f"🔗 Whisper API: {WHISPER_URL}")
 print(f"🔗 Diarization API: {DIARIZATION_URL}")
 print(f"🎤 Micrófono: {REC_SAMPLE_RATE} Hz (Grabación) -> {TARGET_SAMPLE_RATE} Hz (Procesamiento)")
-print(f"🔊 Umbral de Voz: {THRESHOLD} | Tiempo de silencio límite: {SILENCE_LIMIT}s")
+print(f"🔊 Tiempo de silencio límite: {SILENCE_LIMIT}s")
 print("=" * 60)
-print("🔴 Grabador en vivo activo. Empieza a hablar (Presiona Ctrl+C para salir)...")
-print("-" * 60)
+print("⏳ Por favor, mantente en silencio para calibrar el ruido de fondo...")
 
 def process_audio_chunk(audio_data):
     """
@@ -127,6 +131,7 @@ def audio_callback(indata, frames, callback_time, status):
     Callback del stream de sounddevice. Se ejecuta de forma continua analizando el volumen.
     """
     global is_speaking, recording_buffer, silence_counter
+    global calibration_frames, is_calibrated, THRESHOLD
     
     if status:
         print(status, file=sys.stderr)
@@ -134,6 +139,23 @@ def audio_callback(indata, frames, callback_time, status):
     # Calcular volumen eficaz (RMS) del trozo actual
     volume_norm = np.linalg.norm(indata) / np.sqrt(len(indata))
     
+    # 1. Fase de Autocalibración Inicial
+    if not is_calibrated:
+        calibration_frames.append(volume_norm)
+        pct = (len(calibration_frames) / calibration_limit) * 100
+        print(f"⏳ Calibrando micrófono... {pct:.0f}%", end="\r", flush=True)
+        if len(calibration_frames) >= calibration_limit:
+            avg_noise = np.mean(calibration_frames)
+            # Fijamos el umbral en 2.5 veces el ruido promedio con un piso de 0.015
+            THRESHOLD = max(avg_noise * 2.5, 0.015)
+            is_calibrated = True
+            print(f"\n✅ ¡Calibrado! Ruido promedio: {avg_noise:.4f} | Umbral de voz fijado en: {THRESHOLD:.4f}")
+            print("-" * 60)
+            print("🔴 Grabador en vivo activo. Empieza a hablar (Presiona Ctrl+C para salir)...")
+            print("-" * 60)
+        return
+
+    # 2. Bucle principal de Detección de Voz (VAD)
     if volume_norm > THRESHOLD:
         # Se detecta voz
         if not is_speaking:
