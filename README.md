@@ -179,12 +179,12 @@ Para escuchar las respuestas con tu voz clonada y el acento correcto según el i
 
 ## 🧪 Pruebas con `curl`
 
-### Probar el Chat
+### 1. Probar el Chat (Gemma 4 en Puerto 8000)
 
 ```bash
 curl http://localhost:8000/v1/chat/completions \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer token-abc123" \
+  -H "Authorization: Bearer token-e68f0c0d4d4f4d04d70399323d411290b2bf938a81f26685602140c4f8617939" \
   -d '{
     "model": "nvidia/Gemma-4-26B-A4B-NVFP4",
     "messages": [
@@ -192,6 +192,94 @@ curl http://localhost:8000/v1/chat/completions \
     ],
     "max_tokens": 150
   }'
+```
+
+### 2. Probar Texto a Voz con Clonación (F5-TTS en Puerto 8002)
+
+Usa los siguientes comandos `curl` para generar audios en diferentes idiomas con pronunciación nativa manteniendo tu clon de voz:
+
+#### 🇪🇸 Español (Voz `alloy` o `jose`)
+```bash
+curl -X POST http://localhost:8002/v1/audio/speech \
+  -H "Authorization: Bearer token-e68f0c0d4d4f4d04d70399323d411290b2bf938a81f26685602140c4f8617939" \
+  -H "Content-Type: application/json" \
+  -d '\''{
+    "model": "tts-1",
+    "input": "Hola. Este es un mensaje de prueba generado en español usando mi propia voz clonada de forma local en mi computadora.",
+    "voice": "alloy",
+    "response_format": "mp3"
+  }'\'' \
+  -o espanol_clonado.mp3
+```
+
+#### 🇺🇸 Inglés (Voz `echo` o `jose-en`)
+```bash
+curl -X POST http://localhost:8002/v1/audio/speech \
+  -H "Authorization: Bearer token-e68f0c0d4d4f4d04d70399323d411290b2bf938a81f26685602140c4f8617939" \
+  -H "Content-Type: application/json" \
+  -d '\''{
+    "model": "tts-1",
+    "input": "Hello! This is a test of my cloned voice speaking in English. It runs completely locally on my machine.",
+    "voice": "echo",
+    "response_format": "mp3"
+  }'\'' \
+  -o ingles_clonado.mp3
+```
+
+#### 🇫🇷 Francés (Voz `fable` o `jose-fr`)
+```bash
+curl -X POST http://localhost:8002/v1/audio/speech \
+  -H "Authorization: Bearer token-e68f0c0d4d4f4d04d70399323d411290b2bf938a81f26685602140c4f8617939" \
+  -H "Content-Type: application/json" \
+  -d '\''{
+    "model": "tts-1",
+    "input": "Bonjour! C’est un test de ma voix clonée en français. Le rendu est généré instantanément.",
+    "voice": "fable",
+    "response_format": "mp3"
+  }'\'' \
+  -o frances_clonado.mp3
+```
+
+#### 🇩🇪 Alemán (Voz `onyx` o `jose-de`)
+```bash
+curl -X POST http://localhost:8002/v1/audio/speech \
+  -H "Authorization: Bearer token-e68f0c0d4d4f4d04d70399323d411290b2bf938a81f26685602140c4f8617939" \
+  -H "Content-Type: application/json" \
+  -d '\''{
+    "model": "tts-1",
+    "input": "Guten Tag! Ich spreche Deutsch mit meiner eigenen geklonten Stimme auf meiner RTX dreißig-neunzig.",
+    "voice": "onyx",
+    "response_format": "mp3"
+  }'\'' \
+  -o aleman_clonado.mp3
+```
+
+#### 🇯🇵 Japonés (Voz `shimmer` o `jose-ja`)
+```bash
+curl -X POST http://localhost:8002/v1/audio/speech \
+  -H "Authorization: Bearer token-e68f0c0d4d4f4d04d70399323d411290b2bf938a81f26685602140c4f8617939" \
+  -H "Content-Type: application/json" \
+  -d '\''{
+    "model": "tts-1",
+    "input": "こんにちは！これは私のクローン音声の日本語のテストです。完全にローカルで動作しています。",
+    "voice": "shimmer",
+    "response_format": "mp3"
+  }'\'' \
+  -o japones_clonado.mp3
+```
+
+#### 🇨🇳 Chino (Voz `echo` o `jose-en`)
+```bash
+curl -X POST http://localhost:8002/v1/audio/speech \
+  -H "Authorization: Bearer token-e68f0c0d4d4f4d04d70399323d411290b2bf938a81f26685602140c4f8617939" \
+  -H "Content-Type: application/json" \
+  -d '\''{
+    "model": "tts-1",
+    "input": "你好！这是我本地克隆声音的中文测试。运行速度非常快。",
+    "voice": "echo",
+    "response_format": "mp3"
+  }'\'' \
+  -o chino_clonado.mp3
 ```
 
 ---
