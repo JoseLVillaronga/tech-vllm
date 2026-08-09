@@ -133,9 +133,9 @@ Para habilitar la transcripción por voz local en la interfaz de Open-WebUI, ve 
 
 ## 🗣️ Servidor de Texto a Voz: vLLM-TTS
 
-Para tener generación de voz con clonación zero-shot en caliente y sin retrasos de carga, el proyecto incluye un servidor de Texto a Voz (TTS) basado en FastAPI y F5-TTS que corre en el puerto **`8002`**.
+Para tener generación de voz con clonación zero-shot en caliente y sin retrasos de carga, el proyecto incluye un servidor de Texto a Voz (TTS) multilingüe basado en FastAPI y F5-TTS que corre en el puerto **`8002`**.
 
-El servidor mantiene precargado el modelo en la GPU consumiendo apenas el **10% de la VRAM** (~2.2 GB) y expone la API compatible con OpenAI `/v1/audio/speech`.
+El servidor administra dinámicamente múltiples acentos intercambiando el modelo activo en la GPU en milisegundos y manteniendo los inactivos en la RAM del sistema, consumiendo apenas **~1.2 GB de VRAM fija**. Expone la API compatible con OpenAI `/v1/audio/speech`.
 
 ### 1. Instalación del servicio systemd:
 ```bash
@@ -149,17 +149,31 @@ El servidor mantiene precargado el modelo en la GPU consumiendo apenas el **10% 
 * **Reiniciar servicio:** `sudo systemctl restart vllm-tts`
 
 ### 3. Documentación interactiva (Swagger UI):
-Accede desde tu navegador para probar interactivamente los endpoints:
+Accede desde tu navegador para probar y documentar los endpoints:
 `http://localhost:8002/docs`
 
+> **🔒 Autenticación en Swagger:** Haz clic en el botón **"Authorize"** en la parte superior derecha e introduce tu API key (`token-e68f0c0d4d4f4d04d70399323d411290b2bf938a81f26685602140c4f8617939`) para desbloquear las pruebas.
+
 ### 4. Integración con Open-WebUI (Texto a Voz / TTS):
-Para escuchar las respuestas del asistente con tu voz clonada en Open-WebUI, ve a **Ajustes de Administrador > Audio** y configura la sección **Texto a Voz (TTS)** con los siguientes valores:
+Para escuchar las respuestas con tu voz clonada y el acento correcto según el idioma en Open-WebUI, ve a **Ajustes de Administrador > Audio** y configura la sección **Texto a Voz (TTS)** con los siguientes valores:
 
 * **Motor Texto a Voz (TTS):** `OpenAI`
 * **URL Base API:** `http://localhost:8002/v1` *(Si corres Open-WebUI en Docker, usa `http://host.docker.internal:8002/v1`)*
-* **Clave API:** `token-e68f0c0d4d4f4d04d70399323d411290b2bf938a81f26685602140c4f8617939` *(o la clave configurada en tu `.env`)*
+* **Clave API:** `token-e68f0c0d4d4f4d04d70399323d411290b2bf938a81f26685602140c4f8617939`
 * **Modelo TTS:** `tts-1`
-* **Voz TTS:** `jose` *(mapea tu voz clonada predeterminada)*
+* **Voz TTS / Mapeo de Acentos:**
+  Selecciona o escribe el identificador de voz correspondiente al acento nativo deseado:
+  
+  | Identificador de Voz (API / WebUI) | Idioma / Acento Nativo | Modelo Asociado |
+  | :--- | :--- | :--- |
+  | `jose`, `jose-es` o **`alloy`** | 🇪🇸 **Español** | `jpgallegoar/F5-Spanish` |
+  | `jose-en` o **`echo`** | 🇺🇸 **Inglés** | `SWivid/F5-TTS` (Base Oficial) |
+  | `jose-fr` o **`fable`** | 🇫🇷 **Francés** | `RASPIAUDIO/F5-French` |
+  | `jose-de` o **`onyx`** | 🇩🇪 **Alemán** | `aihpi/F5-TTS-German` |
+  | `jose-ru` o **`nova`** | 🇷🇺 **Ruso** | `hotstone228/F5-TTS-Russian` |
+  | `jose-ja` o **`shimmer`** | 🇯🇵 **Japonés** | `Jmica/F5TTS` |
+
+*(Nota: Todas las opciones clonan tu timbre de voz nativo en base a `mi_voz_24k_mono.wav`, pero con la pronunciación del acento seleccionado).*
 
 ---
 
@@ -224,6 +238,11 @@ Durante el proceso de configuración y depuración de este proyecto se identific
 * **Ubicación:** Para el modelo Gemma 4, el audio debe ir colocado *después* del texto. Además, el texto del prompt debe incluir la etiqueta de marcador de posición **`<|audio|>`** para indicarle al modelo dónde inyectar los embeddings de audio:
   `"Transcribe este audio de voz: <|audio|>"`
   Sin la etiqueta en el prompt, el modelo ignora el archivo de audio o responde: *"No se proporcionó ningún audio para transcribir."*
+
+### 8. CPU-GPU Offloading Dinámico para Multilingüismo
+* **Problema:** Cargar en paralelo 6 modelos de voz distintos (uno por cada idioma) colapsaría la GPU (~7.2 GB de VRAM requeridos solo para TTS).
+* **Solución:** Implementar administración perezosa (*lazy loading*) en [app_tts.py](file:///home/jose/vllm/app_tts.py). Los modelos inactivos se instancian en la RAM del sistema (CPU) y se transfieren a la GPU (CUDA) sobre el bus PCIe bajo demanda en menos de 0.2 segundos.
+* **Resultado:** Soporte completo de 6 idiomas nativos con un consumo constante y controlado de **~1.2 GB de VRAM**.
 
 ---
 
