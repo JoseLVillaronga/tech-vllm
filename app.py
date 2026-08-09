@@ -31,7 +31,7 @@ def main():
         "--host", host,
         "--port", str(port),
         "--model", model,
-        "--gpu-memory-utilization", str(gpu_memory_utilization),
+        #"--gpu-memory-utilization", str(gpu_memory_utilization),
         "--max-model-len", str(max_model_len),
         "--max-num-seqs", str(max_num_seqs),
         "--kv-cache-dtype", kv_cache_dtype,
