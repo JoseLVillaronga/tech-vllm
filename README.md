@@ -16,9 +16,9 @@ Servidor de Inferencia de Modelos de Lenguaje (LLM) de alto rendimiento basado e
 
 ## 🌟 Características Principales
 
-1. **Cuatro Servidores API locales (Gemma 4 en 8000, Whisper en 8001, F5-TTS en 8002, PyAnnote en 8003)**: Coexistencia de cuatro instancias locales de API en segundo plano que implementan chat, transcripción, generación de voz y separación de interlocutores.
+1. **Cuatro Servidores API locales (Gemma 4 en 8000, Whisper en 8001, F5-TTS en 8002, PyAnnote en 8003)**: Coexistencia de cuatro instancias locales de API en segundo plano que implementan chat, transcripción, generación de voz y separación de interlocutores de forma unificada.
 2. **Despliegue Multimodal de Audio y Visión**: Soporte nativo para procesar imágenes y voz directamente.
-3. **Gestión Coordinada de VRAM e Hilos**: Asignación estricta de memoria (Gemma 4 a 50%, Whisper a 10%, F5-TTS a 10%), y ejecución de Diarización en CPU (0 VRAM) para mantener la suite completa en caliente sin colisiones.
+3. **Gestión Coordinada de VRAM**: Asignación estricta de memoria (Gemma 4 al 50%, Whisper al 10%, F5-TTS al 10% y PyAnnote a GPU con ~400MB), manteniendo la suite completa siempre cargada en caliente sin colisiones.
 4. **Instalación como Servicios del Sistema (`systemd`)**: Autoinstaladores integrados (`install_service.sh`, `install_whisper_service.sh`, `install_tts_service.sh` y `install_diarization_service.sh`) con autorreinicio.
 5. **Scripts de Integración de Audio**: Scripts para re-muestrear ondas a la frecuencia nativa esperada (16kHz para Whisper/Gemma y 24kHz para F5-TTS).
 6. **Exposición Swagger UI (`/docs`)**: Documentación interactiva completa autogenerada en el puerto de cada servicio de forma nativa.
@@ -181,7 +181,7 @@ Para escuchar las respuestas con tu voz clonada y el acento correcto según el i
 
 Para identificar "quién habla en cada momento" (separación de voces) en grabaciones de múltiples personas, el proyecto incluye un servidor de diarización basado en FastAPI y **PyAnnote 3.1** que corre en el puerto **`8003`**.
 
-Para conservar VRAM, el servidor se ejecuta 100% en la **CPU**, permaneciendo precargado en la memoria RAM del sistema con consumo **0 VRAM**.
+El servidor se ejecuta en la **GPU (CUDA)** para obtener la máxima velocidad de procesamiento, permaneciendo precargado con un consumo extremadamente ligero de apenas **~300 MB a 500 MB** de VRAM.
 
 ### 1. Requisito previo (Aceptar términos de uso en Hugging Face):
 Los modelos de PyAnnote son de acceso restringido (*gated*). Antes de iniciar el servicio, debes ingresar con tu usuario a Hugging Face y aceptar las condiciones haciendo clic en:
