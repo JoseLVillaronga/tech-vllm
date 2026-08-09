@@ -2,7 +2,7 @@ import base64
 import requests
 
 # 1. Cargar y codificar el archivo de audio en Base64
-audio_file = "resultado_clonado_fr.wav"
+audio_file = "mi_voz_24k_mono.wav"
 print(f"📂 Cargando y codificando '{audio_file}'...")
 with open(audio_file, "rb") as f:
     audio_b64 = base64.b64encode(f.read()).decode("utf-8")
@@ -15,16 +15,22 @@ headers = {
 }
 
 # 3. Payload
-# IMPORTANTE: Definimos max_tokens=100 para evitar que el modelo entre en un bucle infinito
+# IMPORTANTE: Definimos max_tokens=100 para evitar bucles infinitos.
+# Colocamos el audio_url con formato data URI después del texto del prompt.
+audio_data_url = f"data:audio/wav;base64,{audio_b64}"
+
 payload = {
     "model": "google/gemma-4-E4B-it",
     "max_tokens": 100,
-    "temperature": 0.0,  # Temperatura 0 para una transcripción más precisa
+    "temperature": 0.0,
     "messages": [{
         "role": "user",
         "content": [
-            {"type": "text", "text": "<|audio|>\nTranscribe exactamente lo que se dice en este audio de voz:"},
-            {"type": "input_audio", "input_audio": {"data": audio_b64, "format": "wav"}}
+            {"type": "text", "text": "Transcribe exactamente lo que se dice en este audio de voz:"},
+            {
+                "type": "audio_url",
+                "audio_url": {"url": audio_data_url}
+            }
         ]
     }]
 }
