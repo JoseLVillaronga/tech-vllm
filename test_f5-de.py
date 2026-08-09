@@ -7,8 +7,10 @@ from f5_tts.api import F5TTS
 load_dotenv()
 
 # 1. Descargar el checkpoint en alemán desde Hugging Face
+# Repo: aihpi/F5-TTS-German (Hasso-Plattner-Institut, Common Voice + Emilia_DE)
 print("📥 Laden des F5-TTS-German Modells von Hugging Face...")
-ckpt_path = hf_hub_download(repo_id="AET-AI/F5-TTS-German", filename="model_1200000.safetensors")
+ckpt_path = hf_hub_download(repo_id="aihpi/F5-TTS-German", filename="F5TTS_Base/model_420000.safetensors")
+vocab_path = hf_hub_download(repo_id="aihpi/F5-TTS-German", filename="vocab.txt")
 
 # 2. Pre-procesar audio a Mono 24kHz para optimizar la alineación
 ref_audio_orig = "mi_voz.flac"
@@ -30,7 +32,7 @@ else:
 
 # 3. Inicializar F5-TTS con el checkpoint de alemán
 # IMPORTANTE: Modelos comunitarios fueron entrenados sobre F5TTS_Base
-f5tts = F5TTS(model="F5TTS_Base", ckpt_file=ckpt_path)
+f5tts = F5TTS(model="F5TTS_Base", ckpt_file=ckpt_path, vocab_file=vocab_path)
 
 ref_text = "Hola, este es un ejemplo de mi voz grabado para entrenar el modelo de síntesis de voz F5-TTS en mi computadora."
 gen_text = "Hallo Jose! Dies ist eine Nachricht, die mit deiner eigenen lokal geklonten Stimme mit F5 TTS generiert wurde. Die Technologie ist wirklich erstaunlich."

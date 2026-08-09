@@ -7,8 +7,10 @@ from f5_tts.api import F5TTS
 load_dotenv()
 
 # 1. Descargar el checkpoint en francés desde Hugging Face
-print("📥 Chargement du modèle F5-TTS-French depuis Hugging Face...")
-ckpt_path = hf_hub_download(repo_id="m-bain/F5-TTS-French", filename="model_1200000.safetensors")
+# Repo: RASPIAUDIO/F5-French-MixedSpeakers-reduced (entrenado con LibriVox FR)
+print("📥 Chargement du modèle F5-French depuis Hugging Face...")
+ckpt_path = hf_hub_download(repo_id="RASPIAUDIO/F5-French-MixedSpeakers-reduced", filename="model_last_reduced.pt")
+vocab_path = hf_hub_download(repo_id="RASPIAUDIO/F5-French-MixedSpeakers-reduced", filename="vocab.txt")
 
 # 2. Pre-procesar audio a Mono 24kHz para optimizar la alineación
 ref_audio_orig = "mi_voz.flac"
@@ -30,7 +32,7 @@ else:
 
 # 3. Inicializar F5-TTS con el checkpoint de francés
 # IMPORTANTE: Modelos comunitarios fueron entrenados sobre F5TTS_Base
-f5tts = F5TTS(model="F5TTS_Base", ckpt_file=ckpt_path)
+f5tts = F5TTS(model="F5TTS_Base", ckpt_file=ckpt_path, vocab_file=vocab_path)
 
 ref_text = "Hola, este es un ejemplo de mi voz grabado para entrenar el modelo de síntesis de voz F5-TTS en mi computadora."
 gen_text = "Bonjour Jose! Ceci est un message généré en utilisant votre propre voix clonée localement avec F5 TTS. La technologie est vraiment incroyable."

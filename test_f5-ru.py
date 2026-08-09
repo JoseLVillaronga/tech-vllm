@@ -7,8 +7,10 @@ from f5_tts.api import F5TTS
 load_dotenv()
 
 # 1. Descargar el checkpoint en ruso desde Hugging Face
+# Repo: hotstone228/F5-TTS-Russian
 print("📥 Загрузка модели F5-TTS-Russian из Hugging Face...")
-ckpt_path = hf_hub_download(repo_id="mushnikov/F5-TTS-Russian", filename="model_1200000.safetensors")
+ckpt_path = hf_hub_download(repo_id="hotstone228/F5-TTS-Russian", filename="model_last.safetensors")
+vocab_path = hf_hub_download(repo_id="hotstone228/F5-TTS-Russian", filename="vocab.txt")
 
 # 2. Pre-procesar audio a Mono 24kHz para optimizar la alineación
 ref_audio_orig = "mi_voz.flac"
@@ -30,7 +32,7 @@ else:
 
 # 3. Inicializar F5-TTS con el checkpoint de ruso
 # IMPORTANTE: Modelos comunitarios fueron entrenados sobre F5TTS_Base
-f5tts = F5TTS(model="F5TTS_Base", ckpt_file=ckpt_path)
+f5tts = F5TTS(model="F5TTS_Base", ckpt_file=ckpt_path, vocab_file=vocab_path)
 
 ref_text = "Hola, este es un ejemplo de mi voz grabado para entrenar el modelo de síntesis de voz F5-TTS en mi computadora."
 gen_text = "Привет Хосе! Это сообщение создано с использованием вашего собственного голоса, клонированного локально с помощью F5 TTS. Технология действительно удивительна."

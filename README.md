@@ -150,16 +150,18 @@ El proyecto incluye el script [test_f5.py](file:///home/jose/vllm/test_f5.py) pa
 
 En F5-TTS, el idioma se define descargando e instanciando el *checkpoint* específico para ese idioma mediante `hf_hub_download`:
 
-| Idioma | Repositorio (`repo_id`) | Archivo (`filename`) | Notas / Descripción |
-| :--- | :--- | :--- | :--- |
-| 🇪🇸 **Español** | `jpgallegoar/F5-Spanish` | `model_1200000.safetensors` | Afinado con 218h de audio (Acentos: AR, CL, ES, MX, PE, VE). |
-| 🇺🇸 / 🇨🇳 **Inglés y Chino** | `SWivid/F5-TTS` | `F5TTS_v1_Base/model_1250000.safetensors` | Modelo base oficial de SWivid. |
-| 🇫🇷 **Francés** | `m-bain/F5-TTS-French` | `model_1200000.safetensors` | Afinado en francés. |
-| 🇩🇪 **Alemán** | `AET-AI/F5-TTS-German` | `model_1200000.safetensors` | Afinado en alemán. |
-| 🇷🇺 **Ruso** | `mushnikov/F5-TTS-Russian` | `model_1200000.safetensors` | Afinado en ruso. |
-| 🇯🇵 **Japonés** | `Kagami/F5-TTS-Japanese` | `model_1200000.safetensors` | Afinado en japonés. |
+| Idioma | Repositorio (`repo_id`) | Archivo (`filename`) | Arquitectura | Notas |
+| :--- | :--- | :--- | :--- | :--- |
+| 🇪🇸 **Español** | `jpgallegoar/F5-Spanish` | `model_1200000.safetensors` | `F5TTS_Base` | 218h audio (AR, CL, ES, PE, VE). |
+| 🇺🇸 / 🇨🇳 **Inglés y Chino** | `SWivid/F5-TTS` | *(descarga automática)* | `F5TTS_v1_Base` | Modelo base oficial de SWivid. |
+| 🇫🇷 **Francés** | `RASPIAUDIO/F5-French-MixedSpeakers-reduced` | `model_last_reduced.pt` | `F5TTS_Base` | LibriVox FR, múltiples hablantes. |
+| 🇩🇪 **Alemán** | `aihpi/F5-TTS-German` | `F5TTS_Base/model_420000.safetensors` | `F5TTS_Base` | HPI, Common Voice + Emilia_DE. |
+| 🇷🇺 **Ruso** | `hotstone228/F5-TTS-Russian` | `model_last.safetensors` | `F5TTS_Base` | Afinado en ruso. |
+| 🇯🇵 **Japonés** | `Jmica/F5TTS` | `JA_21999120/model_21999120.pt` | `F5TTS_Base` | Requiere `vocab_japanese.txt`. |
 
-#### Ejemplo de uso en Python (`test_f5.py`):
+> **⚠️ IMPORTANTE:** Los modelos comunitarios (ES, FR, DE, RU, JA) fueron entrenados sobre `F5TTS_Base` (con `text_mask_padding: False`). El modelo base oficial (EN/ZH) usa `F5TTS_v1_Base`. Usar la arquitectura incorrecta produce audio incomprensible.
+
+#### Ejemplo de uso en Python (`test_f5-es.py`):
 
 ```python
 from huggingface_hub import hf_hub_download
@@ -167,10 +169,13 @@ from f5_tts.api import F5TTS
 
 # Cargar checkpoint específico para Español
 ckpt_path = hf_hub_download(repo_id="jpgallegoar/F5-Spanish", filename="model_1200000.safetensors")
-f5tts = F5TTS(ckpt_file=ckpt_path)
+vocab_path = hf_hub_download(repo_id="jpgallegoar/F5-Spanish", filename="vocab.txt")
+
+# IMPORTANTE: especificar model="F5TTS_Base" para modelos comunitarios
+f5tts = F5TTS(model="F5TTS_Base", ckpt_file=ckpt_path, vocab_file=vocab_path)
 
 f5tts.infer(
-    ref_file="mi_voz.flac",
+    ref_file="mi_voz_24k_mono.wav",
     ref_text="Texto correspondiente a tu muestra de audio",
     gen_text="Texto en español que quieres que diga tu voz clonada",
     speed=1.0,

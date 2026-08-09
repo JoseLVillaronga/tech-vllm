@@ -7,8 +7,10 @@ from f5_tts.api import F5TTS
 load_dotenv()
 
 # 1. Descargar el checkpoint en japonés desde Hugging Face
+# Repo: Jmica/F5TTS (requiere vocab_japanese.txt específico)
 print("📥 Hugging Faceから F5-TTS-Japanese モデルをロード中...")
-ckpt_path = hf_hub_download(repo_id="Kagami/F5-TTS-Japanese", filename="model_1200000.safetensors")
+ckpt_path = hf_hub_download(repo_id="Jmica/F5TTS", filename="JA_21999120/model_21999120.pt")
+vocab_path = hf_hub_download(repo_id="Jmica/F5TTS", filename="JA_21999120/vocab_japanese.txt")
 
 # 2. Pre-procesar audio a Mono 24kHz para optimizar la alineación
 ref_audio_orig = "mi_voz.flac"
@@ -30,10 +32,10 @@ else:
 
 # 3. Inicializar F5-TTS con el checkpoint de japonés
 # IMPORTANTE: Modelos comunitarios fueron entrenados sobre F5TTS_Base
-f5tts = F5TTS(model="F5TTS_Base", ckpt_file=ckpt_path)
+f5tts = F5TTS(model="F5TTS_Base", ckpt_file=ckpt_path, vocab_file=vocab_path)
 
 ref_text = "Hola, este es un ejemplo de mi voz grabado para entrenar el modelo de síntesis de voz F5-TTS en mi computadora."
-gen_text = "こんにちは、ホセです！これはF5 TTSを使ってローカルでクローンされたあなた自身の声で生成されたメッセージです。このテクノロジーは本当に素晴らしいです。"
+gen_text = "こんにちは、ホセです。これはF5 TTSを使ってローカルでクローンされたあなた自身の声で生成されたメッセージです。このテクノロジーは本当に素晴らしいです。"
 
 print("🎙️ 日本語でクローンされたオーディオを生成中...")
 f5tts.infer(
