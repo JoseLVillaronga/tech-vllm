@@ -31,7 +31,7 @@ def main():
         "--host", host,
         "--port", str(port),
         "--model", model,
-        #"--gpu-memory-utilization", str(gpu_memory_utilization),
+        "--gpu-memory-utilization", str(gpu_memory_utilization),
         "--max-model-len", str(max_model_len),
         "--max-num-seqs", str(max_num_seqs),
         "--kv-cache-dtype", kv_cache_dtype,
@@ -54,6 +54,7 @@ def main():
     print("🚀 Iniciando servidor vLLM OpenAI API...")
     print(f"📦 Modelo: {model}")
     print(f"🌐 Dirección: http://{host}:{port}")
+    print(f"🧠 VRAM reservada: {float(gpu_memory_utilization)*100:.0f}% (~{float(gpu_memory_utilization)*24:.1f} GB de 24 GB) | Libre: ~{(1-float(gpu_memory_utilization))*24:.1f} GB")
     print(f"💾 CPU Offload GB: {swap_space} GB RAM" if float(swap_space) > 0 else "⚡ CPU Offload: Deshabilitado (Máxima velocidad GPU)")
     print(f"🔑 API Key configurada: {api_key}")
     print("=" * 60 + "\n")
