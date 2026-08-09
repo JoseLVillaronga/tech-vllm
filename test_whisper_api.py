@@ -1,10 +1,14 @@
 import os
 import requests
+from dotenv import load_dotenv
 
-# 1. Configurar el endpoint y token del servicio de Whisper
+# Cargar variables de entorno
+load_dotenv()
+
+API_KEY = os.getenv("API_KEY", "tu_clave_api_aqui")
 url = "http://localhost:8001/v1/audio/transcriptions"
 headers = {
-    "Authorization": "Bearer token-e68f0c0d4d4f4d04d70399323d411290b2bf938a81f26685602140c4f8617939"
+    "Authorization": f"Bearer {API_KEY}"
 }
 
 # 2. Elegir archivo de audio local

@@ -81,7 +81,7 @@ Edita tu archivo `.env` configurando tu token de Hugging Face y clave API:
 
 ```env
 HF_TOKEN=tu_token_huggingface_aqui
-API_KEY=token-e68f0c0d4d4f4d04d70399323d411290b2bf938a81f26685602140c4f8617939
+API_KEY=tu_clave_api_aqui
 
 HOST=0.0.0.0
 PORT=8000
@@ -150,7 +150,7 @@ Para habilitar la transcripción por voz local en la interfaz de Open-WebUI, ve 
 
 * **Motor Voz a Texto (STT):** `OpenAI`
 * **URL Base API:** `http://localhost:8001/v1` *(Si corres Open-WebUI en Docker, usa `http://host.docker.internal:8001/v1`)*
-* **Clave API:** `token-e68f0c0d4d4f4d04d70399323d411290b2bf938a81f26685602140c4f8617939` *(o la clave configurada en tu `.env`)*
+* **Clave API:** `tu_clave_api_aqui` *(o la clave configurada en tu `.env`)*
 * **Request Format:** `Multipart Upload`
 * **Modelo STT:** `openai/whisper-large-v3-turbo`
 
@@ -177,14 +177,14 @@ El servidor administra dinámicamente múltiples acentos intercambiando el model
 Accede desde tu navegador para probar y documentar los endpoints:
 `http://localhost:8002/docs`
 
-> **🔒 Autenticación en Swagger:** Haz clic en el botón **"Authorize"** en la parte superior derecha e introduce tu API key (`token-e68f0c0d4d4f4d04d70399323d411290b2bf938a81f26685602140c4f8617939`) para desbloquear las pruebas.
+> **🔒 Autenticación en Swagger:** Haz clic en el botón **"Authorize"** en la parte superior derecha e introduce tu API key (`tu_clave_api_aqui`) para desbloquear las pruebas.
 
 ### 4. Integración con Open-WebUI (Texto a Voz / TTS):
 Para escuchar las respuestas con tu voz clonada y el acento correcto según el idioma en Open-WebUI, ve a **Ajustes de Administrador > Audio** y configura la sección **Texto a Voz (TTS)** con los siguientes valores:
 
 * **Motor Texto a Voz (TTS):** `OpenAI`
 * **URL Base API:** `http://localhost:8002/v1` *(Si corres Open-WebUI en Docker, usa `http://host.docker.internal:8002/v1`)*
-* **Clave API:** `token-e68f0c0d4d4f4d04d70399323d411290b2bf938a81f26685602140c4f8617939`
+* **Clave API:** `tu_clave_api_aqui`
 * **Modelo TTS:** `tts-1`
 * **Voz TTS / Mapeo de Acentos:**
   Selecciona o escribe el identificador de voz correspondiente al acento nativo deseado:
@@ -234,7 +234,7 @@ Accede al panel interactivo y haz clic en **"Authorize"** con tu API key:
 ### 5. Ejemplo de prueba vía `curl`:
 ```bash
 curl -X POST http://localhost:8003/v1/audio/diarize \
-  -H "Authorization: Bearer token-e68f0c0d4d4f4d04d70399323d411290b2bf938a81f26685602140c4f8617939" \
+  -H "Authorization: Bearer tu_clave_api_aqui" \
   -F "file=@mi_voz_24k_mono.wav"
 ```
 
@@ -247,7 +247,7 @@ curl -X POST http://localhost:8003/v1/audio/diarize \
 ```bash
 curl http://localhost:8000/v1/chat/completions \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer token-e68f0c0d4d4f4d04d70399323d411290b2bf938a81f26685602140c4f8617939" \
+  -H "Authorization: Bearer tu_clave_api_aqui" \
   -d '{
     "model": "nvidia/Gemma-4-26B-A4B-NVFP4",
     "messages": [
@@ -264,7 +264,7 @@ Usa los siguientes comandos `curl` para generar audios en diferentes idiomas con
 #### 🇪🇸 Español (Voz `alloy` o `jose`)
 ```bash
 curl -X POST http://localhost:8002/v1/audio/speech \
-  -H "Authorization: Bearer token-e68f0c0d4d4f4d04d70399323d411290b2bf938a81f26685602140c4f8617939" \
+  -H "Authorization: Bearer tu_clave_api_aqui" \
   -H "Content-Type: application/json" \
   -d '\''{
     "model": "tts-1",
@@ -278,7 +278,7 @@ curl -X POST http://localhost:8002/v1/audio/speech \
 #### 🇺🇸 Inglés (Voz `echo` o `jose-en`)
 ```bash
 curl -X POST http://localhost:8002/v1/audio/speech \
-  -H "Authorization: Bearer token-e68f0c0d4d4f4d04d70399323d411290b2bf938a81f26685602140c4f8617939" \
+  -H "Authorization: Bearer tu_clave_api_aqui" \
   -H "Content-Type: application/json" \
   -d '\''{
     "model": "tts-1",
@@ -292,7 +292,7 @@ curl -X POST http://localhost:8002/v1/audio/speech \
 #### 🇫🇷 Francés (Voz `fable` o `jose-fr`)
 ```bash
 curl -X POST http://localhost:8002/v1/audio/speech \
-  -H "Authorization: Bearer token-e68f0c0d4d4f4d04d70399323d411290b2bf938a81f26685602140c4f8617939" \
+  -H "Authorization: Bearer tu_clave_api_aqui" \
   -H "Content-Type: application/json" \
   -d '\''{
     "model": "tts-1",
@@ -306,7 +306,7 @@ curl -X POST http://localhost:8002/v1/audio/speech \
 #### 🇩🇪 Alemán (Voz `onyx` o `jose-de`)
 ```bash
 curl -X POST http://localhost:8002/v1/audio/speech \
-  -H "Authorization: Bearer token-e68f0c0d4d4f4d04d70399323d411290b2bf938a81f26685602140c4f8617939" \
+  -H "Authorization: Bearer tu_clave_api_aqui" \
   -H "Content-Type: application/json" \
   -d '\''{
     "model": "tts-1",
@@ -320,7 +320,7 @@ curl -X POST http://localhost:8002/v1/audio/speech \
 #### 🇯🇵 Japonés (Voz `shimmer` o `jose-ja`)
 ```bash
 curl -X POST http://localhost:8002/v1/audio/speech \
-  -H "Authorization: Bearer token-e68f0c0d4d4f4d04d70399323d411290b2bf938a81f26685602140c4f8617939" \
+  -H "Authorization: Bearer tu_clave_api_aqui" \
   -H "Content-Type: application/json" \
   -d '\''{
     "model": "tts-1",
@@ -334,7 +334,7 @@ curl -X POST http://localhost:8002/v1/audio/speech \
 #### 🇨🇳 Chino (Voz `echo` o `jose-en`)
 ```bash
 curl -X POST http://localhost:8002/v1/audio/speech \
-  -H "Authorization: Bearer token-e68f0c0d4d4f4d04d70399323d411290b2bf938a81f26685602140c4f8617939" \
+  -H "Authorization: Bearer tu_clave_api_aqui" \
   -H "Content-Type: application/json" \
   -d '\''{
     "model": "tts-1",

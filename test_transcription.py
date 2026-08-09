@@ -2,6 +2,10 @@ import os
 import base64
 import requests
 import torchaudio
+from dotenv import load_dotenv
+
+# Cargar variables de entorno
+load_dotenv()
 
 # 1. Cargar, re-muestrear a 16kHz (frecuencia nativa de Gemma 4) y codificar a Base64
 audio_file = "mi_voz_24k_mono.wav"
@@ -24,11 +28,11 @@ print(f"📂 Cargando y codificando '{temp_file}'...")
 with open(temp_file, "rb") as f:
     audio_b64 = base64.b64encode(f.read()).decode("utf-8")
 
-# 2. Configurar headers y endpoint del servidor local
+API_KEY = os.getenv("API_KEY", "tu_clave_api_aqui")
 url = "http://localhost:8000/v1/chat/completions"
 headers = {
     "Content-Type": "application/json",
-    "Authorization": "Bearer token-e68f0c0d4d4f4d04d70399323d411290b2bf938a81f26685602140c4f8617939"
+    "Authorization": f"Bearer {API_KEY}"
 }
 
 # 3. Payload
