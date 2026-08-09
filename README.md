@@ -16,11 +16,12 @@ Servidor de Inferencia de Modelos de Lenguaje (LLM) de alto rendimiento basado e
 
 ## 🌟 Características Principales
 
-1. **Doble Servidor vLLM API (`/v1/chat/completions`)**: Coexistencia de dos instancias locales de vLLM en paralelo sirviendo a Gemma 4 (puerto 8000) y Whisper (puerto 8001).
+1. **Triple Servidor API local (Gemma 4 en 8000, Whisper en 8001, F5-TTS en 8002)**: Coexistencia de tres instancias locales de API en paralelo e integradas de forma compatible con los estándares de OpenAI.
 2. **Despliegue Multimodal de Audio y Visión**: Soporte nativo para procesar imágenes y voz directamente.
-3. **Gestión Coordinada de VRAM**: Asignación estricta de memoria (Gemma 4 a 50% y Whisper a 10%), permitiendo tener ambos servidores siempre en caliente con margen para F5-TTS.
-4. **Instalación como Servicios del Sistema (`systemd`)**: Autoinstaladores integrados (`install_service.sh` y `install_whisper_service.sh`) con autorreinicio.
-5. **Scripts de Integración de Audio**: Scripts para re-muestrear ondas a la frecuencia nativa esperada (16kHz para Whisper y 24kHz para F5-TTS).
+3. **Gestión Coordinada de VRAM**: Asignación estricta de memoria (Gemma 4 a 50%, Whisper a 10% y F5-TTS a 10%), permitiendo tener la suite completa siempre cargada en caliente sin colisiones.
+4. **Instalación como Servicios del Sistema (`systemd`)**: Autoinstaladores integrados (`install_service.sh`, `install_whisper_service.sh` y `install_tts_service.sh`) con autorreinicio.
+5. **Scripts de Integración de Audio**: Scripts para re-muestrear ondas a la frecuencia nativa esperada (16kHz para Whisper/Gemma y 24kHz para F5-TTS).
+6. **Exposición Swagger UI (`/docs`)**: Documentación interactiva completa autogenerada en el puerto de cada servicio de forma nativa.
 
 ---
 
@@ -127,6 +128,38 @@ Para habilitar la transcripción por voz local en la interfaz de Open-WebUI, ve 
 * **Clave API:** `token-e68f0c0d4d4f4d04d70399323d411290b2bf938a81f26685602140c4f8617939` *(o la clave configurada en tu `.env`)*
 * **Request Format:** `Multipart Upload`
 * **Modelo STT:** `openai/whisper-large-v3-turbo`
+
+---
+
+## 🗣️ Servidor de Texto a Voz: vLLM-TTS
+
+Para tener generación de voz con clonación zero-shot en caliente y sin retrasos de carga, el proyecto incluye un servidor de Texto a Voz (TTS) basado en FastAPI y F5-TTS que corre en el puerto **`8002`**.
+
+El servidor mantiene precargado el modelo en la GPU consumiendo apenas el **10% de la VRAM** (~2.2 GB) y expone la API compatible con OpenAI `/v1/audio/speech`.
+
+### 1. Instalación del servicio systemd:
+```bash
+./install_tts_service.sh
+```
+
+### 2. Comandos de administración:
+* **Ver logs en tiempo real:** `sudo journalctl -u vllm-tts -f`
+* **Ver estado:** `sudo systemctl status vllm-tts`
+* **Detener servicio:** `sudo systemctl stop vllm-tts`
+* **Reiniciar servicio:** `sudo systemctl restart vllm-tts`
+
+### 3. Documentación interactiva (Swagger UI):
+Accede desde tu navegador para probar interactivamente los endpoints:
+`http://localhost:8002/docs`
+
+### 4. Integración con Open-WebUI (Texto a Voz / TTS):
+Para escuchar las respuestas del asistente con tu voz clonada en Open-WebUI, ve a **Ajustes de Administrador > Audio** y configura la sección **Texto a Voz (TTS)** con los siguientes valores:
+
+* **Motor Texto a Voz (TTS):** `OpenAI`
+* **URL Base API:** `http://localhost:8002/v1` *(Si corres Open-WebUI en Docker, usa `http://host.docker.internal:8002/v1`)*
+* **Clave API:** `token-e68f0c0d4d4f4d04d70399323d411290b2bf938a81f26685602140c4f8617939` *(o la clave configurada en tu `.env`)*
+* **Modelo TTS:** `tts-1`
+* **Voz TTS:** `jose` *(mapea tu voz clonada predeterminada)*
 
 ---
 
