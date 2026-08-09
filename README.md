@@ -36,11 +36,18 @@ python -m venv venv
 source venv/bin/activate
 ```
 
-### 2. Instalar vLLM y dependencias de sistema
+### 2. Instalar dependencias del sistema y Python
+
+Primero, instala las herramientas del sistema necesarias (el compilador CUDA `nvcc` para vLLM y `libportaudio2` para capturar audio desde el micrófono):
 
 ```bash
-pip install vllm python-dotenv
-sudo apt update && sudo apt install -y nvidia-cuda-toolkit
+sudo apt update && sudo apt install -y nvidia-cuda-toolkit libportaudio2
+```
+
+Luego, instala vLLM junto con los paquetes necesarios para la diarización, el procesamiento de audio y las peticiones de red:
+
+```bash
+pip install vllm python-dotenv pyannote.audio faster-whisper sounddevice numpy scipy requests
 ```
 
 > **Nota:** El paquete `nvidia-cuda-toolkit` provee el compilador `nvcc`, requerido por el backend FlashInfer de vLLM para la compilación en tiempo de ejecución (JIT).
