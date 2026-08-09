@@ -1,10 +1,27 @@
+import os
 import base64
 import requests
+import torchaudio
 
-# 1. Cargar y codificar el archivo de audio en Base64
+# 1. Cargar, re-muestrear a 16kHz (frecuencia nativa de Gemma 4) y codificar a Base64
 audio_file = "mi_voz_24k_mono.wav"
-print(f"📂 Cargando y codificando '{audio_file}'...")
-with open(audio_file, "rb") as f:
+temp_file = "audio_16k.wav"
+
+if os.path.exists(audio_file):
+    print(f"🔄 Re-muestreando '{audio_file}' a 16kHz mono...")
+    waveform, sr = torchaudio.load(audio_file)
+    if waveform.shape[0] > 1:
+        waveform = waveform.mean(dim=0, keepdim=True)
+    if sr != 16000:
+        resampler = torchaudio.transforms.Resample(orig_freq=sr, new_freq=16000)
+        waveform = resampler(waveform)
+    torchaudio.save(temp_file, waveform, 16000)
+else:
+    print(f"❌ No se encontró el archivo '{audio_file}'")
+    exit(1)
+
+print(f"📂 Cargando y codificando '{temp_file}'...")
+with open(temp_file, "rb") as f:
     audio_b64 = base64.b64encode(f.read()).decode("utf-8")
 
 # 2. Configurar headers y endpoint del servidor local
