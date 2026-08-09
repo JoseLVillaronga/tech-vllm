@@ -81,17 +81,18 @@ Edita tu archivo `.env` configurando tu token de Hugging Face y clave API:
 
 ```env
 HF_TOKEN=tu_token_huggingface_aqui
-API_KEY=token-abc123
+API_KEY=token-e68f0c0d4d4f4d04d70399323d411290b2bf938a81f26685602140c4f8617939
 
 HOST=0.0.0.0
 PORT=8000
-MODEL=nvidia/Gemma-4-26B-A4B-NVFP4
+MODEL="google/gemma-4-E4B-it"
 
-GPU_MEMORY_UTILIZATION=0.90
-MAX_MODEL_LEN=16384
+GPU_MEMORY_UTILIZATION=0.50
+MAX_MODEL_LEN=131072
 MAX_NUM_SEQS=64
 KV_CACHE_DTYPE=bfloat16
 SWAP_SPACE=0
+QUANTIZATION=bitsandbytes
 ```
 
 ---
