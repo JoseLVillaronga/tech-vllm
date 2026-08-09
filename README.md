@@ -16,10 +16,10 @@ Servidor de Inferencia de Modelos de Lenguaje (LLM) de alto rendimiento basado e
 
 ## 🌟 Características Principales
 
-1. **Triple Servidor API local (Gemma 4 en 8000, Whisper en 8001, F5-TTS en 8002)**: Coexistencia de tres instancias locales de API en paralelo e integradas de forma compatible con los estándares de OpenAI.
+1. **Cuatro Servidores API locales (Gemma 4 en 8000, Whisper en 8001, F5-TTS en 8002, PyAnnote en 8003)**: Coexistencia de cuatro instancias locales de API en segundo plano que implementan chat, transcripción, generación de voz y separación de interlocutores.
 2. **Despliegue Multimodal de Audio y Visión**: Soporte nativo para procesar imágenes y voz directamente.
-3. **Gestión Coordinada de VRAM**: Asignación estricta de memoria (Gemma 4 a 50%, Whisper a 10% y F5-TTS a 10%), permitiendo tener la suite completa siempre cargada en caliente sin colisiones.
-4. **Instalación como Servicios del Sistema (`systemd`)**: Autoinstaladores integrados (`install_service.sh`, `install_whisper_service.sh` y `install_tts_service.sh`) con autorreinicio.
+3. **Gestión Coordinada de VRAM e Hilos**: Asignación estricta de memoria (Gemma 4 a 50%, Whisper a 10%, F5-TTS a 10%), y ejecución de Diarización en CPU (0 VRAM) para mantener la suite completa en caliente sin colisiones.
+4. **Instalación como Servicios del Sistema (`systemd`)**: Autoinstaladores integrados (`install_service.sh`, `install_whisper_service.sh`, `install_tts_service.sh` y `install_diarization_service.sh`) con autorreinicio.
 5. **Scripts de Integración de Audio**: Scripts para re-muestrear ondas a la frecuencia nativa esperada (16kHz para Whisper/Gemma y 24kHz para F5-TTS).
 6. **Exposición Swagger UI (`/docs`)**: Documentación interactiva completa autogenerada en el puerto de cada servicio de forma nativa.
 
@@ -174,6 +174,43 @@ Para escuchar las respuestas con tu voz clonada y el acento correcto según el i
   | `jose-ja` o **`shimmer`** | 🇯🇵 **Japonés** | `Jmica/F5TTS` |
 
 *(Nota: Todas las opciones clonan tu timbre de voz nativo en base a `mi_voz_24k_mono.wav`, pero con la pronunciación del acento seleccionado).*
+
+---
+
+## 👥 Servidor de Diarización de Voz: vLLM-Diarization
+
+Para identificar "quién habla en cada momento" (separación de voces) en grabaciones de múltiples personas, el proyecto incluye un servidor de diarización basado en FastAPI y **PyAnnote 3.1** que corre en el puerto **`8003`**.
+
+Para conservar VRAM, el servidor se ejecuta 100% en la **CPU**, permaneciendo precargado en la memoria RAM del sistema con consumo **0 VRAM**.
+
+### 1. Requisito previo (Aceptar términos de uso en Hugging Face):
+Los modelos de PyAnnote son de acceso restringido (*gated*). Antes de iniciar el servicio, debes ingresar con tu usuario a Hugging Face y aceptar las condiciones haciendo clic en:
+1. [pyannote/speaker-diarization-3.1](https://huggingface.co/pyannote/speaker-diarization-3.1)
+2. [pyannote/segmentation-3.0](https://huggingface.co/pyannote/segmentation-3.0)
+
+*(El token configurado en `HF_TOKEN` en tu `.env` se usará automáticamente para descargar los pesos).*
+
+### 2. Instalación del servicio systemd:
+```bash
+./install_diarization_service.sh
+```
+
+### 3. Comandos de administración:
+* **Ver logs en tiempo real:** `sudo journalctl -u vllm-diarization -f`
+* **Ver estado:** `sudo systemctl status vllm-diarization`
+* **Detener servicio:** `sudo systemctl stop vllm-diarization`
+* **Reiniciar servicio:** `sudo systemctl restart vllm-diarization`
+
+### 4. Probar Diarización mediante Swagger UI:
+Accede al panel interactivo y haz clic en **"Authorize"** con tu API key:
+`http://localhost:8003/docs`
+
+### 5. Ejemplo de prueba vía `curl`:
+```bash
+curl -X POST http://localhost:8003/v1/audio/diarize \
+  -H "Authorization: Bearer token-e68f0c0d4d4f4d04d70399323d411290b2bf938a81f26685602140c4f8617939" \
+  -F "file=@mi_voz_24k_mono.wav"
+```
 
 ---
 
