@@ -23,7 +23,7 @@ payload = {
     "messages": [{
         "role": "user",
         "content": [
-            {"type": "text", "text": "Transcribe exactamente lo que se dice en este audio de voz:"},
+            {"type": "text", "text": "<|audio|>\nTranscribe exactamente lo que se dice en este audio de voz:"},
             {"type": "input_audio", "input_audio": {"data": audio_b64, "format": "wav"}}
         ]
     }]
