@@ -59,7 +59,8 @@ def get_pipeline():
                     "Acceso Denegado a PyAnnote. Asegúrate de haber iniciado sesión y aceptado "
                     "los términos de uso en las siguientes URLs de Hugging Face:\n"
                     "1. https://huggingface.co/pyannote/speaker-diarization-3.1\n"
-                    "2. https://huggingface.co/pyannote/segmentation-3.0"
+                    "2. https://huggingface.co/pyannote/segmentation-3.0\n"
+                    "3. https://huggingface.co/pyannote/speaker-diarization-community-1"
                 )
             )
         else:

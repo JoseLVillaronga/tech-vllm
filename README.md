@@ -187,6 +187,7 @@ Para conservar VRAM, el servidor se ejecuta 100% en la **CPU**, permaneciendo pr
 Los modelos de PyAnnote son de acceso restringido (*gated*). Antes de iniciar el servicio, debes ingresar con tu usuario a Hugging Face y aceptar las condiciones haciendo clic en:
 1. [pyannote/speaker-diarization-3.1](https://huggingface.co/pyannote/speaker-diarization-3.1)
 2. [pyannote/segmentation-3.0](https://huggingface.co/pyannote/segmentation-3.0)
+3. [pyannote/speaker-diarization-community-1](https://huggingface.co/pyannote/speaker-diarization-community-1)
 
 *(El token configurado en `HF_TOKEN` en tu `.env` se usará automáticamente para descargar los pesos).*
 
