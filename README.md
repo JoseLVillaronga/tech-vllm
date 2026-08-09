@@ -347,12 +347,17 @@ curl -X POST http://localhost:8002/v1/audio/speech \
 
 ### 3. Probar Transcripción y Diarización en Vivo (Micrófono)
 
-El proyecto incluye el cliente interactivo [live_transcribe.py](file:///home/jose/vllm/live_transcribe.py) para demostrar cómo capturar audio desde el micrófono en vivo, detectar actividad de voz (VAD) para dividir la frase al detectar silencios, y llamar en paralelo a la API de Diarización (puerto 8003) y la API de Whisper (puerto 8001) para transcribir con distinción de interlocutor en tiempo real.
+El proyecto incluye el cliente interactivo y de grado de producción [live_transcribe.py](file:///home/jose/vllm/live_transcribe.py) para capturar audio desde el micrófono físico, transcribir y separar hablantes en tiempo real. 
+
+Este cliente cuenta con tres características clave de estabilidad de audio:
+1. **Autodetección de Frecuencia de Grabación:** Obtiene la tasa nativa del dispositivo de entrada predeterminado (por ejemplo, `44100 Hz` o `48000 Hz`) para evitar fallos de inicialización del controlador de audio (`paInvalidSampleRate`).
+2. **Calibración Automática de Ruido Ambiente:** Durante los primeros 1.5 segundos de ejecución, mide la estática del entorno para calibrar dinámicamente el umbral de detección de voz (`THRESHOLD`), ignorando el ruido blanco de micrófonos USB.
+3. **Procesamiento Asíncrono Desacoplado (Queue + Worker Thread):** Cuando se detecta un silencio, el fragmento de audio se introduce a una cola segura y se libera el micrófono inmediatamente (<1ms). Un hilo de fondo se encarga de realizar las llamadas HTTP a las APIs de Diarización (puerto `8003`) y Whisper (puerto `8001`) de manera secuencial sin bloquear la grabación activa, eliminando los errores de `input overflow`.
 
 #### Requisitos de grabación:
 ```bash
 sudo apt update && sudo apt install -y libportaudio2
-pip install sounddevice numpy scipy requests
+pip install sounddevice numpy scipy requests python-dotenv
 ```
 
 #### Ejecución:
