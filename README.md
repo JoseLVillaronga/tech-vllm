@@ -16,11 +16,11 @@ Servidor de Inferencia de Modelos de Lenguaje (LLM) de alto rendimiento basado e
 
 ## 🌟 Características Principales
 
-1. **Servidor compatible con OpenAI API (`/v1/chat/completions`)**: Listo para conectar con interfaces como Open-WebUI, LiteLLM, LangChain, etc.
-2. **Despliegue Multimodal Integrado**: Capacidad completa para procesar imágenes (Visión y extracción OCR de texto en capturas).
-3. **Optimización Extrema de VRAM**: Ajuste preciso de la caché KV y cuantización NVFP4/Marlin para ejecutar un modelo de 26B de parámetros en una sola tarjeta de 24 GB VRAM.
-4. **Gestión mediante Script Python (`app.py`)**: Carga automática de credenciales y parámetros de configuración desde un archivo `.env` sin exponer datos sensibles.
-5. **Servicio del Sistema (`systemd`)**: Script instalador (`install_service.sh`) para ejecutar el servidor como servicio en segundo plano con autorreinicio automático.
+1. **Doble Servidor vLLM API (`/v1/chat/completions`)**: Coexistencia de dos instancias locales de vLLM en paralelo sirviendo a Gemma 4 (puerto 8000) y Whisper (puerto 8001).
+2. **Despliegue Multimodal de Audio y Visión**: Soporte nativo para procesar imágenes y voz directamente.
+3. **Gestión Coordinada de VRAM**: Asignación estricta de memoria (Gemma 4 a 50% y Whisper a 10%), permitiendo tener ambos servidores siempre en caliente con margen para F5-TTS.
+4. **Instalación como Servicios del Sistema (`systemd`)**: Autoinstaladores integrados (`install_service.sh` y `install_whisper_service.sh`) con autorreinicio.
+5. **Scripts de Integración de Audio**: Scripts para re-muestrear ondas a la frecuencia nativa esperada (16kHz para Whisper y 24kHz para F5-TTS).
 
 ---
 
@@ -96,6 +96,31 @@ Ejecuta el script instalador para registrar e iniciar el servidor como un servic
 
 ---
 
+## 🎙️ Servidor de Transcripción Persistente: vLLM-Whisper
+
+Para evitar tiempos de carga en frío de Whisper, el proyecto incluye un servidor de transcripción permanente e independiente corriendo en vLLM bajo el puerto **`8001`**.
+
+El servidor levanta el modelo `openai/whisper-large-v3-turbo` reservando únicamente el **10% de la VRAM** (~2.8 GB), permitiendo que coexista con el LLM principal.
+
+### 1. Instalación del servicio systemd:
+```bash
+./install_whisper_service.sh
+```
+
+### 2. Comandos de administración:
+* **Ver logs en tiempo real:** `sudo journalctl -u vllm-whisper -f`
+* **Ver estado:** `sudo systemctl status vllm-whisper`
+* **Detener servicio:** `sudo systemctl stop vllm-whisper`
+* **Reiniciar servicio:** `sudo systemctl restart vllm-whisper`
+
+### 3. Probar transcripción vía API (`POST /v1/audio/transcriptions`):
+Ejecuta el cliente de prueba para mandar un archivo local:
+```bash
+python test_whisper_api.py
+```
+
+---
+
 ## 🧪 Pruebas con `curl`
 
 ### Probar el Chat
@@ -139,6 +164,24 @@ Durante el proceso de configuración y depuración de este proyecto se identific
   * **GPU Pura (`SWAP_SPACE=0`):** Inferencia ultrarrápida de **~70-80 tokens/segundo** en generación y **~128+ tokens/segundo** en prompt throughput al ejecutarse 100% en la VRAM GDDR6X (~936 GB/s).
   * **CPU Offload (`SWAP_SPACE>0`):** La transferencia continua por el bus PCIe (~32 GB/s) genera un cuello de botella que reduce la tasa de generación a **~4 tokens/segundo**.
 * **Conclusión:** Se configuró `app.py` para omitir automáticamente la bandera `--cpu-offload-gb` cuando `SWAP_SPACE=0`, obteniendo el máximo rendimiento nativo de la GPU.
+
+### 5. Coexistencia Eficiente de VRAM (Gemma + Whisper)
+* **Descubrimiento:** El motor vLLM pre-aloca estáticamente la VRAM al arrancar (default 90% por servidor). Correr dos instancias por defecto colapsaría la GPU (43.2 GB necesarios).
+* **Solución:** 
+  * Limitamos a Gemma 4 en `.env` con `GPU_MEMORY_UTILIZATION=0.50` (ocupa ~13 GB). Su arquitectura híbrida sliding-window reduce el peso de la caché KV para 128K tokens a solo ~3.6 GB.
+  * Limitamos a Whisper en `app_whisper.py` con `--gpu-memory-utilization 0.10` (ocupa ~2.8 GB).
+  * **Resultado:** Ambos servicios corren permanentemente en GPU consumiendo juntos ~15.8 GB, dejando más de 8 GB libres para el uso intermitente de F5-TTS.
+
+### 6. Muestreo Frecuencial de Audio para Modelos de Voz
+* **Problema:** Enviar audios convertidos para F5-TTS (24 kHz) a modelos de procesamiento conversacional (como Whisper o Gemma 4) producía transcripciones incomprensibles y bucles infinitos en alemán (*"die neunzehntausend..."*).
+* **Causa:** Los modelos de reconocimiento de voz esperan ondas remuestreadas estrictamente a la frecuencia estándar de **16.000 Hz (16 kHz)**.
+* **Solución:** Implementar re-muestreo dinámico a 16kHz mono mediante `torchaudio` antes del envío (ver [test_transcription.py](file:///home/jose/vllm/test_transcription.py) y [test_whisper_api.py](file:///home/jose/vllm/test_whisper_api.py)).
+
+### 7. Sintaxis de Prompts Multimodales de Audio
+* **Descubrimiento:** vLLM recibe el audio serializado en Base64 mediante el esquema `data:audio/wav;base64,...` en el tipo `audio_url`.
+* **Ubicación:** Para el modelo Gemma 4, el audio debe ir colocado *después* del texto. Además, el texto del prompt debe incluir la etiqueta de marcador de posición **`<|audio|>`** para indicarle al modelo dónde inyectar los embeddings de audio:
+  `"Transcribe este audio de voz: <|audio|>"`
+  Sin la etiqueta en el prompt, el modelo ignora el archivo de audio o responde: *"No se proporcionó ningún audio para transcribir."*
 
 ---
 
