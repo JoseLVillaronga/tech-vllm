@@ -1,6 +1,8 @@
 import os
 import sys
 import time
+import queue
+import threading
 import requests
 import tempfile
 from dotenv import load_dotenv
@@ -8,9 +10,12 @@ from dotenv import load_dotenv
 # Cargar variables de entorno
 load_dotenv()
 
-API_KEY = os.getenv("API_KEY", "token-e68f0c0d4d4f4d04d70399323d411290b2bf938a81f26685602140c4f8617939")
+API_KEY = os.getenv("API_KEY", "tu_clave_api_aqui")
 WHISPER_URL = "http://localhost:8001/v1/audio/transcriptions"
 DIARIZATION_URL = "http://localhost:8003/v1/audio/diarize"
+
+# Cola thread-safe para procesar audio en segundo plano sin bloquear el micrófono
+audio_queue = queue.Queue()
 
 # 1. Verificar librerías para captura de audio
 try:
@@ -169,20 +174,39 @@ def audio_callback(indata, frames, callback_time, status):
             recording_buffer.append(indata.copy())
             silence_counter += CHUNK_DURATION
             
-            # Si el silencio supera el límite, procesamos la frase
+            # Si el silencio supera el límite, encolamos la frase para procesar
             if silence_counter >= SILENCE_LIMIT:
                 print("⏳ (Procesando audio...)", end="\r", flush=True)
                 # Concatenar todos los bloques capturados
                 audio_data = np.concatenate(recording_buffer, axis=0)
                 
-                # Procesar audio de forma síncrona
-                process_audio_chunk(audio_data)
+                # Encolar el bloque de audio para el hilo trabajador en segundo plano
+                audio_queue.put(audio_data)
                 
-                # Resetear buffers
+                # Resetear buffers inmediatamente para no bloquear la captura del micrófono
                 recording_buffer = []
                 is_speaking = False
                 silence_counter = 0
                 print("🔴 Grabador en vivo activo. Empieza a hablar...", end="\r", flush=True)
+
+def audio_processing_worker():
+    """
+    Hilo trabajador en segundo plano que procesa las peticiones HTTP a las APIs de
+    Diarización y Whisper para no bloquear la captura de audio del micrófono.
+    """
+    while True:
+        try:
+            audio_data = audio_queue.get()
+            if audio_data is None:
+                break
+            process_audio_chunk(audio_data)
+            audio_queue.task_done()
+        except Exception as e:
+            print(f"\n❌ Error en el hilo de procesamiento: {e}")
+
+# Iniciar el hilo de procesamiento de audio
+worker_thread = threading.Thread(target=audio_processing_worker, daemon=True)
+worker_thread.start()
 
 # Iniciar flujo de entrada de audio
 try:
@@ -196,5 +220,7 @@ try:
             time.sleep(0.1)
 except KeyboardInterrupt:
     print("\n👋 Grabación finalizada por el usuario.")
+    # Parar el hilo trabajador
+    audio_queue.put(None)
 except Exception as e:
     print(f"\n❌ Error al abrir el stream de audio: {e}")
