@@ -142,6 +142,44 @@ Durante el proceso de configuración y depuración de este proyecto se identific
 
 ---
 
+## 🎙️ Clonación de Voz con F5-TTS (Zero-Shot TTS)
+
+El proyecto incluye el script [test_f5.py](file:///home/jose/vllm/test_f5.py) para realizar pruebas de clonación de voz (*Zero-Shot Voice Cloning*) utilizando la arquitectura **F5-TTS**.
+
+### 🌍 Repositorios y Checkpoints por Idioma en Hugging Face
+
+En F5-TTS, el idioma se define descargando e instanciando el *checkpoint* específico para ese idioma mediante `hf_hub_download`:
+
+| Idioma | Repositorio (`repo_id`) | Archivo (`filename`) | Notas / Descripción |
+| :--- | :--- | :--- | :--- |
+| 🇪🇸 **Español** | `jpgallegoar/F5-Spanish` | `model_1200000.safetensors` | Afinado con 218h de audio (Acentos: AR, CL, ES, MX, PE, VE). |
+| 🇺🇸 / 🇨🇳 **Inglés y Chino** | `SWivid/F5-TTS` | `F5TTS_v1_Base/model_1250000.safetensors` | Modelo base oficial de SWivid. |
+| 🇫🇷 **Francés** | `m-bain/F5-TTS-French` | `model_1200000.safetensors` | Afinado en francés. |
+| 🇩🇪 **Alemán** | `AET-AI/F5-TTS-German` | `model_1200000.safetensors` | Afinado en alemán. |
+| 🇷🇺 **Ruso** | `mushnikov/F5-TTS-Russian` | `model_1200000.safetensors` | Afinado en ruso. |
+| 🇯🇵 **Japonés** | `Kagami/F5-TTS-Japanese` | `model_1200000.safetensors` | Afinado en japonés. |
+
+#### Ejemplo de uso en Python (`test_f5.py`):
+
+```python
+from huggingface_hub import hf_hub_download
+from f5_tts.api import F5TTS
+
+# Cargar checkpoint específico para Español
+ckpt_path = hf_hub_download(repo_id="jpgallegoar/F5-Spanish", filename="model_1200000.safetensors")
+f5tts = F5TTS(ckpt_file=ckpt_path)
+
+f5tts.infer(
+    ref_file="mi_voz.flac",
+    ref_text="Texto correspondiente a tu muestra de audio",
+    gen_text="Texto en español que quieres que diga tu voz clonada",
+    speed=1.0,
+    file_wave="resultado_clonado.wav"
+)
+```
+
+---
+
 ## 📄 Licencia
 
 Este proyecto está distribuido bajo la [Licencia MIT](LICENSE).

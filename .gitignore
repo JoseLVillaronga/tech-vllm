@@ -21,5 +21,8 @@ torch_compile_cache/
 .vscode/
 .idea/
 
-# Logs
+# Logs y Audios
 *.log
+*.wav
+*.flac
+*.mp3
