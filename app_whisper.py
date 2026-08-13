@@ -8,8 +8,8 @@ load_dotenv()
 
 def main():
     api_key = os.getenv("API_KEY", "token-abc123")
-    host = os.getenv("HOST", "0.0.0.0")
-    port = "8001"  # Puerto específico para Whisper (no colisiona con Gemma en el 8000)
+    host = "127.0.0.1" # Forzar localhost por seguridad (detrás de gateway)
+    port = os.getenv("WHISPER_BACKEND_PORT", "18001")
     model = "openai/whisper-large-v3-turbo"
     
     # IMPORTANTE: Limitamos la utilización de VRAM a solo 10% (~2.4 GB)

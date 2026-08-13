@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 # Cargar variables de entorno
 load_dotenv()
 
-PORT = int(os.getenv("DIARIZATION_PORT", "8003"))
+PORT = int(os.getenv("DIARIZATION_BACKEND_PORT", "18003"))
 HF_TOKEN = os.getenv("HF_TOKEN")
 
 # Inicializar pipeline de PyAnnote (con soporte lazy-loading para manejar errores de tokens/TOS)
@@ -172,4 +172,4 @@ async def health_check():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=PORT)
+    uvicorn.run(app, host="127.0.0.1", port=PORT)

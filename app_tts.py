@@ -15,8 +15,8 @@ from f5_tts.api import F5TTS
 # Cargar variables de entorno
 load_dotenv()
 
-# Puerto predeterminado: 8002
-PORT = int(os.getenv("TTS_PORT", "8002"))
+# Puerto predeterminado: 18002 (interno detrás de gateway)
+PORT = int(os.getenv("TTS_BACKEND_PORT", "18002"))
 
 # Rutas de audios de referencia predeterminados
 REF_AUDIO_PATH = os.path.join(os.path.dirname(__file__), "mi_voz_24k_mono.wav")
@@ -322,4 +322,4 @@ async def health_check():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=PORT)
+    uvicorn.run(app, host="127.0.0.1", port=PORT)
