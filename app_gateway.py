@@ -131,9 +131,11 @@ def create_proxy_app(service_name: str, target_port: int) -> FastAPI:
         headers["host"] = f"127.0.0.1:{target_port}"
         headers["authorization"] = f"Bearer {MASTER_KEY}"
         
-        # Quitar cabeceras de control hop-by-hop para evitar colisiones
+        # Quitar cabeceras de control hop-by-hop y de transferencia para evitar colisiones
         headers.pop("connection", None)
         headers.pop("keep-alive", None)
+        headers.pop("transfer-encoding", None)
+        headers.pop("upgrade", None)
         headers.pop("content-length", None) # Httpx lo recalcula si hay cuerpo
         
         body = await request.body()
