@@ -105,9 +105,11 @@ class MultilingualTTSManager:
             try:
                 if cfg["ckpt_file"]:
                     ckpt_path = hf_hub_download(repo_id=cfg["repo_id"], filename=cfg["ckpt_file"])
-                    vocab_path = hf_hub_download(repo_id=cfg["repo_id"], filename=cfg["vocab_file"])
-                    # Inicializamos en CPU para no saturar la VRAM
-                    instance = F5TTS(model=cfg["model_type"], ckpt_file=ckpt_path, vocab_file=vocab_path, device="cpu")
+                    if cfg["vocab_file"]:
+                        vocab_path = hf_hub_download(repo_id=cfg["repo_id"], filename=cfg["vocab_file"])
+                        instance = F5TTS(model=cfg["model_type"], ckpt_file=ckpt_path, vocab_file=vocab_path, device="cpu")
+                    else:
+                        instance = F5TTS(model=cfg["model_type"], ckpt_file=ckpt_path, device="cpu")
                 else:
                     # El modelo oficial de Inglés no necesita ckpt_file específico
                     instance = F5TTS(model=cfg["model_type"], device="cpu")
