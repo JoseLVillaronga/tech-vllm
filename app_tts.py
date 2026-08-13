@@ -59,6 +59,12 @@ MODELS_CONFIG = {
         "model_type": "F5TTS_Base",
         "ckpt_file": "JA_21999120/model_21999120.pt",
         "vocab_file": "JA_21999120/vocab_japanese.txt"
+    },
+    "pt": {
+        "repo_id": "firstpixel/F5-TTS-pt-br",
+        "model_type": "F5TTS_Base",
+        "ckpt_file": "pt-br/model_last.safetensors",
+        "vocab_file": ""
     }
 }
 
@@ -72,6 +78,7 @@ VOICE_MAP = {
     "jose-de": "de",
     "jose-ru": "ru",
     "jose-ja": "ja",
+    "jose-pt": "pt",
     
     # Voces OpenAI (Mapeadas a los modelos correspondientes)
     "alloy": "es",    # Mapea a Español
