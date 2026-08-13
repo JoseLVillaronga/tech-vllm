@@ -16,19 +16,21 @@ Servidor de Inferencia de Modelos de Lenguaje (LLM) de alto rendimiento basado e
 
 ## 💾 Arquitectura de Coexistencia de VRAM (RTX 3090 / 24 GB)
 
-Para permitir que los 4 servicios de Inteligencia Artificial corran en caliente en la misma tarjeta sin colisionar por memoria, se definió la siguiente distribución de la VRAM:
+Para permitir que los 4 servicios de Inteligencia Artificial corran en caliente en la misma tarjeta sin colisionar por memoria, se definió la siguiente distribución de la VRAM y de puertos de red:
 
-| Servicio | Puerto | Parámetro Clave de Memoria | Consumo de VRAM Fijo | Rol en el Ecosistema |
-| :--- | :--- | :--- | :--- | :--- |
-| **Gemma 4-E4B-it** | `8000` | `GPU_MEMORY_UTILIZATION=0.50` | **~13.2 GB** | Chat LLM y Visión (128K tokens context) |
-| **Whisper-large-v3-turbo** | `8001` | `--gpu-memory-utilization 0.10` | **~2.9 GB** | Reconocimiento de Voz (ASR / Transcripción) |
-| **F5-TTS (Texto a Voz)** | `8002` | Precarga estática en GPU | **~1.9 GB** | Inferencia de Audio (Clonación multilingüe) |
-| **PyAnnote 3.1 (Diarizador)** | `8003` | Precarga estática en GPU | **~0.4 GB** | Segmentación e Identificación de Hablantes |
-| **Dashboard Web GUI** | `8004` | Ejecución en CPU (Flask) | **0 GB (VRAM)** | Monitoreo del sistema, edición de .env y test |
+| Servicio | Puerto Público (Gateway) | Puerto Interno (Backend) | Consumo de VRAM Fijo | Rol en el Ecosistema |
+| :--- | :---: | :---: | :--- | :--- |
+| **Gemma 4-E4B-it** | `8000` | `18000` (127.0.0.1) | **~13.2 GB** | Chat LLM y Visión (128K tokens context) |
+| **Whisper-large-v3-turbo** | `8001` | `18001` (127.0.0.1) | **~2.9 GB** | Reconocimiento de Voz (ASR / Transcripción) |
+| **F5-TTS (Texto a Voz)** | `8002` | `18002` (127.0.0.1) | **~1.9 GB** | Inferencia de Audio (Clonación multilingüe) |
+| **PyAnnote 3.1 (Diarizador)** | `8003` | `18003` (127.0.0.1) | **~0.4 GB** | Segmentación e Identificación de Hablantes |
+| **Dashboard Web GUI** | `8004` | *(Directo)* | **0 GB (VRAM)** | Monitoreo del sistema, edición de .env y test |
 | **Gnome / Sistema Linux** | - | - | **~1.1 GB** | Entorno gráfico y aplicaciones de usuario |
 
 *   **VRAM Total Usada:** **`~19.5 GB`**
 *   **VRAM Total Libre:** **`~4.5 GB`** (Margen de seguridad perfecto para evitar caídas por *Out Of Memory*).
+
+> **🛡️ Nota de Red y Seguridad:** Por motivos de seguridad, los motores de IA reales (backends) enlazan exclusivamente en localhost (`127.0.0.1`) en los puertos del rango `18000`. Todo tráfico externo pasa obligatoriamente por el **vLLM Gateway Proxy** en los puertos públicos estándar (`8000`-`8003`), el cual realiza la validación de credenciales.
 
 ---
 
@@ -521,6 +523,43 @@ f5tts.infer(
     file_wave="resultado_clonado.wav"
 )
 ```
+
+---
+
+## 🛡️ Gateway de Seguridad y Sistema de Claves API Específicas
+
+Para proteger el ecosistema de IA y otorgar control de acceso granular, la suite local implementa un **Gateway Proxy Reverso asíncrono** (`app_gateway.py`).
+
+### 🏛️ Arquitectura de Seguridad
+Los motores de inferencia reales están enlazados exclusivamente en la dirección de red local (`127.0.0.1`) en puertos privados reubicados (`18000`-`18003`). El Gateway de seguridad escucha en los puertos de red públicos estándar (`8000`-`8003`), interceptando y validando cada petición entrante.
+
+### 🔑 Tipos de Claves de Acceso
+1.  **Clave Maestra (`API_KEY` en `.env`):** Otorga privilegios completos de administrador y acceso total e irrestricto a los 4 servicios. Es la que utiliza la propia interfaz del Dashboard y Open-WebUI por defecto.
+2.  **Claves Secundarias / Específicas (Persistidas en MongoDB):**
+    *   Se administran en caliente desde la pestaña **"Claves API"** en el Dashboard Web.
+    *   Permiten delimitar de forma granular a qué servicios tiene acceso la clave (ej: una clave exclusiva para transcripción de audio con Whisper, otra clave para chat LLM y síntesis TTS, etc.).
+    *   Soportan **fecha de expiración opcional** (la clave se suspende automáticamente al llegar a la fecha límite).
+    *   Se pueden desactivar (suspender) o eliminar a voluntad con un solo clic desde la interfaz web.
+
+### ⚙️ Administración del Servicio de Gateway (Systemd)
+
+*   **Instalación/Registro del Servicio:**
+    ```bash
+    ./install_gateway_service.sh
+    ```
+*   **Verificar Estado del Proxy:**
+    ```bash
+    sudo systemctl status vllm-gateway
+    ```
+*   **Monitorear Peticiones y Logs en Vivo:**
+    ```bash
+    sudo journalctl -u vllm-gateway -f
+    ```
+*   **Reiniciar/Detener el Gateway:**
+    ```bash
+    sudo systemctl restart vllm-gateway
+    sudo systemctl stop vllm-gateway
+    ```
 
 ---
 
