@@ -24,6 +24,7 @@ Para permitir que los 4 servicios de Inteligencia Artificial corran en caliente 
 | **Whisper-large-v3-turbo** | `8001` | `--gpu-memory-utilization 0.10` | **~2.9 GB** | Reconocimiento de Voz (ASR / Transcripción) |
 | **F5-TTS (Texto a Voz)** | `8002` | Precarga estática en GPU | **~1.9 GB** | Inferencia de Audio (Clonación multilingüe) |
 | **PyAnnote 3.1 (Diarizador)** | `8003` | Precarga estática en GPU | **~0.4 GB** | Segmentación e Identificación de Hablantes |
+| **Dashboard Web GUI** | `8004` | Ejecución en CPU (Flask) | **0 GB (VRAM)** | Monitoreo del sistema, edición de .env y test |
 | **Gnome / Sistema Linux** | - | - | **~1.1 GB** | Entorno gráfico y aplicaciones de usuario |
 
 *   **VRAM Total Usada:** **`~19.5 GB`**
@@ -33,12 +34,13 @@ Para permitir que los 4 servicios de Inteligencia Artificial corran en caliente 
 
 ## 🌟 Características Principales
 
-1. **Cuatro Servidores API locales (Gemma 4 en 8000, Whisper en 8001, F5-TTS en 8002, PyAnnote en 8003)**: Coexistencia de cuatro instancias locales de API en segundo plano que implementan chat, transcripción, generación de voz y separación de interlocutores de forma unificada.
+1. **Ecosistema de Cinco Servidores locales (Gemma 4 en 8000, Whisper en 8001, F5-TTS en 8002, PyAnnote en 8003, Dashboard en 8004)**: Coexistencia de cinco instancias locales en segundo plano para chat, transcripción, generación de voz, separación de interlocutores y gestión web.
 2. **Despliegue Multimodal de Audio y Visión**: Soporte nativo para procesar imágenes y voz directamente.
 3. **Gestión Coordinada de VRAM**: Asignación estricta de memoria (Gemma 4 al 50%, Whisper al 10%, F5-TTS al 10% y PyAnnote a GPU con ~400MB), manteniendo la suite completa siempre cargada en caliente sin colisiones.
-4. **Instalación como Servicios del Sistema (`systemd`)**: Autoinstaladores integrados (`install_service.sh`, `install_whisper_service.sh`, `install_tts_service.sh` y `install_diarization_service.sh`) con autorreinicio.
-5. **Scripts de Integración de Audio**: Scripts para re-muestrear ondas a la frecuencia nativa esperada (16kHz para Whisper/Gemma y 24kHz para F5-TTS).
-6. **Exposición Swagger UI (`/docs`)**: Documentación interactiva completa autogenerada en el puerto de cada servicio de forma nativa.
+4. **Dashboard Web Interactivo**: Monitoreo de recursos de hardware en tiempo real (CPU, RAM, VRAM), controlador de servicios systemd y pruebas interactivas de todas las APIs.
+5. **Instalación como Servicios del Sistema (`systemd`)**: Autoinstaladores integrados (`install_service.sh`, `install_whisper_service.sh`, `install_tts_service.sh`, `install_diarization_service.sh` y `install_dashboard_service.sh`) con autorreinicio.
+6. **Scripts de Integración de Audio**: Scripts para re-muestrear ondas a la frecuencia nativa esperada (16kHz para Whisper/Gemma y 24kHz para F5-TTS).
+7. **Exposición Swagger UI (`/docs`)**: Documentación interactiva completa autogenerada en el puerto de cada servicio de forma nativa.
 
 ---
 
@@ -240,6 +242,32 @@ curl -X POST http://localhost:8003/v1/audio/diarize \
 
 ---
 
+## 🖥️ Dashboard Web de Administración: vLLM-Dashboard
+
+Para gestionar la suite de manera más simple y visual sin recurrir a la terminal, el proyecto incluye un Dashboard Web responsive desarrollado con Flask y Tailwind CSS que corre en el puerto **`8004`**.
+
+### 1. Características del Dashboard:
+*   **Visualización de Recursos:** Gráficos en tiempo real de uso de CPU, RAM, temperatura de la GPU y porcentaje/cantidad de VRAM ocupada.
+*   **Controladores Systemd:** Botones para **Iniciar (Start)**, **Detener (Stop)** y **Reiniciar (Restart)** cada servicio local mediante llamadas seguras a `systemctl` con privilegios `sudo` pre-otorgados.
+*   **Editor de Configuración (.env):** Formulario visual para modificar variables críticas (como el checkpoint del modelo, puertos, y porcentajes de VRAM) y guardarlas de forma segura respetando tus comentarios y estructura original.
+*   **Laboratorio de Pruebas (Playground):** Interfaces interactivas para probar directamente el chat de Gemma, transcribir archivos de audio con Whisper, generar habla clonada con F5-TTS y visualizar diarizaciones de interlocutores.
+
+### 2. Soporte Offline:
+El Dashboard incluye una copia local de la biblioteca Tailwind CSS en `static/js/tailwind.js`, permitiendo que toda la interfaz sea 100% funcional incluso si la máquina local no tiene conexión a Internet.
+
+### 3. Instalación del servicio systemd:
+```bash
+./install_dashboard_service.sh
+```
+
+### 4. Comandos de administración:
+*   **Ver logs en tiempo real:** `sudo journalctl -u vllm-dashboard -f`
+*   **Ver estado:** `sudo systemctl status vllm-dashboard`
+*   **Detener servicio:** `sudo systemctl stop vllm-dashboard`
+*   **Reiniciar servicio:** `sudo systemctl restart vllm-dashboard`
+
+---
+
 ## 🧪 Pruebas con `curl`
 
 ### 1. Probar el Chat (Gemma 4 en Puerto 8000)
@@ -363,6 +391,27 @@ pip install sounddevice numpy scipy requests python-dotenv
 #### Ejecución:
 ```bash
 python live_transcribe.py
+```
+
+### 4. Generador de Subtítulos en Vivo para Películas (Audio de Sistema)
+
+El proyecto incluye el cliente [live_subtitles.py](file:///home/jose/vllm/live_subtitles.py) diseñado para capturar la **salida de audio del sistema (monitor PulseAudio/PipeWire)** en lugar del micrófono físico. Permite reproducir una película, vídeo de YouTube o videoconferencia y generar subtítulos sincronizados en tiempo real.
+
+#### Características clave:
+1. **Captura Loopback Automática:** Detecta automáticamente la fuente de monitorización del sistema (`.monitor`) para escuchar lo que sale por los altavoces o auriculares.
+2. **Generación Doble de Subtítulos:**
+   - **`subtitulos.txt`**: Fichero de registro legible por humanos con marcas de tiempo `[HH:MM:SS]` e identificación de locutores `[Hablante A / B]`.
+   - **`subtitulos.srt`**: Fichero de subtítulos en formato estándar SubRip con marcas de tiempo de milisegundos (`00:01:23,450 --> 00:01:26,100`), listo para cargar en reproducotes como VLC, MPV o Plex.
+3. **Diarización + Transcripción Sincronizada:** Combina PyAnnote (puerto `8003`) y Whisper (puerto `8001`) asignando etiquetas continuas a cada personaje durante la película.
+
+#### Ejecución:
+```bash
+python live_subtitles.py
+```
+
+Opcionalmente se pueden especificar rutas personalizadas o ajustar el tiempo de pausa:
+```bash
+python live_subtitles.py --out-txt pelicula.txt --out-srt pelicula.srt --silence-limit 1.0
 ```
 
 ---

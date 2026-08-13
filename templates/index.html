@@ -1,0 +1,701 @@
+<!DOCTYPE html>
+<html lang="es" class="h-full bg-slate-950 text-slate-100">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>vLLM Suite Dashboard</title>
+    <!-- Tailwind Play CDN cargado localmente para soporte offline -->
+    <script src="/static/js/tailwind.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        slate: {
+                            950: '#030712',
+                            900: '#0f172a',
+                            800: '#1e293b',
+                            700: '#334155',
+                        },
+                        brand: {
+                            DEFAULT: '#6366f1',
+                            hover: '#4f46e5',
+                            light: '#818cf8',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .glass-panel {
+            background: rgba(30, 41, 59, 0.4);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        .tab-btn.active {
+            border-color: #6366f1;
+            color: #818cf8;
+            background-color: rgba(99, 102, 241, 0.08);
+        }
+        /* Custom scrollbars */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #0f172a;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #334155;
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #6366f1;
+        }
+    </style>
+</head>
+<body class="h-full flex flex-col antialiased">
+    <!-- Header -->
+    <header class="glass-panel sticky top-0 z-40 w-full border-b border-slate-800/60 px-6 py-4 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+            <div class="h-10 w-10 rounded-xl bg-gradient-to-tr from-brand to-cyan-400 flex items-center justify-center shadow-lg shadow-brand/20 animate-pulse">
+                <svg class="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                </svg>
+            </div>
+            <div>
+                <h1 class="text-xl font-bold tracking-tight bg-gradient-to-r from-white via-slate-100 to-indigo-300 bg-clip-text text-transparent">vLLM Suite Dashboard</h1>
+                <p class="text-xs text-slate-400">Panel de Control y Orquestación Local de Modelos</p>
+            </div>
+        </div>
+        
+        <!-- Refresh status & Time -->
+        <div class="flex items-center gap-4 text-sm">
+            <span id="last-update" class="text-slate-500 font-mono text-xs">Cargando...</span>
+            <button onclick="refreshData()" class="p-2 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white transition-all flex items-center gap-1.5 border border-slate-700/50">
+                <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 8H18.2" />
+                </svg>
+                Actualizar
+            </button>
+        </div>
+    </header>
+
+    <div class="flex-1 flex overflow-hidden">
+        <!-- Sidebar Navigation -->
+        <aside class="w-64 border-r border-slate-800/60 bg-slate-900/40 p-4 flex flex-col gap-2 overflow-y-auto">
+            <button onclick="showTab('tab-monitor')" id="btn-monitor" class="tab-btn active w-full flex items-center gap-3 px-4 py-3 rounded-xl border border-transparent text-slate-300 hover:bg-slate-800/50 hover:text-white transition-all font-medium">
+                <svg class="h-5 w-5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 002 2h2a2 2 0 002-2z" />
+                </svg>
+                Monitor e Hilos
+            </button>
+            <button onclick="showTab('tab-config')" id="btn-config" class="tab-btn w-full flex items-center gap-3 px-4 py-3 rounded-xl border border-transparent text-slate-300 hover:bg-slate-800/50 hover:text-white transition-all font-medium">
+                <svg class="h-5 w-5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+                </svg>
+                Variables (.env)
+            </button>
+            <button onclick="showTab('tab-tests')" id="btn-tests" class="tab-btn w-full flex items-center gap-3 px-4 py-3 rounded-xl border border-transparent text-slate-300 hover:bg-slate-800/50 hover:text-white transition-all font-medium">
+                <svg class="h-5 w-5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
+                </svg>
+                Laboratorio / Test
+            </button>
+            <div class="mt-auto border-t border-slate-800/60 pt-4 flex flex-col gap-2">
+                <p class="text-xs text-slate-500 font-mono">PUERTOS DE LA SUITE:</p>
+                <div class="grid grid-cols-2 gap-2 text-xs font-mono text-slate-400">
+                    <div>Gemma:</div><div class="text-right text-indigo-300">8000</div>
+                    <div>Whisper:</div><div class="text-right text-indigo-300">8001</div>
+                    <div>F5-TTS:</div><div class="text-right text-indigo-300">8002</div>
+                    <div>PyAnnote:</div><div class="text-right text-indigo-300">8003</div>
+                    <div>Dashboard:</div><div class="text-right text-indigo-300">8004</div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="flex-1 overflow-y-auto bg-slate-950 p-6">
+            <!-- TAB 1: MONITOR & SYSTEM STATUS -->
+            <div id="tab-monitor" class="tab-content flex flex-col gap-6">
+                <!-- Metrics cards -->
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+                    <div class="glass-panel p-5 rounded-2xl flex flex-col justify-between min-h-[120px]">
+                        <span class="text-sm font-medium text-slate-400">Uso de CPU</span>
+                        <div class="flex items-baseline justify-between mt-2">
+                            <span id="metric-cpu" class="text-3xl font-extrabold font-mono text-indigo-400">0%</span>
+                        </div>
+                        <div class="w-full bg-slate-800 rounded-full h-1.5 mt-3">
+                            <div id="progress-cpu" class="bg-indigo-500 h-1.5 rounded-full transition-all duration-500" style="width: 0%"></div>
+                        </div>
+                    </div>
+                    <div class="glass-panel p-5 rounded-2xl flex flex-col justify-between min-h-[120px]">
+                        <span class="text-sm font-medium text-slate-400">RAM del Sistema</span>
+                        <div class="flex items-baseline justify-between mt-2">
+                            <span id="metric-ram" class="text-3xl font-extrabold font-mono text-cyan-400">0%</span>
+                        </div>
+                        <div class="w-full bg-slate-800 rounded-full h-1.5 mt-3">
+                            <div id="progress-ram" class="bg-cyan-500 h-1.5 rounded-full transition-all duration-500" style="width: 0%"></div>
+                        </div>
+                    </div>
+                    <div class="glass-panel p-5 rounded-2xl flex flex-col justify-between min-h-[120px]">
+                        <span class="text-sm font-medium text-slate-400">Carga de GPU (CUDA)</span>
+                        <div class="flex items-baseline justify-between mt-2">
+                            <span id="metric-gpu-load" class="text-3xl font-extrabold font-mono text-emerald-400">0%</span>
+                            <span id="metric-gpu-temp" class="text-sm font-mono text-slate-400">0°C</span>
+                        </div>
+                        <div class="w-full bg-slate-800 rounded-full h-1.5 mt-3">
+                            <div id="progress-gpu-load" class="bg-emerald-500 h-1.5 rounded-full transition-all duration-500" style="width: 0%"></div>
+                        </div>
+                    </div>
+                    <div class="glass-panel p-5 rounded-2xl flex flex-col justify-between min-h-[120px]">
+                        <span class="text-sm font-medium text-slate-400">Uso de VRAM (RTX 3090)</span>
+                        <div class="flex items-baseline justify-between mt-2">
+                            <span id="metric-vram-text" class="text-lg font-bold font-mono text-indigo-300">0 / 24 GB</span>
+                            <span id="metric-vram-pct" class="text-2xl font-extrabold font-mono text-indigo-400">0%</span>
+                        </div>
+                        <div class="w-full bg-slate-800 rounded-full h-1.5 mt-3">
+                            <div id="progress-vram" class="bg-indigo-500 h-1.5 rounded-full transition-all duration-500" style="width: 0%"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Services Control Center -->
+                <div class="glass-panel p-6 rounded-2xl">
+                    <h2 class="text-lg font-bold mb-4 flex items-center gap-2">
+                        <span class="h-2 w-2 rounded-full bg-indigo-500 animate-ping"></span>
+                        Estado de Servicios Systemd
+                    </h2>
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                        <!-- Service Card: Gemma -->
+                        <div class="bg-slate-900/60 border border-slate-800/80 p-5 rounded-xl flex flex-col justify-between">
+                            <div>
+                                <div class="flex justify-between items-center mb-2">
+                                    <span class="font-bold text-slate-200">Gemma 4 LLM</span>
+                                    <span id="status-gemma" class="px-2 py-0.5 rounded text-xs font-mono font-bold uppercase bg-slate-800 text-slate-400">Cargando...</span>
+                                </div>
+                                <p class="text-xs text-slate-400">Puerto 8000 | Chat y Visión local</p>
+                            </div>
+                            <div class="flex gap-2 mt-4 pt-4 border-t border-slate-800/50">
+                                <button onclick="controlService('gemma', 'start')" class="flex-1 py-1.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600 text-emerald-300 hover:text-white text-xs font-medium transition-all">Start</button>
+                                <button onclick="controlService('gemma', 'stop')" class="flex-1 py-1.5 rounded-lg bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white text-xs font-medium transition-all">Stop</button>
+                                <button onclick="controlService('gemma', 'restart')" class="flex-1 py-1.5 rounded-lg bg-indigo-600/20 hover:bg-indigo-600 text-indigo-300 hover:text-white text-xs font-medium transition-all">Restart</button>
+                            </div>
+                        </div>
+                        
+                        <!-- Service Card: Whisper -->
+                        <div class="bg-slate-900/60 border border-slate-800/80 p-5 rounded-xl flex flex-col justify-between">
+                            <div>
+                                <div class="flex justify-between items-center mb-2">
+                                    <span class="font-bold text-slate-200">Whisper ASR</span>
+                                    <span id="status-whisper" class="px-2 py-0.5 rounded text-xs font-mono font-bold uppercase bg-slate-800 text-slate-400">Cargando...</span>
+                                </div>
+                                <p class="text-xs text-slate-400">Puerto 8001 | Voz a Texto</p>
+                            </div>
+                            <div class="flex gap-2 mt-4 pt-4 border-t border-slate-800/50">
+                                <button onclick="controlService('whisper', 'start')" class="flex-1 py-1.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600 text-emerald-300 hover:text-white text-xs font-medium transition-all">Start</button>
+                                <button onclick="controlService('whisper', 'stop')" class="flex-1 py-1.5 rounded-lg bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white text-xs font-medium transition-all">Stop</button>
+                                <button onclick="controlService('whisper', 'restart')" class="flex-1 py-1.5 rounded-lg bg-indigo-600/20 hover:bg-indigo-600 text-indigo-300 hover:text-white text-xs font-medium transition-all">Restart</button>
+                            </div>
+                        </div>
+
+                        <!-- Service Card: F5-TTS -->
+                        <div class="bg-slate-900/60 border border-slate-800/80 p-5 rounded-xl flex flex-col justify-between">
+                            <div>
+                                <div class="flex justify-between items-center mb-2">
+                                    <span class="font-bold text-slate-200">F5-TTS Voice</span>
+                                    <span id="status-tts" class="px-2 py-0.5 rounded text-xs font-mono font-bold uppercase bg-slate-800 text-slate-400">Cargando...</span>
+                                </div>
+                                <p class="text-xs text-slate-400">Puerto 8002 | Texto a Voz</p>
+                            </div>
+                            <div class="flex gap-2 mt-4 pt-4 border-t border-slate-800/50">
+                                <button onclick="controlService('tts', 'start')" class="flex-1 py-1.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600 text-emerald-300 hover:text-white text-xs font-medium transition-all">Start</button>
+                                <button onclick="controlService('tts', 'stop')" class="flex-1 py-1.5 rounded-lg bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white text-xs font-medium transition-all">Stop</button>
+                                <button onclick="controlService('tts', 'restart')" class="flex-1 py-1.5 rounded-lg bg-indigo-600/20 hover:bg-indigo-600 text-indigo-300 hover:text-white text-xs font-medium transition-all">Restart</button>
+                            </div>
+                        </div>
+
+                        <!-- Service Card: Diarization -->
+                        <div class="bg-slate-900/60 border border-slate-800/80 p-5 rounded-xl flex flex-col justify-between">
+                            <div>
+                                <div class="flex justify-between items-center mb-2">
+                                    <span class="font-bold text-slate-200">Diarization</span>
+                                    <span id="status-diarization" class="px-2 py-0.5 rounded text-xs font-mono font-bold uppercase bg-slate-800 text-slate-400">Cargando...</span>
+                                </div>
+                                <p class="text-xs text-slate-400">Puerto 8003 | Separación de Voces</p>
+                            </div>
+                            <div class="flex gap-2 mt-4 pt-4 border-t border-slate-800/50">
+                                <button onclick="controlService('diarization', 'start')" class="flex-1 py-1.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600 text-emerald-300 hover:text-white text-xs font-medium transition-all">Start</button>
+                                <button onclick="controlService('diarization', 'stop')" class="flex-1 py-1.5 rounded-lg bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white text-xs font-medium transition-all">Stop</button>
+                                <button onclick="controlService('diarization', 'restart')" class="flex-1 py-1.5 rounded-lg bg-indigo-600/20 hover:bg-indigo-600 text-indigo-300 hover:text-white text-xs font-medium transition-all">Restart</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 2: CONFIGURATION EDITOR -->
+            <div id="tab-config" class="tab-content hidden flex flex-col gap-6">
+                <div class="glass-panel p-6 rounded-2xl">
+                    <div class="flex items-center justify-between mb-6 pb-4 border-b border-slate-800/60">
+                        <div>
+                            <h2 class="text-lg font-bold">Configuración Global de Variables (.env)</h2>
+                            <p class="text-sm text-slate-400">Modifica las variables de entorno principales. Los cambios se guardarán preservando tus comentarios de MongoDB.</p>
+                        </div>
+                        <button onclick="saveConfig()" class="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 font-bold transition-all text-sm flex items-center gap-1.5 shadow-lg shadow-indigo-600/20">
+                            <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
+                            </svg>
+                            Guardar y Aplicar
+                        </button>
+                    </div>
+                    
+                    <form id="config-form" class="space-y-6">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <!-- Left: Hugging Face & Keys -->
+                            <div class="space-y-4">
+                                <h3 class="text-sm font-bold text-indigo-400 border-b border-slate-800 pb-1.5 uppercase font-mono tracking-wider">Credenciales</h3>
+                                <div>
+                                    <label class="block text-xs font-semibold text-slate-300 mb-1">HF_TOKEN (Hugging Face Auth)</label>
+                                    <input type="password" name="HF_TOKEN" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 font-mono">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-semibold text-slate-300 mb-1">API_KEY (Seguridad Local)</label>
+                                    <input type="text" name="API_KEY" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 font-mono">
+                                </div>
+                            </div>
+                            
+                            <!-- Right: Gemma Model Settings -->
+                            <div class="space-y-4">
+                                <h3 class="text-sm font-bold text-indigo-400 border-b border-slate-800 pb-1.5 uppercase font-mono tracking-wider">Inferencia Gemma 4</h3>
+                                <div>
+                                    <label class="block text-xs font-semibold text-slate-300 mb-1">MODEL (Checkpint del LLM)</label>
+                                    <input type="text" name="MODEL" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 font-mono">
+                                </div>
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-xs font-semibold text-slate-300 mb-1">GPU_MEMORY_UTILIZATION</label>
+                                        <input type="number" step="0.01" name="GPU_MEMORY_UTILIZATION" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 font-mono">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-semibold text-slate-300 mb-1">MAX_MODEL_LEN</label>
+                                        <input type="number" name="MAX_MODEL_LEN" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 font-mono">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-slate-800/40">
+                            <!-- Bottom Left: Network / Ports -->
+                            <div class="space-y-4">
+                                <h3 class="text-sm font-bold text-indigo-400 border-b border-slate-800 pb-1.5 uppercase font-mono tracking-wider">Red e Hosts</h3>
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-xs font-semibold text-slate-300 mb-1">HOST IP</label>
+                                        <input type="text" name="HOST" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 font-mono">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-semibold text-slate-300 mb-1">PORT</label>
+                                        <input type="number" name="PORT" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 font-mono">
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Bottom Right: Other Parameters -->
+                            <div class="space-y-4">
+                                <h3 class="text-sm font-bold text-indigo-400 border-b border-slate-800 pb-1.5 uppercase font-mono tracking-wider">Avanzado</h3>
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-xs font-semibold text-slate-300 mb-1">SWAP_SPACE</label>
+                                        <input type="number" name="SWAP_SPACE" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 font-mono">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-semibold text-slate-300 mb-1">QUANTIZATION</label>
+                                        <input type="text" name="QUANTIZATION" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 font-mono">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Read-only / DB fields info -->
+                        <div class="p-4 bg-slate-900/40 rounded-xl border border-slate-800/80">
+                            <h4 class="text-xs font-bold text-slate-300 mb-2 flex items-center gap-1.5">
+                                <svg class="h-4 w-4 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
+                                Información Adicional detectada en .env:
+                            </h4>
+                            <p class="text-xs text-slate-400">Las variables de MongoDB (`MONGO_HOST`, `MONGO_DB`, etc.) y configuraciones de usuario del sistema son preservadas automáticamente en disco, pero quedan resguardadas del editor visual para prevenir alteraciones accidentales de infraestructura de base de datos.</p>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- TAB 3: PLAYGROUND / TESTING AREA -->
+            <div id="tab-tests" class="tab-content hidden flex flex-col gap-6">
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    
+                    <!-- Chat Test -->
+                    <div class="glass-panel p-6 rounded-2xl flex flex-col justify-between min-h-[350px]">
+                        <div>
+                            <h3 class="text-md font-bold mb-3 flex items-center gap-2 text-indigo-300">
+                                💬 Probar Chat (Gemma 4 - 8000)
+                            </h3>
+                            <div id="chat-output" class="bg-slate-900 border border-slate-800 rounded-xl p-4 h-48 overflow-y-auto mb-4 text-xs font-mono whitespace-pre-wrap text-slate-300">
+                                Esperando solicitud de prompt...
+                            </div>
+                        </div>
+                        <div class="flex gap-2">
+                            <input type="text" id="chat-input" placeholder="Pregúntale algo al modelo de Gemma..." class="flex-1 bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-indigo-500">
+                            <button onclick="testChat()" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm font-semibold transition-all">Enviar</button>
+                        </div>
+                    </div>
+                    
+                    <!-- Speech Generation (F5-TTS) -->
+                    <div class="glass-panel p-6 rounded-2xl flex flex-col justify-between min-h-[350px]">
+                        <div>
+                            <h3 class="text-md font-bold mb-3 flex items-center gap-2 text-cyan-300">
+                                🔊 Probar Voz (F5-TTS - 8002)
+                            </h3>
+                            <div class="space-y-3 mb-4">
+                                <div>
+                                    <label class="block text-xs font-semibold text-slate-300 mb-1">Texto a convertir:</label>
+                                    <textarea id="tts-input" class="w-full bg-slate-900 border border-slate-800 rounded-xl p-3 h-20 text-xs text-slate-200 focus:outline-none focus:border-cyan-500" placeholder="Escribe el texto que deseas reproducir con tu timbre de voz clonado..."></textarea>
+                                </div>
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label class="block text-xs font-semibold text-slate-300 mb-1">Acento (Modelo / Voz):</label>
+                                        <select id="tts-voice" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-cyan-500">
+                                            <option value="alloy">alloy (Español)</option>
+                                            <option value="echo">echo (Inglés/Chino)</option>
+                                            <option value="fable">fable (Francés)</option>
+                                            <option value="onyx">onyx (Alemán)</option>
+                                            <option value="nova">nova (Ruso)</option>
+                                            <option value="shimmer">shimmer (Japonés)</option>
+                                        </select>
+                                    </div>
+                                    <div class="flex items-end justify-center">
+                                        <audio id="tts-player" controls class="hidden w-full h-8"></audio>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <button onclick="testSpeech()" class="w-full py-2 bg-cyan-600 hover:bg-cyan-500 rounded-lg text-sm font-semibold transition-all">Generar Audio</button>
+                    </div>
+
+                    <!-- Transcripción Test (Whisper) -->
+                    <div class="glass-panel p-6 rounded-2xl flex flex-col justify-between min-h-[300px]">
+                        <div>
+                            <h3 class="text-md font-bold mb-3 flex items-center gap-2 text-emerald-300">
+                                📝 Transcripción de Audio (Whisper - 8001)
+                            </h3>
+                            <div class="space-y-3 mb-4">
+                                <div class="border-2 border-dashed border-slate-800 hover:border-slate-700 rounded-xl p-4 flex flex-col items-center justify-center transition-all bg-slate-900/40">
+                                    <input type="file" id="asr-file" accept="audio/*" class="hidden" onchange="updateFileLabel('asr')">
+                                    <label for="asr-file" class="cursor-pointer flex flex-col items-center">
+                                        <svg class="h-8 w-8 text-slate-500 mb-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                            <path stroke-linecap="round" stroke-linejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                                        </svg>
+                                        <span id="asr-file-label" class="text-xs font-semibold text-slate-300">Haz clic para subir un archivo de audio</span>
+                                    </label>
+                                </div>
+                                <div id="asr-output" class="bg-slate-900 border border-slate-800 rounded-xl p-3 h-20 overflow-y-auto text-xs font-mono text-slate-300">
+                                    Resultado de la transcripción...
+                                </div>
+                            </div>
+                        </div>
+                        <button onclick="testTranscribe()" class="w-full py-2 bg-emerald-600 hover:bg-emerald-500 rounded-lg text-sm font-semibold transition-all">Subir y Transcribir</button>
+                    </div>
+
+                    <!-- Diarization Test (PyAnnote) -->
+                    <div class="glass-panel p-6 rounded-2xl flex flex-col justify-between min-h-[300px]">
+                        <div>
+                            <h3 class="text-md font-bold mb-3 flex items-center gap-2 text-amber-300">
+                                👥 Diarización / Separar Voces (PyAnnote - 8003)
+                            </h3>
+                            <div class="space-y-3 mb-4">
+                                <div class="border-2 border-dashed border-slate-800 hover:border-slate-700 rounded-xl p-4 flex flex-col items-center justify-center transition-all bg-slate-900/40">
+                                    <input type="file" id="diarize-file" accept="audio/*" class="hidden" onchange="updateFileLabel('diarize')">
+                                    <label for="diarize-file" class="cursor-pointer flex flex-col items-center">
+                                        <svg class="h-8 w-8 text-slate-500 mb-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                                        </svg>
+                                        <span id="diarize-file-label" class="text-xs font-semibold text-slate-300">Haz clic para subir un archivo de audio</span>
+                                    </label>
+                                </div>
+                                <div id="diarize-output" class="bg-slate-900 border border-slate-800 rounded-xl p-3 h-20 overflow-y-auto text-xs font-mono text-slate-300">
+                                    Resultado de la diarización...
+                                </div>
+                            </div>
+                        </div>
+                        <button onclick="testDiarize()" class="w-full py-2 bg-amber-600 hover:bg-amber-500 rounded-lg text-sm font-semibold transition-all">Subir y Diarizar</button>
+                    </div>
+
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Script de control interactivo -->
+    <script>
+        // Cambiar pestañas
+        function showTab(tabId) {
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.add('hidden'));
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.remove('active');
+                btn.classList.remove('bg-slate-800/50');
+            });
+            
+            document.getElementById(tabId).classList.remove('hidden');
+            const btnId = tabId.replace('tab-', 'btn-');
+            document.getElementById(btnId).classList.add('active');
+        }
+
+        // Obtener estado y métricas
+        async function refreshData() {
+            try {
+                const res = await fetch('/api/status');
+                const data = await res.json();
+                
+                // Actualizar métricas del sistema
+                document.getElementById('metric-cpu').innerText = `${data.system.cpu}%`;
+                document.getElementById('progress-cpu').style.width = `${data.system.cpu}%`;
+                
+                document.getElementById('metric-ram').innerText = `${data.system.ram}%`;
+                document.getElementById('progress-ram').style.width = `${data.system.ram}%`;
+                
+                document.getElementById('metric-gpu-load').innerText = `${data.system.gpu_util}%`;
+                document.getElementById('metric-gpu-temp').innerText = `${data.system.gpu_temp}°C`;
+                document.getElementById('progress-gpu-load').style.width = `${data.system.gpu_util}%`;
+                
+                const totalGb = (data.system.vram_total / 1024).toFixed(1);
+                const usedGb = (data.system.vram_used / 1024).toFixed(1);
+                document.getElementById('metric-vram-text').innerText = `${usedGb} / ${totalGb} GB`;
+                document.getElementById('metric-vram-pct').innerText = `${data.system.vram_percent}%`;
+                document.getElementById('progress-vram').style.width = `${data.system.vram_percent}%`;
+                
+                // Actualizar estado de servicios
+                updateServiceBadge('status-gemma', data.services.gemma.status);
+                updateServiceBadge('status-whisper', data.services.whisper.status);
+                updateServiceBadge('status-tts', data.services.tts.status);
+                updateServiceBadge('status-diarization', data.services.diarization.status);
+                
+                // Hora de actualización
+                const now = new Date();
+                document.getElementById('last-update').innerText = `Act: ${now.toLocaleTimeString()}`;
+            } catch (err) {
+                console.error("Error al actualizar estado:", err);
+            }
+        }
+
+        function updateServiceBadge(elementId, status) {
+            const badge = document.getElementById(elementId);
+            badge.innerText = status;
+            badge.className = "px-2 py-0.5 rounded text-xs font-mono font-bold uppercase ";
+            if (status === 'active') {
+                badge.className += "bg-emerald-500/20 text-emerald-400";
+            } else if (status === 'failed') {
+                badge.className += "bg-rose-500/20 text-rose-400";
+            } else {
+                badge.className += "bg-slate-800 text-slate-400";
+            }
+        }
+
+        // Controlar servicios
+        async function controlService(serviceKey, action) {
+            const badge = document.getElementById(`status-${serviceKey}`);
+            badge.innerText = "...";
+            try {
+                const res = await fetch(`/api/service/${serviceKey}/${action}`, { method: 'POST' });
+                const data = await res.json();
+                if (data.success) {
+                    refreshData();
+                } else {
+                    alert(`Error al ejecutar acción: ${data.error || 'Desconocido'}`);
+                    refreshData();
+                }
+            } catch (err) {
+                alert(`Error de red: ${err.message}`);
+                refreshData();
+            }
+        }
+
+        // Cargar variables de entorno en el formulario
+        async function loadConfig() {
+            try {
+                const res = await fetch('/api/config');
+                const config = await res.json();
+                const form = document.getElementById('config-form');
+                
+                for (const key in config) {
+                    const input = form.elements[key];
+                    if (input) {
+                        input.value = config[key];
+                    }
+                }
+            } catch (err) {
+                console.error("Error al cargar config:", err);
+            }
+        }
+
+        // Guardar configuración
+        async function saveConfig() {
+            const form = document.getElementById('config-form');
+            const data = {};
+            // Recoger los valores del formulario
+            for (let i = 0; i < form.elements.length; i++) {
+                const input = form.elements[i];
+                if (input.name) {
+                    data[input.name] = input.value;
+                }
+            }
+            
+            try {
+                const res = await fetch('/api/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                const resData = await res.json();
+                if (resData.success) {
+                    alert("¡Configuración .env guardada correctamente!");
+                    loadConfig();
+                } else {
+                    alert(`Error al guardar: ${resData.error}`);
+                }
+            } catch (err) {
+                alert(`Error de red: ${err.message}`);
+            }
+        }
+
+        // --- Playground Functions ---
+
+        // Chat Test
+        async function testChat() {
+            const input = document.getElementById('chat-input');
+            const output = document.getElementById('chat-output');
+            const text = input.value.strip ? input.value.strip() : input.value;
+            if (!text) return;
+            
+            output.innerText = "Pensando...";
+            input.value = "";
+            
+            try {
+                const res = await fetch('/api/test/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ prompt: text })
+                });
+                const data = await res.json();
+                if (data.choices && data.choices[0]) {
+                    output.innerText = data.choices[0].message.content;
+                } else {
+                    output.innerText = JSON.stringify(data, null, 2);
+                }
+            } catch (err) {
+                output.innerText = `Error: ${err.message}`;
+            }
+        }
+
+        // TTS Speech Test
+        async function testSpeech() {
+            const text = document.getElementById('tts-input').value;
+            const voice = document.getElementById('tts-voice').value;
+            const player = document.getElementById('tts-player');
+            
+            if (!text) {
+                alert("Por favor, escribe algún texto.");
+                return;
+            }
+            
+            player.classList.add('hidden');
+            
+            try {
+                const res = await fetch('/api/test/speech', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text: text, voice: voice })
+                });
+                if (res.status === 200) {
+                    const blob = await res.blob();
+                    const audioUrl = URL.createObjectURL(blob);
+                    player.src = audioUrl;
+                    player.classList.remove('hidden');
+                    player.play();
+                } else {
+                    const errData = await res.json();
+                    alert(`Error al generar voz: ${errData.error || 'Error del servidor'}`);
+                }
+            } catch (err) {
+                alert(`Error: ${err.message}`);
+            }
+        }
+
+        // ASR Transcribe Test
+        function updateFileLabel(type) {
+            const input = document.getElementById(`${type}-file`);
+            const label = document.getElementById(`${type}-file-label`);
+            if (input.files && input.files[0]) {
+                label.innerText = input.files[0].name;
+            }
+        }
+
+        async function testTranscribe() {
+            const fileInput = document.getElementById('asr-file');
+            const output = document.getElementById('asr-output');
+            
+            if (!fileInput.files || !fileInput.files[0]) {
+                alert("Por favor, selecciona un archivo de audio.");
+                return;
+            }
+            
+            output.innerText = "Transcribiendo...";
+            const formData = new FormData();
+            formData.append("file", fileInput.files[0]);
+            
+            try {
+                const res = await fetch('/api/test/transcribe', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await res.json();
+                output.innerText = data.text || JSON.stringify(data, null, 2);
+            } catch (err) {
+                output.innerText = `Error: ${err.message}`;
+            }
+        }
+
+        // Diarization Test
+        async function testDiarize() {
+            const fileInput = document.getElementById('diarize-file');
+            const output = document.getElementById('diarize-output');
+            
+            if (!fileInput.files || !fileInput.files[0]) {
+                alert("Por favor, selecciona un archivo de audio.");
+                return;
+            }
+            
+            output.innerText = "Calculando segmentos de habla...";
+            const formData = new FormData();
+            formData.append("file", fileInput.files[0]);
+            
+            try {
+                const res = await fetch('/api/test/diarize', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await res.json();
+                output.innerText = JSON.stringify(data, null, 2);
+            } catch (err) {
+                output.innerText = `Error: ${err.message}`;
+            }
+        }
+
+        // Loop de actualización
+        refreshData();
+        loadConfig();
+        setInterval(refreshData, 5000); // Actualizar cada 5s
+    </script>
+</body>
+</html>
