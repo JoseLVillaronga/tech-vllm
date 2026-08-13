@@ -199,6 +199,7 @@ Para escuchar las respuestas con tu voz clonada y el acento correcto según el i
   | `jose-de` o **`onyx`** | 🇩🇪 **Alemán** | `aihpi/F5-TTS-German` |
   | `jose-ru` o **`nova`** | 🇷🇺 **Ruso** | `hotstone228/F5-TTS-Russian` |
   | `jose-ja` o **`shimmer`** | 🇯🇵 **Japonés** | `Jmica/F5TTS` |
+  | `jose-pt` | 🇧🇷 **Portugués (Brasil)** | `firstpixel/F5-TTS-pt-br` |
 
 *(Nota: Todas las opciones clonan tu timbre de voz nativo en base a `mi_voz_24k_mono.wav`, pero con la pronunciación del acento seleccionado).*
 
@@ -364,13 +365,27 @@ curl -X POST http://localhost:8002/v1/audio/speech \
 curl -X POST http://localhost:8002/v1/audio/speech \
   -H "Authorization: Bearer tu_clave_api_aqui" \
   -H "Content-Type: application/json" \
-  -d '\''{
+  -d '{
     "model": "tts-1",
-    "input": "你好！这是我本地克隆声音的中文测试。运行速度非常快。",
+    "input": "你好！这是我本地克隆声音 de 中文测试。运行速度非常快。",
     "voice": "echo",
     "response_format": "mp3"
-  }'\'' \
+  }' \
   -o chino_clonado.mp3
+```
+
+#### 🇧🇷 Portugués (Voz `jose-pt`)
+```bash
+curl -X POST http://localhost:8002/v1/audio/speech \
+  -H "Authorization: Bearer tu_clave_api_aqui" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "tts-1",
+    "input": "Olá! Este é um teste da minha voz clonada em português do Brasil, rodando localmente.",
+    "voice": "jose-pt",
+    "response_format": "mp3"
+  }' \
+  -o portugues_clonado.mp3
 ```
 
 ### 3. Probar Transcripción y Diarización en Vivo (Micrófono)

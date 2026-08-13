@@ -4,11 +4,42 @@ import sys
 import psutil
 import requests
 import subprocess
+import uuid
+import torchaudio
 from flask import Flask, render_template, request, jsonify, Response
 from dotenv import load_dotenv
+from pymongo import MongoClient
+from bson import ObjectId
 
 # Cargar variables del entorno
 load_dotenv()
+
+# Helper de conexión a MongoDB
+def get_db():
+    user = os.getenv("MONGO_USER", "admin")
+    password = os.getenv("MONGO_PASS", "joseMDB365$")
+    host = os.getenv("MONGO_HOST", "127.0.0.1")
+    db_name = os.getenv("MONGO_DB", "vllm")
+    uri = f"mongodb://{user}:{password}@{host}:27017/{db_name}?authSource=admin"
+    client = MongoClient(uri, serverSelectionTimeoutMS=2000)
+    return client[db_name]
+
+# Helper para re-muestrear audio a 24kHz mono (esperado por F5-TTS)
+def resample_audio_to_24k_mono(input_path, output_path):
+    try:
+        waveform, sample_rate = torchaudio.load(input_path)
+        # Convertir a mono si es estéreo
+        if waveform.shape[0] > 1:
+            waveform = waveform.mean(dim=0, keepdim=True)
+        # Re-muestrear a 24000 Hz si es diferente
+        if sample_rate != 24000:
+            resampler = torchaudio.transforms.Resample(orig_freq=sample_rate, new_freq=24000)
+            waveform = resampler(waveform)
+        torchaudio.save(output_path, waveform, 24000)
+        return True
+    except Exception as e:
+        print(f"Error re-muestreando audio {input_path} -> {output_path}: {e}")
+        return False
 
 PORT = int(os.getenv("DASHBOARD_PORT", "8004"))
 API_KEY = os.getenv("API_KEY", "tu_clave_api_aqui")
@@ -188,6 +219,160 @@ def index():
 @app.route("/favicon.ico")
 def favicon():
     return app.send_static_file("favicon.svg")
+
+# --- Rutas de API ---
+
+# Gestión de voces clonadas y perfiles en MongoDB
+
+@app.route("/api/voices", methods=["GET"])
+def api_get_voices():
+    try:
+        db = get_db()
+        voices = list(db.reference_voices.find())
+        result = []
+        for v in voices:
+            result.append({
+                "id": str(v["_id"]),
+                "name": v.get("name", "Sin nombre"),
+                "description": v.get("description", ""),
+                "text": v.get("text", ""),
+                "audio_path": v.get("audio_path", ""),
+                "audio_url": v.get("audio_path", "").replace("/home/jose/vllm", ""),
+                "is_active": v.get("is_active", False)
+            })
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/voices", methods=["POST"])
+def api_create_voice():
+    try:
+        name = request.form.get("name", "").strip()
+        description = request.form.get("description", "").strip()
+        text = request.form.get("text", "").strip()
+        
+        if not name or not text:
+            return jsonify({"error": "El nombre y el texto de referencia son obligatorios"}), 400
+            
+        if "file" not in request.files:
+            return jsonify({"error": "El archivo de audio es obligatorio"}), 400
+            
+        file = request.files["file"]
+        if file.filename == "":
+            return jsonify({"error": "No se seleccionó ningún archivo"}), 400
+            
+        upload_dir = "/home/jose/vllm/static/audio/clones"
+        os.makedirs(upload_dir, exist_ok=True)
+        
+        temp_ext = os.path.splitext(file.filename)[1] or ".wav"
+        temp_filename = f"temp_{uuid.uuid4().hex}{temp_ext}"
+        temp_path = os.path.join(upload_dir, temp_filename)
+        file.save(temp_path)
+        
+        final_filename = f"voice_{uuid.uuid4().hex}.wav"
+        final_path = os.path.join(upload_dir, final_filename)
+        
+        success = resample_audio_to_24k_mono(temp_path, final_path)
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+            
+        if not success:
+            return jsonify({"error": "Error al procesar y re-muestrear el archivo de audio"}), 500
+            
+        db = get_db()
+        has_voices = db.reference_voices.count_documents({}) > 0
+        is_active = not has_voices  # Activa si es la primera
+        
+        if is_active:
+            db.reference_voices.update_many({}, {"$set": {"is_active": False}})
+            
+        voice_id = db.reference_voices.insert_one({
+            "name": name,
+            "description": description,
+            "text": text,
+            "audio_path": final_path,
+            "is_active": is_active
+        }).inserted_id
+        
+        return jsonify({
+            "message": "Perfil de voz creado con éxito",
+            "id": str(voice_id),
+            "is_active": is_active
+        }), 201
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/voices/<voice_id>", methods=["PUT"])
+def api_update_voice(voice_id):
+    try:
+        data = request.json or {}
+        name = data.get("name", "").strip()
+        description = data.get("description", "").strip()
+        text = data.get("text", "").strip()
+        
+        if not name or not text:
+            return jsonify({"error": "El nombre y el texto de referencia son obligatorios"}), 400
+            
+        db = get_db()
+        res = db.reference_voices.update_one(
+            {"_id": ObjectId(voice_id)},
+            {"$set": {
+                "name": name,
+                "description": description,
+                "text": text
+            }}
+        )
+        
+        if res.matched_count == 0:
+            return jsonify({"error": "Perfil de voz no encontrado"}), 404
+            
+        return jsonify({"message": "Perfil de voz actualizado con éxito"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/voices/<voice_id>/activate", methods=["POST"])
+def api_activate_voice(voice_id):
+    try:
+        db = get_db()
+        voice = db.reference_voices.find_one({"_id": ObjectId(voice_id)})
+        if not voice:
+            return jsonify({"error": "Perfil de voz no encontrado"}), 404
+            
+        db.reference_voices.update_many({}, {"$set": {"is_active": False}})
+        db.reference_voices.update_one({"_id": ObjectId(voice_id)}, {"$set": {"is_active": True}})
+        
+        return jsonify({"message": f"Perfil '{voice['name']}' activado con éxito"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/voices/<voice_id>", methods=["DELETE"])
+def api_delete_voice(voice_id):
+    try:
+        db = get_db()
+        voice = db.reference_voices.find_one({"_id": ObjectId(voice_id)})
+        if not voice:
+            return jsonify({"error": "Perfil de voz no encontrado"}), 404
+            
+        audio_path = voice.get("audio_path", "")
+        if audio_path and os.path.exists(audio_path):
+            try:
+                os.remove(audio_path)
+            except Exception as e:
+                print(f"Error borrando archivo de audio {audio_path}: {e}")
+                
+        db.reference_voices.delete_one({"_id": ObjectId(voice_id)})
+        
+        if voice.get("is_active", False):
+            first_remaining = db.reference_voices.find_one()
+            if first_remaining:
+                db.reference_voices.update_one(
+                    {"_id": first_remaining["_id"]},
+                    {"$set": {"is_active": True}}
+                )
+                
+        return jsonify({"message": "Perfil de voz eliminado con éxito"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 # --- Rutas de API ---
 

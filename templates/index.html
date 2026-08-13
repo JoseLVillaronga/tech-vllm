@@ -104,6 +104,12 @@
                 </svg>
                 Laboratorio / Test
             </button>
+            <button onclick="showTab('tab-voices')" id="btn-voices" class="tab-btn w-full flex items-center gap-3 px-4 py-3 rounded-xl border border-transparent text-slate-300 hover:bg-slate-800/50 hover:text-white transition-all font-medium">
+                <svg class="h-5 w-5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                </svg>
+                Voces Clonadas
+            </button>
             <div class="mt-auto border-t border-slate-800/60 pt-4 flex flex-col gap-2">
                 <p class="text-xs text-slate-500 font-mono">PUERTOS DE LA SUITE:</p>
                 <div class="grid grid-cols-2 gap-2 text-xs font-mono text-slate-400">
@@ -374,6 +380,7 @@
                                             <option value="onyx">onyx (Alemán)</option>
                                             <option value="nova">nova (Ruso)</option>
                                             <option value="shimmer">shimmer (Japonés)</option>
+                                            <option value="jose-pt">jose-pt (Portugués)</option>
                                         </select>
                                     </div>
                                     <div class="flex items-end justify-center">
@@ -435,6 +442,113 @@
 
                 </div>
             </div>
+
+            <!-- TAB 4: VOCES CLONADAS (CLONING PROFILE MANAGER) -->
+            <div id="tab-voices" class="tab-content hidden flex flex-col gap-6">
+                <div class="glass-panel p-6 rounded-2xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                    <div>
+                        <h2 class="text-xl font-bold text-slate-100 flex items-center gap-2">
+                            <svg class="h-6 w-6 text-cyan-400 animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                            </svg>
+                            Gestor de Voces y Clonación Dinámica
+                        </h2>
+                        <p class="text-xs text-slate-400 mt-1">Crea, edita y activa perfiles de voz para Texto a Voz (F5-TTS). Los cambios surten efecto inmediatamente.</p>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div class="glass-panel p-5 rounded-2xl flex flex-col gap-4">
+                        <h3 class="text-sm font-bold text-slate-200 border-b border-slate-800 pb-2">Crear Nuevo Perfil</h3>
+                        <div class="flex flex-col gap-3">
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-300 mb-1">Nombre del Perfil:</label>
+                                <input id="voice-name" type="text" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500" placeholder="Ej: Mi Voz Natural, Voz de Locutor...">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-300 mb-1">Descripción Corta:</label>
+                                <input id="voice-desc" type="text" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500" placeholder="Ej: Tono rioplatense, voz alegre...">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-300 mb-1">Texto Pronunciado (Referencia):</label>
+                                <textarea id="voice-text" class="w-full bg-slate-900 border border-slate-800 rounded-lg p-3 h-20 text-xs text-slate-200 focus:outline-none focus:border-cyan-500" placeholder="El texto exacto que se dice en el audio..."></textarea>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-300 mb-1">Origen del Audio:</label>
+                                <div class="grid grid-cols-2 gap-2 mt-1">
+                                    <button onclick="toggleAudioInput('record')" id="btn-input-record" class="py-1.5 rounded-lg text-xs font-semibold bg-cyan-600/30 text-cyan-400 border border-cyan-500/30">
+                                        Grabar Micrófono
+                                    </button>
+                                    <button onclick="toggleAudioInput('file')" id="btn-input-file" class="py-1.5 rounded-lg text-xs font-semibold bg-slate-900 text-slate-400 border border-slate-800 hover:bg-slate-800">
+                                        Subir Archivo
+                                    </button>
+                                </div>
+                            </div>
+                            <div id="box-record" class="bg-slate-900/50 border border-slate-800 rounded-xl p-4 flex flex-col items-center justify-center gap-3">
+                                <div class="flex items-center gap-2">
+                                    <span id="record-indicator" class="h-2.5 w-2.5 rounded-full bg-slate-500"></span>
+                                    <span id="record-timer" class="text-xs font-mono text-slate-400">00:00</span>
+                                </div>
+                                <div class="flex gap-3">
+                                    <button onclick="startRecording()" id="btn-start-record" class="h-10 w-10 rounded-full bg-red-600 hover:bg-red-500 flex items-center justify-center text-white transition-all shadow-lg hover:shadow-red-500/20">🎙️</button>
+                                    <button onclick="stopRecording()" id="btn-stop-record" disabled class="h-10 w-10 rounded-full bg-slate-800 text-slate-500 flex items-center justify-center transition-all cursor-not-allowed">⏹️</button>
+                                </div>
+                                <div id="record-preview-box" class="hidden w-full flex flex-col items-center gap-2">
+                                    <span class="text-[10px] text-slate-500">Muestra Grabada</span>
+                                    <audio id="record-audio-player" class="w-full h-8" controls></audio>
+                                </div>
+                            </div>
+                            <div id="box-file" class="hidden bg-slate-900/50 border border-slate-800 rounded-xl p-4 flex flex-col gap-2">
+                                <input type="file" id="voice-file-input" accept="audio/*" class="hidden" onchange="handleVoiceFileChange()">
+                                <label for="voice-file-input" class="w-full h-20 border border-dashed border-slate-800 rounded-lg flex flex-col items-center justify-center gap-2 cursor-pointer hover:border-cyan-500/50 bg-slate-950 transition-all">
+                                    <svg class="h-6 w-6 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
+                                    </svg>
+                                    <span id="voice-file-label" class="text-[10px] font-semibold text-slate-400">Haz clic para subir WAV o MP3</span>
+                                </label>
+                            </div>
+                            <button onclick="saveVoiceProfile()" class="w-full mt-2 py-2 bg-gradient-to-r from-cyan-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 rounded-lg text-sm font-semibold transition-all">
+                                Guardar Perfil de Voz
+                            </button>
+                        </div>
+                    </div>
+                    <div class="glass-panel p-5 rounded-2xl lg:col-span-2 flex flex-col gap-4">
+                        <h3 class="text-sm font-bold text-slate-200 border-b border-slate-800 pb-2">Perfiles Guardados</h3>
+                        <div id="voices-list-container" class="flex flex-col gap-3 max-h-[480px] overflow-y-auto pr-1">
+                            <div class="text-center py-8 text-xs text-slate-500">Cargando perfiles...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- MODAL DE EDICIÓN -->
+            <div id="edit-voice-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm hidden z-50 flex items-center justify-center p-4">
+                <div class="glass-panel max-w-md w-full p-6 rounded-2xl flex flex-col gap-4 shadow-2xl border border-slate-850">
+                    <div class="flex justify-between items-center border-b border-slate-800 pb-2">
+                        <h3 class="text-sm font-bold text-slate-100">Editar Perfil de Voz</h3>
+                        <button onclick="closeEditModal()" class="text-slate-400 hover:text-white text-lg">&times;</button>
+                    </div>
+                    <input type="hidden" id="edit-voice-id">
+                    <div class="flex flex-col gap-3">
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-300 mb-1">Nombre del Perfil:</label>
+                            <input id="edit-voice-name" type="text" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-300 mb-1">Descripción Corta:</label>
+                            <input id="edit-voice-desc" type="text" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-300 mb-1">Texto Pronunciado (Referencia):</label>
+                            <textarea id="edit-voice-text" class="w-full bg-slate-900 border border-slate-800 rounded-lg p-3 h-20 text-xs text-slate-200 focus:outline-none focus:border-cyan-500"></textarea>
+                        </div>
+                        <div class="flex gap-3 justify-end mt-2">
+                            <button onclick="closeEditModal()" class="px-4 py-1.5 bg-slate-900 border border-slate-800 hover:bg-slate-800 rounded-lg text-xs font-semibold text-slate-400 transition-all">Cancelar</button>
+                            <button onclick="updateVoiceProfile()" class="px-4 py-1.5 bg-cyan-600 hover:bg-cyan-500 rounded-lg text-xs font-semibold text-white transition-all">Guardar Cambios</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </main>
     </div>
 
@@ -444,13 +558,21 @@
         function showTab(tabId) {
             document.querySelectorAll('.tab-content').forEach(content => content.classList.add('hidden'));
             document.querySelectorAll('.tab-btn').forEach(btn => {
-                btn.classList.remove('active');
-                btn.classList.remove('bg-slate-800/50');
+                btn.classList.remove('active', 'bg-slate-800/80', 'text-cyan-400', 'border-cyan-500/30');
+                btn.classList.add('text-slate-300', 'border-transparent');
             });
             
+            const activeBtn = document.querySelector(`[onclick="showTab('${tabId}')"]`);
+            if (activeBtn) {
+                activeBtn.classList.add('bg-slate-800/80', 'text-cyan-400', 'border-cyan-500/30');
+                activeBtn.classList.remove('text-slate-300', 'border-transparent');
+            }
+            
             document.getElementById(tabId).classList.remove('hidden');
-            const btnId = tabId.replace('tab-', 'btn-');
-            document.getElementById(btnId).classList.add('active');
+            
+            if (tabId === 'tab-voices') {
+                loadVoices();
+            }
         }
 
         // Obtener estado y métricas
@@ -690,6 +812,295 @@
                 output.innerText = JSON.stringify(data, null, 2);
             } catch (err) {
                 output.innerText = `Error: ${err.message}`;
+            }
+        }
+
+        // --- Gestión de Voces Clonadas (MongoDB & MediaRecorder) ---
+        let mediaRecorder;
+        let audioChunks = [];
+        let recordedBlob = null;
+        let recordingTimer;
+        let recordDuration = 0;
+        let selectedInputMode = 'record'; // 'record' o 'file'
+
+        function toggleAudioInput(mode) {
+            selectedInputMode = mode;
+            const btnRecord = document.getElementById('btn-input-record');
+            const btnFile = document.getElementById('btn-input-file');
+            const boxRecord = document.getElementById('box-record');
+            const boxFile = document.getElementById('box-file');
+
+            if (mode === 'record') {
+                btnRecord.className = "py-1.5 rounded-lg text-xs font-semibold bg-cyan-600/30 text-cyan-400 border border-cyan-500/30";
+                btnFile.className = "py-1.5 rounded-lg text-xs font-semibold bg-slate-900 text-slate-400 border border-slate-800 hover:bg-slate-800";
+                boxRecord.classList.remove('hidden');
+                boxFile.classList.add('hidden');
+            } else {
+                btnFile.className = "py-1.5 rounded-lg text-xs font-semibold bg-cyan-600/30 text-cyan-400 border border-cyan-500/30";
+                btnRecord.className = "py-1.5 rounded-lg text-xs font-semibold bg-slate-900 text-slate-400 border border-slate-800 hover:bg-slate-800";
+                boxFile.classList.remove('hidden');
+                boxRecord.classList.add('hidden');
+            }
+        }
+
+        function handleVoiceFileChange() {
+            const input = document.getElementById('voice-file-input');
+            const label = document.getElementById('voice-file-label');
+            if (input.files && input.files[0]) {
+                label.innerText = `Seleccionado: ${input.files[0].name} (${(input.files[0].size/1024/1024).toFixed(2)} MB)`;
+            } else {
+                label.innerText = "Haz clic para subir WAV o MP3";
+            }
+        }
+
+        async function startRecording() {
+            audioChunks = [];
+            recordedBlob = null;
+            document.getElementById('record-preview-box').classList.add('hidden');
+
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                mediaRecorder = new MediaRecorder(stream);
+                
+                mediaRecorder.ondataavailable = e => {
+                    if (e.data.size > 0) {
+                        audioChunks.push(e.data);
+                    }
+                };
+
+                mediaRecorder.onstop = () => {
+                    recordedBlob = new Blob(audioChunks, { type: 'audio/wav' });
+                    const audioUrl = URL.createObjectURL(recordedBlob);
+                    const player = document.getElementById('record-audio-player');
+                    player.src = audioUrl;
+                    document.getElementById('record-preview-box').classList.remove('hidden');
+                    
+                    stream.getTracks().forEach(track => track.stop());
+                };
+
+                mediaRecorder.start();
+                
+                document.getElementById('record-indicator').classList.remove('bg-slate-500');
+                document.getElementById('record-indicator').classList.add('bg-red-500', 'animate-pulse');
+                document.getElementById('btn-start-record').disabled = true;
+                document.getElementById('btn-start-record').classList.add('opacity-50', 'cursor-not-allowed');
+                document.getElementById('btn-stop-record').disabled = false;
+                document.getElementById('btn-stop-record').classList.remove('bg-slate-800', 'text-slate-500', 'cursor-not-allowed');
+                document.getElementById('btn-stop-record').classList.add('bg-red-600', 'text-white', 'hover:bg-red-500');
+
+                recordDuration = 0;
+                document.getElementById('record-timer').innerText = "00:00";
+                recordingTimer = setInterval(() => {
+                    recordDuration++;
+                    const mins = String(Math.floor(recordDuration / 60)).padStart(2, '0');
+                    const secs = String(recordDuration % 60).padStart(2, '0');
+                    document.getElementById('record-timer').innerText = `${mins}:${secs}`;
+                }, 1000);
+
+            } catch (err) {
+                alert(`Error al acceder al micrófono: ${err.message}`);
+            }
+        }
+
+        function stopRecording() {
+            if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+                mediaRecorder.stop();
+            }
+            
+            clearInterval(recordingTimer);
+            
+            document.getElementById('record-indicator').classList.remove('bg-red-500', 'animate-pulse');
+            document.getElementById('record-indicator').classList.add('bg-slate-500');
+            document.getElementById('btn-start-record').disabled = false;
+            document.getElementById('btn-start-record').classList.remove('opacity-50', 'cursor-not-allowed');
+            document.getElementById('btn-stop-record').disabled = true;
+            document.getElementById('btn-stop-record').className = "h-10 w-10 rounded-full bg-slate-800 text-slate-500 flex items-center justify-center transition-all cursor-not-allowed";
+        }
+
+        async function loadVoices() {
+            const container = document.getElementById('voices-list-container');
+            container.innerHTML = '<div class="text-center py-8 text-xs text-slate-500">Cargando perfiles...</div>';
+            
+            try {
+                const res = await fetch('/api/voices');
+                const voices = await res.json();
+                
+                if (voices.length === 0) {
+                    container.innerHTML = `
+                        <div class="border border-dashed border-slate-850 rounded-xl p-8 text-center flex flex-col items-center justify-center gap-2">
+                            <span class="text-xs text-slate-400 font-semibold">No tienes ningún perfil de voz personalizado creado.</span>
+                            <span class="text-[10px] text-slate-500">El sistema está utilizando el fallback local ('mi_voz_24k_mono.wav') de forma predeterminada.</span>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                container.innerHTML = '';
+                voices.forEach(voice => {
+                    const activeClass = voice.is_active 
+                        ? 'border-cyan-500/50 bg-cyan-950/10' 
+                        : 'border-slate-800/80 bg-slate-900/20';
+                    const activePill = voice.is_active
+                        ? '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-cyan-500/20 text-cyan-400 uppercase">Activo</span>'
+                        : '<button onclick="activateVoice(\''+voice.id+'\')" class="px-2.5 py-1 bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white rounded border border-slate-800 text-[10px] font-semibold transition-all">Activar</button>';
+                        
+                    // Escapar comillas simples para los argumentos onclick
+                    const escName = voice.name.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+                    const escDesc = voice.description.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+                    const escText = voice.text.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+
+                    container.innerHTML += `
+                        <div class="glass-panel p-4 rounded-xl border flex flex-col md:flex-row justify-between items-start md:items-center gap-4 transition-all ${activeClass}">
+                            <div class="flex-1 flex flex-col gap-1 min-w-[200px]">
+                                <div class="flex items-center gap-2">
+                                    <span class="text-xs font-bold text-slate-200">${voice.name}</span>
+                                    ${activePill}
+                                </div>
+                                <span class="text-[10px] text-slate-400 font-medium">${voice.description || 'Sin descripción'}</span>
+                                <div class="mt-2 bg-slate-950/80 border border-slate-800/60 rounded p-2.5 max-h-16 overflow-y-auto">
+                                    <p class="text-[10px] font-mono text-slate-300 select-all">${voice.text}</p>
+                                </div>
+                            </div>
+                            <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full md:w-auto">
+                                <audio src="${voice.audio_url}" class="h-7 w-48" controls></audio>
+                                <div class="flex gap-2 justify-end">
+                                    <button onclick="openEditModal('${voice.id}', '${escName}', '${escDesc}', '${escText}')" class="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded text-[10px] font-semibold border border-slate-700 transition-all">Editar</button>
+                                    <button onclick="deleteVoice('${voice.id}')" class="px-2 py-1 bg-red-950/50 hover:bg-red-900/50 text-red-400 hover:text-red-300 rounded text-[10px] font-semibold border border-red-900/30 transition-all">Borrar</button>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                });
+            } catch (err) {
+                container.innerHTML = `<div class="text-center py-8 text-xs text-red-400">Error al cargar voces: ${err.message}</div>`;
+            }
+        }
+
+        async function activateVoice(voiceId) {
+            try {
+                const res = await fetch(`/api/voices/${voiceId}/activate`, { method: 'POST' });
+                const data = await res.json();
+                if (res.ok) {
+                    loadVoices();
+                } else {
+                    alert(`Error: ${data.error}`);
+                }
+            } catch (err) {
+                alert(`Error al activar: ${err.message}`);
+            }
+        }
+
+        async function deleteVoice(voiceId) {
+            if (!confirm("¿Estás seguro de que deseas eliminar este perfil de voz? Se borrará permanentemente de la base de datos y del disco.")) {
+                return;
+            }
+            
+            try {
+                const res = await fetch(`/api/voices/${voiceId}`, { method: 'DELETE' });
+                const data = await res.json();
+                if (res.ok) {
+                    loadVoices();
+                } else {
+                    alert(`Error: ${data.error}`);
+                }
+            } catch (err) {
+                alert(`Error al borrar: ${err.message}`);
+            }
+        }
+
+        function openEditModal(id, name, desc, text) {
+            document.getElementById('edit-voice-id').value = id;
+            document.getElementById('edit-voice-name').value = name;
+            document.getElementById('edit-voice-desc').value = desc;
+            document.getElementById('edit-voice-text').value = text;
+            document.getElementById('edit-voice-modal').classList.remove('hidden');
+        }
+
+        function closeEditModal() {
+            document.getElementById('edit-voice-modal').classList.add('hidden');
+        }
+
+        async function updateVoiceProfile() {
+            const id = document.getElementById('edit-voice-id').value;
+            const name = document.getElementById('edit-voice-name').value.trim();
+            const desc = document.getElementById('edit-voice-desc').value.trim();
+            const text = document.getElementById('edit-voice-text').value.trim();
+
+            if (!name || !text) {
+                alert("El nombre y el texto de referencia son obligatorios.");
+                return;
+            }
+
+            try {
+                const res = await fetch(`/api/voices/${id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: name, description: desc, text: text })
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    closeEditModal();
+                    loadVoices();
+                } else {
+                    alert(`Error: ${data.error}`);
+                }
+            } catch (err) {
+                alert(`Error al actualizar: ${err.message}`);
+            }
+        }
+
+        async function saveVoiceProfile() {
+            const name = document.getElementById('voice-name').value.trim();
+            const desc = document.getElementById('voice-desc').value.trim();
+            const text = document.getElementById('voice-text').value.trim();
+
+            if (!name || !text) {
+                alert("Por favor, introduce el nombre del perfil y el texto pronunciado.");
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append("name", name);
+            formData.append("description", desc);
+            formData.append("text", text);
+
+            if (selectedInputMode === 'record') {
+                if (!recordedBlob) {
+                    alert("Por favor, realiza una grabación primero.");
+                    return;
+                }
+                formData.append("file", recordedBlob, "recording.wav");
+            } else {
+                const fileInput = document.getElementById('voice-file-input');
+                if (!fileInput.files || !fileInput.files[0]) {
+                    alert("Por favor, selecciona un archivo de audio para subir.");
+                    return;
+                }
+                formData.append("file", fileInput.files[0]);
+            }
+
+            try {
+                const res = await fetch('/api/voices', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await res.json();
+                
+                if (res.ok) {
+                    document.getElementById('voice-name').value = '';
+                    document.getElementById('voice-desc').value = '';
+                    document.getElementById('voice-text').value = '';
+                    recordedBlob = null;
+                    document.getElementById('record-preview-box').classList.add('hidden');
+                    document.getElementById('voice-file-input').value = '';
+                    document.getElementById('voice-file-label').innerText = "Haz clic para subir WAV o MP3";
+                    
+                    loadVoices();
+                } else {
+                    alert(`Error al guardar: ${data.error}`);
+                }
+            } catch (err) {
+                alert(`Error al conectar con el servidor: ${err.message}`);
             }
         }
 
