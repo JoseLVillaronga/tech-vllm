@@ -57,16 +57,16 @@ source venv/bin/activate
 
 ### 2. Instalar dependencias del sistema y Python
 
-Primero, instala las herramientas del sistema necesarias (el compilador CUDA `nvcc` para vLLM y `libportaudio2` para capturar audio desde el micrófono):
+Primero, instala las herramientas del sistema necesarias (el compilador CUDA `nvcc` para vLLM, `libportaudio2` para capturar audio, y asegúrate de tener el servidor **MongoDB** instalado y ejecutándose en tu máquina):
 
 ```bash
 sudo apt update && sudo apt install -y nvidia-cuda-toolkit libportaudio2
 ```
 
-Luego, instala vLLM junto con los paquetes necesarios para la diarización, el procesamiento de audio y las peticiones de red:
+Luego, instala vLLM junto con los paquetes necesarios para la diarización, el procesamiento de audio, las peticiones de red y la conexión a la base de datos:
 
 ```bash
-pip install vllm python-dotenv pyannote.audio faster-whisper sounddevice numpy scipy requests
+pip install vllm python-dotenv pyannote.audio faster-whisper sounddevice numpy scipy requests pymongo
 ```
 
 > **Nota:** El paquete `nvidia-cuda-toolkit` provee el compilador `nvcc`, requerido por el backend FlashInfer de vLLM para la compilación en tiempo de ejecución (JIT).
