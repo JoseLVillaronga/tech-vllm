@@ -185,6 +185,10 @@ def save_env_from_dict(new_values):
 def index():
     return render_template("index.html")
 
+@app.route("/favicon.ico")
+def favicon():
+    return app.send_static_file("favicon.svg")
+
 # --- Rutas de API ---
 
 @app.route("/api/status", methods=["GET"])
