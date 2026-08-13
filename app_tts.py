@@ -243,9 +243,28 @@ async def text_to_speech(request: SpeechRequest, token: str = Depends(verify_tok
             detail=f"No se pudo cargar el modelo para el idioma '{lang}': {str(e)}"
         )
 
-    # Ruta del audio de referencia del usuario (siempre el mismo timbre)
+    # Determinar el audio y texto de referencia a usar (MongoDB con fallback)
     ref_file = REF_AUDIO_PATH
     ref_text = REF_TEXT_DEFAULT
+    
+    try:
+        from pymongo import MongoClient
+        mongo_user = os.getenv("MONGO_USER", "admin")
+        mongo_pass = os.getenv("MONGO_PASS", "joseMDB365$")
+        mongo_host = os.getenv("MONGO_HOST", "127.0.0.1")
+        mongo_db = os.getenv("MONGO_DB", "vllm")
+        mongo_uri = f"mongodb://{mongo_user}:{mongo_pass}@{mongo_host}:27017/{mongo_db}?authSource=admin"
+        
+        # Conexión rápida con timeout de 1.5s
+        client = MongoClient(mongo_uri, serverSelectionTimeoutMS=1500)
+        db = client[mongo_db]
+        active_voice = db.reference_voices.find_one({"is_active": True})
+        if active_voice and active_voice.get("audio_path") and os.path.exists(active_voice["audio_path"]):
+            ref_file = active_voice["audio_path"]
+            ref_text = active_voice.get("text", "")
+            print(f"🗣️ Utilizando voz de referencia personalizada: '{active_voice['name']}'")
+    except Exception as e:
+        print(f"⚠️ Advertencia: No se pudo consultar MongoDB ({e}). Usando fallback local predeterminado.")
 
     if not os.path.exists(ref_file):
         raise HTTPException(
