@@ -126,10 +126,10 @@ def create_proxy_app(service_name: str, target_port: int) -> FastAPI:
             
         target_url = f"http://127.0.0.1:{target_port}/{path}"
         
-        # Clonar cabeceras y reemplazar token personalizado por la clave maestra esperada por el backend
-        headers = dict(request.headers)
+        # Clonar cabeceras normalizando a minúsculas para evitar duplicados y colisiones de mayúsculas/minúsculas
+        headers = {k.lower(): v for k, v in request.headers.items()}
         headers["host"] = f"127.0.0.1:{target_port}"
-        headers["Authorization"] = f"Bearer {MASTER_KEY}"
+        headers["authorization"] = f"Bearer {MASTER_KEY}"
         
         # Quitar cabeceras de control hop-by-hop para evitar colisiones
         headers.pop("connection", None)
