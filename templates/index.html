@@ -110,6 +110,12 @@
                 </svg>
                 Voces Clonadas
             </button>
+            <button onclick="showTab('tab-keys')" id="btn-keys" class="tab-btn w-full flex items-center gap-3 px-4 py-3 rounded-xl border border-transparent text-slate-300 hover:bg-slate-800/50 hover:text-white transition-all font-medium">
+                <svg class="h-5 w-5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+                </svg>
+                Claves API
+            </button>
             <div class="mt-auto border-t border-slate-800/60 pt-4 flex flex-col gap-2">
                 <p class="text-xs text-slate-500 font-mono">PUERTOS DE LA SUITE:</p>
                 <div class="grid grid-cols-2 gap-2 text-xs font-mono text-slate-400">
@@ -549,6 +555,131 @@
                     </div>
                 </div>
             </div>
+
+            <!-- TAB 5: CLAVES API (API KEYS MANAGER) -->
+            <div id="tab-keys" class="tab-content hidden flex flex-col gap-6">
+                <div class="glass-panel p-6 rounded-2xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                    <div>
+                        <h2 class="text-xl font-bold text-slate-100 flex items-center gap-2">
+                            <svg class="h-6 w-6 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+                            </svg>
+                            Gestor de Claves API Específicas
+                        </h2>
+                        <p class="text-xs text-slate-400 mt-1">Crea claves API limitadas para aplicaciones terceras con restricciones de acceso por servicio y expiración.</p>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <!-- Left: Create Key Form -->
+                    <div class="glass-panel p-5 rounded-2xl flex flex-col gap-4">
+                        <h3 class="text-sm font-bold text-slate-200 border-b border-slate-800 pb-2">Crear Nueva Clave API</h3>
+                        <div class="flex flex-col gap-3">
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-300 mb-1">Nombre de la Clave:</label>
+                                <input id="key-name" type="text" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500" placeholder="Ej: Open-WebUI, Home Assistant...">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-300 mb-1">Descripción:</label>
+                                <input id="key-desc" type="text" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500" placeholder="Ej: Usada para transcripción...">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-300 mb-1">Servicios Autorizados:</label>
+                                <div class="flex flex-col gap-2 mt-1.5 bg-slate-900/50 border border-slate-800 rounded-xl p-3">
+                                    <label class="flex items-center gap-2.5 text-xs text-slate-300 cursor-pointer">
+                                        <input type="checkbox" name="key-services" value="gemma" class="rounded border-slate-800 text-cyan-600 focus:ring-cyan-500 bg-slate-950">
+                                        Gemma LLM & Visión (Puerto 8000)
+                                    </label>
+                                    <label class="flex items-center gap-2.5 text-xs text-slate-300 cursor-pointer">
+                                        <input type="checkbox" name="key-services" value="whisper" class="rounded border-slate-800 text-cyan-600 focus:ring-cyan-500 bg-slate-950">
+                                        Whisper STT (Puerto 8001)
+                                    </label>
+                                    <label class="flex items-center gap-2.5 text-xs text-slate-300 cursor-pointer">
+                                        <input type="checkbox" name="key-services" value="tts" class="rounded border-slate-800 text-cyan-600 focus:ring-cyan-500 bg-slate-950">
+                                        F5-TTS Voice (Puerto 8002)
+                                    </label>
+                                    <label class="flex items-center gap-2.5 text-xs text-slate-300 cursor-pointer">
+                                        <input type="checkbox" name="key-services" value="diarization" class="rounded border-slate-800 text-cyan-600 focus:ring-cyan-500 bg-slate-950">
+                                        Diarización (Puerto 8003)
+                                    </label>
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-300 mb-1">Fecha de Expiración (Opcional):</label>
+                                <input id="key-expiry" type="date" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500">
+                            </div>
+                            <button onclick="createApiKey()" class="w-full mt-2 py-2 bg-gradient-to-r from-cyan-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 rounded-lg text-sm font-semibold transition-all">
+                                Generar Clave API
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Right: Keys List -->
+                    <div class="glass-panel p-5 rounded-2xl lg:col-span-2 flex flex-col gap-4">
+                        <h3 class="text-sm font-bold text-slate-200 border-b border-slate-800 pb-2">Claves Activas</h3>
+                        <div id="keys-list-container" class="flex flex-col gap-3 max-h-[480px] overflow-y-auto pr-1">
+                            <div class="text-center py-8 text-xs text-slate-500">Cargando claves...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- MODAL DE EDICIÓN DE CLAVE -->
+            <div id="edit-key-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm hidden z-50 flex items-center justify-center p-4">
+                <div class="glass-panel max-w-md w-full p-6 rounded-2xl flex flex-col gap-4 shadow-2xl border border-slate-850">
+                    <div class="flex justify-between items-center border-b border-slate-800 pb-2">
+                        <h3 class="text-sm font-bold text-slate-100">Editar Clave API</h3>
+                        <button onclick="closeEditKeyModal()" class="text-slate-400 hover:text-white text-lg">&times;</button>
+                    </div>
+                    <input type="hidden" id="edit-key-id">
+                    <div class="flex flex-col gap-3">
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-300 mb-1">Nombre de la Clave:</label>
+                            <input id="edit-key-name" type="text" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-300 mb-1">Descripción:</label>
+                            <input id="edit-key-desc" type="text" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-300 mb-1">Servicios Autorizados:</label>
+                            <div class="flex flex-col gap-2 mt-1.5 bg-slate-900/50 border border-slate-800 rounded-xl p-3">
+                                <label class="flex items-center gap-2.5 text-xs text-slate-300 cursor-pointer">
+                                    <input type="checkbox" id="edit-key-service-gemma" class="rounded border-slate-800 text-cyan-600 focus:ring-cyan-500 bg-slate-950">
+                                    Gemma LLM & Visión (Puerto 8000)
+                                </label>
+                                <label class="flex items-center gap-2.5 text-xs text-slate-300 cursor-pointer">
+                                    <input type="checkbox" id="edit-key-service-whisper" class="rounded border-slate-800 text-cyan-600 focus:ring-cyan-500 bg-slate-950">
+                                    Whisper STT (Puerto 8001)
+                                </label>
+                                <label class="flex items-center gap-2.5 text-xs text-slate-300 cursor-pointer">
+                                    <input type="checkbox" id="edit-key-service-tts" class="rounded border-slate-800 text-cyan-600 focus:ring-cyan-500 bg-slate-950">
+                                    F5-TTS Voice (Puerto 8002)
+                                </label>
+                                <label class="flex items-center gap-2.5 text-xs text-slate-300 cursor-pointer">
+                                    <input type="checkbox" id="edit-key-service-diarization" class="rounded border-slate-800 text-cyan-600 focus:ring-cyan-500 bg-slate-950">
+                                    Diarización (Puerto 8003)
+                                </label>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-300 mb-1">Fecha de Expiración (Opcional):</label>
+                            <input id="edit-key-expiry" type="date" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-300 mb-1">Estado de Actividad:</label>
+                            <select id="edit-key-active" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500">
+                                <option value="true">Activa (Habilitada)</option>
+                                <option value="false">Desactivada (Suspendida)</option>
+                            </select>
+                        </div>
+                        <div class="flex gap-3 justify-end mt-2">
+                            <button onclick="closeEditKeyModal()" class="px-4 py-1.5 bg-slate-900 border border-slate-800 hover:bg-slate-800 rounded-lg text-xs font-semibold text-slate-400 transition-all">Cancelar</button>
+                            <button onclick="updateApiKey()" class="px-4 py-1.5 bg-cyan-600 hover:bg-cyan-500 rounded-lg text-xs font-semibold text-white transition-all">Guardar Cambios</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </main>
     </div>
 
@@ -572,6 +703,9 @@
             
             if (tabId === 'tab-voices') {
                 loadVoices();
+            }
+            if (tabId === 'tab-keys') {
+                loadApiKeys();
             }
         }
 
@@ -1101,6 +1235,224 @@
                 }
             } catch (err) {
                 alert(`Error al conectar con el servidor: ${err.message}`);
+            }
+        }
+
+        // --- Gestión de Claves API Específicas (MongoDB) ---
+        async function loadApiKeys() {
+            const container = document.getElementById('keys-list-container');
+            container.innerHTML = '<div class="text-center py-8 text-xs text-slate-500">Cargando claves...</div>';
+            
+            try {
+                const res = await fetch('/api/keys');
+                const keys = await res.json();
+                
+                if (keys.length === 0) {
+                    container.innerHTML = `
+                        <div class="border border-dashed border-slate-850 rounded-xl p-8 text-center flex flex-col items-center justify-center gap-2 bg-slate-900/10">
+                            <span class="text-xs text-slate-400 font-semibold">No hay claves API secundarias creadas.</span>
+                            <span class="text-[10px] text-slate-500">Solo está activa la clave maestra ('API_KEY') de tu archivo .env.</span>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                container.innerHTML = '';
+                keys.forEach(k => {
+                    const activeClass = k.is_active 
+                        ? 'border-emerald-500/30 bg-emerald-950/5' 
+                        : 'border-red-950/30 bg-red-950/5 opacity-60';
+                    const activePill = k.is_active
+                        ? '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-400 uppercase">Activa</span>'
+                        : '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-red-500/20 text-red-400 uppercase">Suspendida</span>';
+                        
+                    let expiryHtml = '<span class="text-[10px] text-slate-500">Nunca expira</span>';
+                    if (k.expires_at) {
+                        const date = new Date(k.expires_at);
+                        const expired = date < new Date();
+                        const color = expired ? 'text-red-400 font-bold' : 'text-slate-400';
+                        expiryHtml = `<span class="text-[10px] ${color}">Vence: ${date.toLocaleDateString()}</span>`;
+                    }
+                    
+                    let servicesHtml = '';
+                    const svcMap = {
+                        'gemma': { name: 'LLM', color: 'bg-indigo-500/10 text-indigo-400' },
+                        'whisper': { name: 'STT', color: 'bg-cyan-500/10 text-cyan-400' },
+                        'tts': { name: 'TTS', color: 'bg-emerald-500/10 text-emerald-400' },
+                        'diarization': { name: 'DIAR', color: 'bg-amber-500/10 text-amber-400' }
+                    };
+                    k.services.forEach(s => {
+                        const info = svcMap[s] || { name: s, color: 'bg-slate-500/10 text-slate-400' };
+                        servicesHtml += `<span class="px-2 py-0.5 rounded text-[9px] font-bold ${info.color} uppercase text-center">${info.name}</span>`;
+                    });
+
+                    const escName = k.name.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+                    const escDesc = k.description.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+                    const svcJson = JSON.stringify(k.services).replace(/"/g, '&quot;');
+
+                    container.innerHTML += `
+                        <div class="glass-panel p-4 rounded-xl border flex flex-col md:flex-row justify-between items-start md:items-center gap-4 transition-all ${activeClass}">
+                            <div class="flex-1 flex flex-col gap-1 min-w-[200px]">
+                                <div class="flex items-center gap-2">
+                                    <span class="text-xs font-bold text-slate-200">${k.name}</span>
+                                    ${activePill}
+                                </div>
+                                <span class="text-[10px] text-slate-400 font-medium">${k.description || 'Sin descripción'}</span>
+                                <div class="flex items-center gap-2 mt-1.5">
+                                    ${servicesHtml}
+                                    <span class="text-slate-600">|</span>
+                                    ${expiryHtml}
+                                </div>
+                            </div>
+                            <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full md:w-auto">
+                                <div class="flex items-center bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 font-mono text-[10px] select-all relative group max-w-xs overflow-hidden text-ellipsis whitespace-nowrap">
+                                    <span id="key-text-${k.id}" class="text-slate-400 select-all">${k.key}</span>
+                                </div>
+                                <div class="flex gap-2 justify-end">
+                                    <button onclick="openEditKeyModal('${k.id}', '${escName}', '${escDesc}', '${svcJson}', '${k.expires_at}', ${k.is_active})" class="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded text-[10px] font-semibold border border-slate-700 transition-all">Editar</button>
+                                    <button onclick="deleteApiKey('${k.id}')" class="px-2 py-1 bg-red-950/50 hover:bg-red-900/50 text-red-400 hover:text-red-300 rounded text-[10px] font-semibold border border-red-900/30 transition-all">Borrar</button>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                });
+            } catch (err) {
+                container.innerHTML = `<div class="text-center py-8 text-xs text-red-400">Error al cargar claves: ${err.message}</div>`;
+            }
+        }
+
+        async function createApiKey() {
+            const name = document.getElementById('key-name').value.trim();
+            const desc = document.getElementById('key-desc').value.trim();
+            const expiry = document.getElementById('key-expiry').value;
+            
+            const services = [];
+            document.querySelectorAll('input[name="key-services"]:checked').forEach(cb => {
+                services.push(cb.value);
+            });
+
+            if (!name) {
+                alert("El nombre de la clave es obligatorio.");
+                return;
+            }
+
+            if (services.length === 0) {
+                alert("Debes seleccionar al menos un servicio autorizado.");
+                return;
+            }
+
+            try {
+                const res = await fetch('/api/keys', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        name: name,
+                        description: desc,
+                        services: services,
+                        expires_at: expiry
+                    })
+                });
+                
+                const data = await res.json();
+                if (res.ok) {
+                    document.getElementById('key-name').value = '';
+                    document.getElementById('key-desc').value = '';
+                    document.getElementById('key-expiry').value = '';
+                    document.querySelectorAll('input[name="key-services"]').forEach(cb => cb.checked = false);
+                    
+                    loadApiKeys();
+                } else {
+                    alert(`Error: ${data.error}`);
+                }
+            } catch (err) {
+                alert(`Error al guardar clave: ${err.message}`);
+            }
+        }
+
+        async function deleteApiKey(keyId) {
+            if (!confirm("¿Estás seguro de que deseas eliminar esta clave API? Cualquier servicio que la use perderá el acceso inmediatamente.")) {
+                return;
+            }
+            
+            try {
+                const res = await fetch(`/api/keys/${keyId}`, { method: 'DELETE' });
+                const data = await res.json();
+                if (res.ok) {
+                    loadApiKeys();
+                } else {
+                    alert(`Error: ${data.error}`);
+                }
+            } catch (err) {
+                alert(`Error al borrar clave: ${err.message}`);
+            }
+        }
+
+        function openEditKeyModal(id, name, desc, servicesJson, expiry, isActive) {
+            const services = typeof servicesJson === 'string' ? JSON.parse(servicesJson) : servicesJson;
+            
+            document.getElementById('edit-key-id').value = id;
+            document.getElementById('edit-key-name').value = name;
+            document.getElementById('edit-key-desc').value = desc;
+            document.getElementById('edit-key-expiry').value = expiry ? expiry.split('T')[0] : '';
+            document.getElementById('edit-key-active').value = String(isActive);
+            
+            document.getElementById('edit-key-service-gemma').checked = services.includes('gemma');
+            document.getElementById('edit-key-service-whisper').checked = services.includes('whisper');
+            document.getElementById('edit-key-service-tts').checked = services.includes('tts');
+            document.getElementById('edit-key-service-diarization').checked = services.includes('diarization');
+            
+            document.getElementById('edit-key-modal').classList.remove('hidden');
+        }
+
+        function closeEditKeyModal() {
+            document.getElementById('edit-key-modal').classList.add('hidden');
+        }
+
+        async function updateApiKey() {
+            const id = document.getElementById('edit-key-id').value;
+            const name = document.getElementById('edit-key-name').value.trim();
+            const desc = document.getElementById('edit-key-desc').value.trim();
+            const expiry = document.getElementById('edit-key-expiry').value;
+            const isActive = document.getElementById('edit-key-active').value === 'true';
+            
+            const services = [];
+            if (document.getElementById('edit-key-service-gemma').checked) services.push('gemma');
+            if (document.getElementById('edit-key-service-whisper').checked) services.push('whisper');
+            if (document.getElementById('edit-key-service-tts').checked) services.push('tts');
+            if (document.getElementById('edit-key-service-diarization').checked) services.push('diarization');
+
+            if (!name) {
+                alert("El nombre de la clave es obligatorio.");
+                return;
+            }
+
+            if (services.length === 0) {
+                alert("Debes seleccionar al menos un servicio autorizado.");
+                return;
+            }
+
+            try {
+                const res = await fetch(`/api/keys/${id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        name: name,
+                        description: desc,
+                        services: services,
+                        expires_at: expiry,
+                        is_active: isActive
+                    })
+                });
+                
+                const data = await res.json();
+                if (res.ok) {
+                    closeEditKeyModal();
+                    loadApiKeys();
+                } else {
+                    alert(`Error: ${data.error}`);
+                }
+            } catch (err) {
+                alert(`Error al actualizar clave: ${err.message}`);
             }
         }
 

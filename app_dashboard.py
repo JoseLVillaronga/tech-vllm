@@ -68,6 +68,14 @@ SERVICE_PORTS = {
     "diarization": 8003
 }
 
+# Puertos internos de los motores reales detrás del Gateway
+BACKEND_PORTS = {
+    "gemma": int(os.getenv("GEMMA_BACKEND_PORT", "18000")),
+    "whisper": int(os.getenv("WHISPER_BACKEND_PORT", "18001")),
+    "tts": int(os.getenv("TTS_BACKEND_PORT", "18002")),
+    "diarization": int(os.getenv("DIARIZATION_BACKEND_PORT", "18003"))
+}
+
 def get_gpu_info():
     """
     Obtiene métricas de la GPU utilizando nvidia-smi de forma robusta.
@@ -374,6 +382,119 @@ def api_delete_voice(voice_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+# Gestión de Claves API específicas en MongoDB
+
+@app.route("/api/keys", methods=["GET"])
+def api_get_keys():
+    try:
+        db = get_db()
+        keys = list(db.api_keys.find())
+        result = []
+        for k in keys:
+            result.append({
+                "id": str(k["_id"]),
+                "name": k.get("name", "Sin nombre"),
+                "description": k.get("description", ""),
+                "key": k.get("key", ""),
+                "services": k.get("services", []),
+                "expires_at": k.get("expires_at", ""),
+                "is_active": k.get("is_active", True)
+            })
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/keys", methods=["POST"])
+def api_create_key():
+    try:
+        data = request.json or {}
+        name = data.get("name", "").strip()
+        description = data.get("description", "").strip()
+        services = data.get("services", [])
+        expires_at = data.get("expires_at", "").strip()
+        
+        if not name:
+            return jsonify({"error": "El nombre es obligatorio"}), 400
+            
+        if not services:
+            return jsonify({"error": "Debes seleccionar al menos un servicio"}), 400
+            
+        import secrets
+        new_key = "vllm_key_" + secrets.token_hex(20)
+        
+        expires_val = None
+        if expires_at:
+            expires_val = expires_at
+                
+        db = get_db()
+        key_id = db.api_keys.insert_one({
+            "name": name,
+            "description": description,
+            "key": new_key,
+            "services": services,
+            "expires_at": expires_val,
+            "is_active": True
+        }).inserted_id
+        
+        return jsonify({
+            "message": "Clave API creada con éxito",
+            "id": str(key_id),
+            "key": new_key
+        }), 201
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/keys/<key_id>", methods=["PUT"])
+def api_update_key(key_id):
+    try:
+        data = request.json or {}
+        name = data.get("name", "").strip()
+        description = data.get("description", "").strip()
+        services = data.get("services", [])
+        expires_at = data.get("expires_at", "").strip()
+        is_active = data.get("is_active", True)
+        
+        if not name:
+            return jsonify({"error": "El nombre es obligatorio"}), 400
+            
+        if not services:
+            return jsonify({"error": "Debes seleccionar al menos un servicio"}), 400
+            
+        expires_val = None
+        if expires_at:
+            expires_val = expires_at
+            
+        db = get_db()
+        res = db.api_keys.update_one(
+            {"_id": ObjectId(key_id)},
+            {"$set": {
+                "name": name,
+                "description": description,
+                "services": services,
+                "expires_at": expires_val,
+                "is_active": is_active
+            }}
+        )
+        
+        if res.matched_count == 0:
+            return jsonify({"error": "Clave API no encontrada"}), 404
+            
+        return jsonify({"message": "Clave API actualizada con éxito"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/keys/<key_id>", methods=["DELETE"])
+def api_delete_key(key_id):
+    try:
+        db = get_db()
+        res = db.api_keys.delete_one({"_id": ObjectId(key_id)})
+        if res.deleted_count == 0:
+            return jsonify({"error": "Clave API no encontrada"}), 404
+            
+        return jsonify({"message": "Clave API eliminada con éxito"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 # --- Rutas de API ---
 
 @app.route("/api/status", methods=["GET"])
@@ -467,7 +588,7 @@ def api_test_chat():
     prompt = data.get("prompt", "¡Hola!")
     model = current_vars.get("MODEL", "google/gemma-4-E4B-it")
     
-    url = f"http://localhost:{SERVICE_PORTS['gemma']}/v1/chat/completions"
+    url = f"http://127.0.0.1:{BACKEND_PORTS['gemma']}/v1/chat/completions"
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {api_key}"
@@ -482,7 +603,7 @@ def api_test_chat():
         res = requests.post(url, json=payload, headers=headers, timeout=30)
         return Response(res.text, status=res.status_code, content_type="application/json")
     except Exception as e:
-        return jsonify({"error": f"No se pudo conectar al servicio Gemma (puerto {SERVICE_PORTS['gemma']}): {str(e)}"}), 502
+        return jsonify({"error": f"No se pudo conectar al servicio Gemma (puerto {BACKEND_PORTS['gemma']}): {str(e)}"}), 502
 
 @app.route("/api/test/transcribe", methods=["POST"])
 def api_test_transcribe():
@@ -496,7 +617,7 @@ def api_test_transcribe():
         return jsonify({"error": "No se subió ningún archivo"}), 400
         
     audio_file = request.files["file"]
-    url = f"http://localhost:{SERVICE_PORTS['whisper']}/v1/audio/transcriptions"
+    url = f"http://127.0.0.1:{BACKEND_PORTS['whisper']}/v1/audio/transcriptions"
     
     headers = {
         "Authorization": f"Bearer {api_key}"
@@ -513,7 +634,7 @@ def api_test_transcribe():
         res = requests.post(url, headers=headers, files=files, data=data, timeout=30)
         return Response(res.text, status=res.status_code, content_type="application/json")
     except Exception as e:
-        return jsonify({"error": f"No se pudo conectar al servicio Whisper (puerto {SERVICE_PORTS['whisper']}): {str(e)}"}), 502
+        return jsonify({"error": f"No se pudo conectar al servicio Whisper (puerto {BACKEND_PORTS['whisper']}): {str(e)}"}), 502
 
 @app.route("/api/test/speech", methods=["POST"])
 def api_test_speech():
@@ -527,7 +648,7 @@ def api_test_speech():
     text = data.get("text", "Hola, esta es una prueba de voz.")
     voice = data.get("voice", "alloy")
     
-    url = f"http://localhost:{SERVICE_PORTS['tts']}/v1/audio/speech"
+    url = f"http://127.0.0.1:{BACKEND_PORTS['tts']}/v1/audio/speech"
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {api_key}"
@@ -546,7 +667,7 @@ def api_test_speech():
         else:
             return Response(res.text, status=res.status_code, content_type="application/json")
     except Exception as e:
-        return jsonify({"error": f"No se pudo conectar al servicio F5-TTS (puerto {SERVICE_PORTS['tts']}): {str(e)}"}), 502
+        return jsonify({"error": f"No se pudo conectar al servicio F5-TTS (puerto {BACKEND_PORTS['tts']}): {str(e)}"}), 502
 
 @app.route("/api/test/diarize", methods=["POST"])
 def api_test_diarize():
@@ -560,7 +681,7 @@ def api_test_diarize():
         return jsonify({"error": "No se subió ningún archivo"}), 400
         
     audio_file = request.files["file"]
-    url = f"http://localhost:{SERVICE_PORTS['diarization']}/v1/audio/diarize"
+    url = f"http://127.0.0.1:{BACKEND_PORTS['diarization']}/v1/audio/diarize"
     
     headers = {
         "Authorization": f"Bearer {api_key}"
@@ -574,7 +695,7 @@ def api_test_diarize():
         res = requests.post(url, headers=headers, files=files, timeout=60)
         return Response(res.text, status=res.status_code, content_type="application/json")
     except Exception as e:
-        return jsonify({"error": f"No se pudo conectar al servicio de Diarización (puerto {SERVICE_PORTS['diarization']}): {str(e)}"}), 502
+        return jsonify({"error": f"No se pudo conectar al servicio de Diarización (puerto {BACKEND_PORTS['diarization']}): {str(e)}"}), 502
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=PORT)
