@@ -6,6 +6,9 @@ import requests
 import subprocess
 import uuid
 import torchaudio
+import threading
+import time
+from datetime import datetime, timedelta
 from flask import Flask, render_template, request, jsonify, Response
 from dotenv import load_dotenv
 from pymongo import MongoClient
@@ -132,6 +135,59 @@ def get_service_status(service_name):
     except Exception as e:
         print(f"⚠️ Error al comprobar estado de {service_name}: {e}", file=sys.stderr)
         return "unknown"
+
+# Inicializar la base de datos de telemetría y crear índice TTL de 7 días
+def init_db_telemetry():
+    try:
+        db = get_db()
+        db.telemetry_history.create_index("timestamp", expireAfterSeconds=604800)
+        print("💾 MongoDB: Índice TTL de 7 días configurado en telemetry_history.")
+    except Exception as e:
+        print(f"⚠️ Error al configurar índice TTL en MongoDB: {e}", file=sys.stderr)
+
+# Hilo recolector de telemetría histórica (muestreo cada 60s)
+def start_telemetry_collector():
+    def telemetry_loop():
+        # Esperar 5s de calentamiento inicial
+        time.sleep(5)
+        print("📊 Recolector de Telemetría Histórica Iniciado (muestreo cada 60s).")
+        while True:
+            try:
+                # 1. Obtener info de GPU
+                gpu = get_gpu_info()
+                gpu_util = gpu.get("gpu_util", 0) if gpu else 0
+                gpu_temp = gpu.get("gpu_temp", 0) if gpu else 0
+                vram_used = gpu.get("used_vram", 0) / 1024.0 if gpu else 0 # Convertir a GB
+                vram_total = gpu.get("total_vram", 0) / 1024.0 if gpu else 0
+                
+                # 2. Obtener info de CPU y RAM
+                cpu_util = psutil.cpu_percent()
+                ram = psutil.virtual_memory()
+                ram_util = ram.percent
+                
+                # 3. Obtener estado de los servicios
+                services_status = {}
+                for key, svc_name in SERVICES.items():
+                    services_status[key] = get_service_status(svc_name)
+                    
+                # 4. Registrar en MongoDB
+                db = get_db()
+                db.telemetry_history.insert_one({
+                    "timestamp": datetime.utcnow(),
+                    "cpu": cpu_util,
+                    "ram": ram_util,
+                    "gpu_util": gpu_util,
+                    "gpu_temp": gpu_temp,
+                    "vram_used": round(vram_used, 2),
+                    "vram_total": round(vram_total, 2),
+                    "services": services_status
+                })
+            except Exception as ex:
+                print(f"⚠️ Error en bucle de telemetría: {ex}", file=sys.stderr)
+            time.sleep(60)
+
+    t = threading.Thread(target=telemetry_loop, daemon=True)
+    t.start()
 
 def control_service(service_name, action):
     """
@@ -497,6 +553,37 @@ def api_delete_key(key_id):
 
 # --- Rutas de API ---
 
+@app.route("/api/telemetry/history", methods=["GET"])
+def api_telemetry_history():
+    try:
+        hours = request.args.get("hours", default=6, type=int)
+        
+        # Calcular fecha de inicio
+        start_date = datetime.utcnow() - timedelta(hours=hours)
+        
+        db = get_db()
+        records = list(db.telemetry_history.find(
+            {"timestamp": {"$gte": start_date}}
+        ).sort("timestamp", 1)) # Orden cronológico ascendente para graficar
+        
+        result = []
+        for r in records:
+            ts_str = r["timestamp"].isoformat() + "Z" if isinstance(r["timestamp"], datetime) else r["timestamp"]
+            result.append({
+                "timestamp": ts_str,
+                "cpu": r.get("cpu", 0),
+                "ram": r.get("ram", 0),
+                "gpu_util": r.get("gpu_util", 0),
+                "gpu_temp": r.get("gpu_temp", 0),
+                "vram_used": r.get("vram_used", 0),
+                "vram_total": r.get("vram_total", 0),
+                "services": r.get("services", {})
+            })
+            
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route("/api/status", methods=["GET"])
 def api_status():
     """
@@ -698,4 +785,6 @@ def api_test_diarize():
         return jsonify({"error": f"No se pudo conectar al servicio de Diarización (puerto {BACKEND_PORTS['diarization']}): {str(e)}"}), 502
 
 if __name__ == "__main__":
+    init_db_telemetry()
+    start_telemetry_collector()
     app.run(host="0.0.0.0", port=PORT)
