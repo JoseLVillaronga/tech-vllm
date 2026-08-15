@@ -241,6 +241,32 @@ def create_proxy_app(service_name: str, target_port: int) -> FastAPI:
         headers.pop("content-length", None) # Httpx lo recalcula si hay cuerpo
         
         body = await request.body()
+        
+        # Interceptar peticiones de chat para inyectar el prompt de sistema para razonamiento en gemma-4-reasoning
+        if service_name == "gemma" and path.strip("/") == "v1/chat/completions" and request.method == "POST" and body:
+            try:
+                import json
+                data = json.loads(body)
+                if data.get("model") == "gemma-4-reasoning" and "messages" in data:
+                    messages = data["messages"]
+                    # Buscar si hay un mensaje de sistema existente
+                    system_msg = next((m for m in messages if m.get("role") == "system"), None)
+                    reasoning_instruction = (
+                        "Eres un modelo de razonamiento. Debes escribir tu proceso de pensamiento "
+                        "paso a paso envuelto dentro de etiquetas <think>...</think>, y luego "
+                        "escribir tu respuesta final."
+                    )
+                    if system_msg:
+                        original_content = system_msg.get("content", "")
+                        if reasoning_instruction not in original_content:
+                            system_msg["content"] = f"{original_content}\n\n{reasoning_instruction}".strip()
+                    else:
+                        messages.insert(0, {"role": "system", "content": reasoning_instruction})
+                    # Volver a serializar el cuerpo modificado
+                    body = json.dumps(data).encode("utf-8")
+            except Exception as json_err:
+                print(f"⚠️ Error al interceptar y parsear JSON en el Gateway: {json_err}", file=sys.stderr, flush=True)
+
         client = get_http_client()
         
         try:
