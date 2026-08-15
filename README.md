@@ -490,6 +490,11 @@ Durante el proceso de configuración y depuración de este proyecto se identific
 * **Problema:** Los modelos de razonamiento (como Gemma 4 con LoRA de razonamiento) requieren tokens de disparo de pensamientos estructurados (como `<|think|>`), que no se inyectan automáticamente en todas las aplicaciones externas de cliente (como scripts automatizados o clientes API), causando que el modelo devuelva directamente la respuesta final sin pasar por la fase de cadena de pensamiento.
 * **Solución:** Implementar un **interceptor de cuerpo de petición** en el Gateway Proxy (`app_gateway.py`). Si la llamada `POST` a `/v1/chat/completions` va dirigida a `gemma-4-reasoning`, el Gateway analiza el JSON e inyecta o concatena de manera transparente la directiva del sistema (`"Eres un modelo de razonamiento. Debes escribir tu proceso de pensamiento paso a paso envuelto dentro de etiquetas <think>...</think>..."`). Esto garantiza que el comportamiento de razonamiento colapsable sea universal y funcione de manera inmediata en todo el ecosistema de red.
 
+### 11. Eliminación del Token de Fin de Turno (`<turn|>`) en Respuestas de Cliente
+* **Problema:** Los modelos Gemma 4 (tanto el base `google/gemma-4-E4B-it` como el LoRA de razonamiento `gemma-4-reasoning`) devuelven la cadena de caracteres literal `<turn|>` al final de cada generación de texto en Open-WebUI y otras aplicaciones de cliente, lo cual resulta molesto y carece de utilidad para el usuario.
+* **Causa:** El token de fin de turno (`ID 106`) detiene correctamente la inferencia en vLLM. Sin embargo, al no estar catalogado en el tokenizador base como un "special token" a omitir en la decodificación, el decodificador lo traduce textualmente a la cadena de caracteres `<turn|>` y la incluye en la respuesta.
+* **Solución:** Modificar el Gateway Proxy (`app_gateway.py`) para inyectar automáticamente la secuencia de parada `"<turn|>"` en el parámetro `stop` de todas las solicitudes dirigidas al servicio de Gemma. Esto obliga a vLLM a considerar la secuencia como un criterio de parada formal y a **removerla de forma atómica** de la respuesta de texto entregada al cliente, resolviendo el problema de forma transparente y sin sobrecarga de cómputo.
+
 ---
 
 ## 🎙️ Clonación de Voz con F5-TTS (Zero-Shot TTS)
