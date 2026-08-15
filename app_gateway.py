@@ -307,12 +307,22 @@ def create_proxy_app(service_name: str, target_port: int) -> FastAPI:
             # El bloque finally asegura que el socket del backend se cierre al completarse
             # o si el cliente aborta la conexión a mitad de camino (evita fugas de descriptores de archivos).
             async def event_generator():
+                buffer = b""
                 try:
                     async for chunk in resp.aiter_raw():
-                        yield chunk
+                        buffer += chunk
+                        if b"<turn|>" in buffer:
+                            buffer = buffer.replace(b"<turn|>", b"")
+                        if len(buffer) > 10:
+                            yield buffer[:-10]
+                            buffer = buffer[-10:]
                 except asyncio.CancelledError:
                     print(f"🔌 Cliente cerró la conexión para {service_name} prematuramente.")
                 finally:
+                    if buffer:
+                        if b"<turn|>" in buffer:
+                            buffer = buffer.replace(b"<turn|>", b"")
+                        yield buffer
                     await resp.aclose()
                     
             return StreamingResponse(
