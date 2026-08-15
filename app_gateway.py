@@ -247,6 +247,8 @@ def create_proxy_app(service_name: str, target_port: int) -> FastAPI:
             try:
                 import json
                 data = json.loads(body)
+                
+                # 1. Inyectar el system prompt de razonamiento para gemma-4-reasoning
                 if data.get("model") == "gemma-4-reasoning" and "messages" in data:
                     messages = data["messages"]
                     # Buscar si hay un mensaje de sistema existente
@@ -262,8 +264,21 @@ def create_proxy_app(service_name: str, target_port: int) -> FastAPI:
                             system_msg["content"] = f"{original_content}\n\n{reasoning_instruction}".strip()
                     else:
                         messages.insert(0, {"role": "system", "content": reasoning_instruction})
-                    # Volver a serializar el cuerpo modificado
-                    body = json.dumps(data).encode("utf-8")
+                
+                # 2. Forzar que vLLM no retorne la etiqueta <turn|> al final de la generación
+                # agregándola al array 'stop' de la petición.
+                stop_sequences = data.get("stop", [])
+                if isinstance(stop_sequences, str):
+                    stop_sequences = [stop_sequences]
+                elif not isinstance(stop_sequences, list):
+                    stop_sequences = []
+                
+                if "<turn|>" not in stop_sequences:
+                    stop_sequences.append("<turn|>")
+                    data["stop"] = stop_sequences
+                
+                # Volver a serializar el cuerpo modificado
+                body = json.dumps(data).encode("utf-8")
             except Exception as json_err:
                 print(f"⚠️ Error al interceptar y parsear JSON en el Gateway: {json_err}", file=sys.stderr, flush=True)
 
