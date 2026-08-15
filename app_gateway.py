@@ -8,7 +8,7 @@ from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 import httpx
 from pymongo import MongoClient
-from datetime import datetime
+from datetime import datetime, timedelta
 from dotenv import load_dotenv
 
 # Cargar variables de entorno
@@ -17,6 +17,10 @@ load_dotenv()
 # Listas de subredes autorizadas/bloqueadas cargadas en caché en memoria RAM
 cached_whitelist = []
 cached_blacklist = []
+
+# Control de intrusión (Fail2ban nativo)
+failed_attempts = {}
+failed_attempts_lock = asyncio.Lock()
 
 # Clave API Maestra
 MASTER_KEY = os.getenv("API_KEY", "token-abc123")
@@ -125,6 +129,36 @@ async def sync_ip_rules_loop():
             
         await asyncio.sleep(10)
 
+# Registrar un intento de autenticación fallido y banear la IP si llega a 3 fallos en 5m
+async def register_failed_attempt(client_ip: str):
+    global failed_attempts
+    async with failed_attempts_lock:
+        now = datetime.utcnow()
+        attempts = failed_attempts.get(client_ip, [])
+        # Filtrar fallos de hace más de 5 minutos (300s)
+        attempts = [t for t in attempts if (now - t).total_seconds() < 300]
+        attempts.append(now)
+        failed_attempts[client_ip] = attempts
+        
+        if len(attempts) >= 3:
+            try:
+                db = get_db()
+                network_cidr = f"{client_ip}/32"
+                existing = db.ip_rules.find_one({"network": network_cidr})
+                if not existing:
+                    db.ip_rules.insert_one({
+                        "name": f"Baneo Automático (Fallas API Key)",
+                        "network": network_cidr,
+                        "action": "blacklist",
+                        "is_active": True,
+                        "expires_at": now + timedelta(hours=48)
+                    })
+                    print(f"🚨 Fail2ban: IP {client_ip} bloqueada automáticamente por 48 horas tras 3 fallos en 5 minutos.", flush=True)
+            except Exception as e:
+                print(f"⚠️ Error en Fail2ban al registrar baneo para IP {client_ip}: {e}", file=sys.stderr, flush=True)
+            # Limpiar los intentos de esta IP para resetear el contador una vez bloqueada
+            failed_attempts.pop(client_ip, None)
+
 # Creador de Apps Proxy
 def create_proxy_app(service_name: str, target_port: int) -> FastAPI:
     app = FastAPI(title=f"Gateway Proxy para {service_name.upper()}")
@@ -176,6 +210,8 @@ def create_proxy_app(service_name: str, target_port: int) -> FastAPI:
             token = request.query_params.get("api_key", "")
             
         if not token:
+            # Registrar intento de autenticación fallido
+            await register_failed_attempt(client_ip)
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="API Key faltante. Debe proporcionarse en la cabecera 'Authorization: Bearer <key>'"
@@ -183,6 +219,8 @@ def create_proxy_app(service_name: str, target_port: int) -> FastAPI:
             
         # Validar token
         if not validate_token(token, service_name):
+            # Registrar intento de autenticación fallido
+            await register_failed_attempt(client_ip)
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="API Key inválida, desactivada, expirada o sin permisos para este servicio."
@@ -251,6 +289,14 @@ def create_proxy_app(service_name: str, target_port: int) -> FastAPI:
     return app
 
 async def run_servers():
+    # Asegurar la creación del índice TTL sobre expires_at para autolimpiar los baneos de Fail2ban
+    try:
+        db = get_db()
+        db.ip_rules.create_index("expires_at", expireAfterSeconds=0)
+        print("💾 MongoDB: Índice TTL dinámico configurado o verificado en ip_rules.", flush=True)
+    except Exception as e:
+        print(f"⚠️ Error al inicializar índice TTL de IP en Gateway startup: {e}", file=sys.stderr, flush=True)
+
     gemma_port = int(os.getenv("GEMMA_BACKEND_PORT", "18000"))
     whisper_port = int(os.getenv("WHISPER_BACKEND_PORT", "18001"))
     tts_port = int(os.getenv("TTS_BACKEND_PORT", "18002"))

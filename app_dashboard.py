@@ -137,14 +137,18 @@ def get_service_status(service_name):
         print(f"⚠️ Error al comprobar estado de {service_name}: {e}", file=sys.stderr)
         return "unknown"
 
-# Inicializar la base de datos de telemetría y crear índice TTL de 7 días
+# Inicializar la base de datos de telemetría e índices de seguridad
 def init_db_telemetry():
     try:
         db = get_db()
         db.telemetry_history.create_index("timestamp", expireAfterSeconds=604800)
         print("💾 MongoDB: Índice TTL de 7 días configurado en telemetry_history.")
+        
+        # Crear índice TTL en ip_rules sobre expires_at para autolimpieza de baneos temporales (48h)
+        db.ip_rules.create_index("expires_at", expireAfterSeconds=0)
+        print("💾 MongoDB: Índice TTL dinámico configurado en ip_rules (expires_at).")
     except Exception as e:
-        print(f"⚠️ Error al configurar índice TTL en MongoDB: {e}", file=sys.stderr)
+        print(f"⚠️ Error al configurar índices de base de datos en MongoDB: {e}", file=sys.stderr)
 
 # Hilo recolector de telemetría histórica (muestreo cada 60s)
 def start_telemetry_collector():
