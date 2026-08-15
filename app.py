@@ -42,6 +42,16 @@ def main():
         "--api-key", api_key
     ]
 
+    # Configurar LoRA si el adaptador está completamente descargado
+    lora_dir = "/home/jose/modelos/loras/gemma-4-E4B-opus-reasoning-claude-code-lora"
+    if os.path.exists(os.path.join(lora_dir, "adapter_config.json")):
+        cmd.extend([
+            "--enable-lora",
+            "--lora-modules", f"gemma-4-reasoning={lora_dir}",
+            "--max-loras", "4",
+            "--max-lora-rank", "64"
+        ])
+
     # Agregar --quantization si está definido en .env
     if quantization:
         cmd.extend(["--quantization", quantization])

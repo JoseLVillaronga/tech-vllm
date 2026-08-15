@@ -321,8 +321,15 @@
                             <div class="space-y-4">
                                 <h3 class="text-sm font-bold text-indigo-400 border-b border-slate-800 pb-1.5 uppercase font-mono tracking-wider">Inferencia Gemma 4</h3>
                                 <div>
-                                    <label class="block text-xs font-semibold text-slate-300 mb-1">MODEL (Checkpint del LLM)</label>
-                                    <input type="text" name="MODEL" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 font-mono">
+                                    <label class="block text-xs font-semibold text-slate-300 mb-1">MODEL (Checkpoint del LLM)</label>
+                                    <div class="flex flex-col gap-2">
+                                        <input type="text" id="model-input" name="MODEL" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 font-mono">
+                                        <div class="flex flex-wrap gap-1.5">
+                                            <button type="button" onclick="selectQuickModel('google/gemma-4-E4B-it')" class="px-2.5 py-1 rounded bg-slate-950 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 text-[10px] font-semibold text-indigo-300 transition-all cursor-pointer">Gemma 4 E4B-it (Google)</button>
+                                            <button type="button" onclick="selectQuickModel('nvidia/Gemma-4-26B-A4B-NVFP4')" class="px-2.5 py-1 rounded bg-slate-950 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 text-[10px] font-semibold text-indigo-300 transition-all cursor-pointer">Gemma 4 26B-A4B (NVIDIA)</button>
+                                            <button type="button" onclick="selectQuickModel('google/gemma-4-E4B')" class="px-2.5 py-1 rounded bg-slate-950 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 text-[10px] font-semibold text-indigo-300 transition-all cursor-pointer">Gemma 4 E4B Base (Google)</button>
+                                        </div>
+                                    </div>
                                 </div>
                                 <div class="grid grid-cols-2 gap-4">
                                     <div>
@@ -856,6 +863,13 @@
                 .replace(/"/g, '\\"')
                 .replace(/\n/g, "\\n")
                 .replace(/\r/g, "\\r");
+        }
+
+        function selectQuickModel(modelName) {
+            const input = document.getElementById('model-input');
+            if (input) {
+                input.value = modelName;
+            }
         }
 
         // Cambiar pestañas
