@@ -481,6 +481,15 @@ Durante el proceso de configuración y depuración de este proyecto se identific
 * **Solución:** Implementar administración perezosa (*lazy loading*) en [app_tts.py](file:///home/jose/vllm/app_tts.py). Los modelos inactivos se instancian en la RAM del sistema (CPU) y se transfieren a la GPU (CUDA) sobre el bus PCIe bajo demanda en menos de 0.2 segundos.
 * **Resultado:** Soporte completo de 6 idiomas nativos con un consumo constante y controlado de **~1.2 GB de VRAM**.
 
+### 9. Formatos de Adaptadores LoRA: PyTorch PEFT vs. MLX (Apple Silicon)
+* **Problema:** Error `ValueError: Missing required configuration fields: {'r', 'target_modules', 'lora_alpha'}` al cargar un adaptador en vLLM.
+* **Causa:** Intentar cargar adaptadores LoRA compilados para el framework **MLX (Apple Silicon)** en un entorno de inferencia basado en Linux/Nvidia (PyTorch). MLX almacena tensores con formatos y nombres de claves de configuración de bajo nivel distintos (ej. `"rank"` y `"alpha"` en vez de `"r"` y `"lora_alpha"`).
+* **Solución:** Utilizar la versión nativa del adaptador portada a formato **PyTorch PEFT estándar** (como `josuediazflores/gemma-4-e4b-opus-reasoning-lora`), que incluye las matrices de bajo rango en ficheros Safetensors estándar estructuradas para el cargador de vLLM.
+
+### 10. Inyección de Prompts de Sistema en Caliente para Razonamiento
+* **Problema:** Los modelos de razonamiento (como Gemma 4 con LoRA de razonamiento) requieren tokens de disparo de pensamientos estructurados (como `<|think|>`), que no se inyectan automáticamente en todas las aplicaciones externas de cliente (como scripts automatizados o clientes API), causando que el modelo devuelva directamente la respuesta final sin pasar por la fase de cadena de pensamiento.
+* **Solución:** Implementar un **interceptor de cuerpo de petición** en el Gateway Proxy (`app_gateway.py`). Si la llamada `POST` a `/v1/chat/completions` va dirigida a `gemma-4-reasoning`, el Gateway analiza el JSON e inyecta o concatena de manera transparente la directiva del sistema (`"Eres un modelo de razonamiento. Debes escribir tu proceso de pensamiento paso a paso envuelto dentro de etiquetas <think>...</think>..."`). Esto garantiza que el comportamiento de razonamiento colapsable sea universal y funcione de manera inmediata en todo el ecosistema de red.
+
 ---
 
 ## 🎙️ Clonación de Voz con F5-TTS (Zero-Shot TTS)
