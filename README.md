@@ -526,24 +526,53 @@ f5tts.infer(
 
 ---
 
-## 🛡️ Gateway de Seguridad y Sistema de Claves API Específicas
+## 🛡️ Gateway de Seguridad y Protección Perimetral
 
-Para proteger el ecosistema de IA y otorgar control de acceso granular, la suite local implementa un **Gateway Proxy Reverso asíncrono** (`app_gateway.py`).
+Para proteger el ecosistema de IA y permitir la exposición segura de la suite a Internet (por ejemplo, detrás de un proxy como **Caddy**), la suite local implementa un **Gateway Proxy Reverso asíncrono** (`app_gateway.py`) que actúa como la primera línea de defensa perimetral.
 
-### 🏛️ Arquitectura de Seguridad
-Los motores de inferencia reales están enlazados exclusivamente en la dirección de red local (`127.0.0.1`) en puertos privados reubicados (`18000`-`18003`). El Gateway de seguridad escucha en los puertos de red públicos estándar (`8000`-`8003`), interceptando y validando cada petición entrante.
+### 🏛️ Arquitectura de Aislamiento de Red
+Los motores de inferencia reales (Gemma, Whisper, F5-TTS y PyAnnote) están enlazados exclusivamente en la dirección de bucle local (`127.0.0.1`) en puertos privados reubicados (`18000`-`18003`). El Gateway de seguridad escucha en las interfaces públicas estándar en los puertos públicos (`8000`-`8003`), interceptando, validando y normalizando cada petición entrante antes de delegar el procesamiento.
 
-### 🔑 Tipos de Claves de Acceso
-1.  **Clave Maestra (`API_KEY` en `.env`):** Otorga privilegios completos de administrador y acceso total e irrestricto a los 4 servicios. Es la que utiliza la propia interfaz del Dashboard y Open-WebUI por defecto.
-2.  **Claves Secundarias / Específicas (Persistidas en MongoDB):**
-    *   Se administran en caliente desde la pestaña **"Claves API"** en el Dashboard Web.
-    *   Permiten delimitar de forma granular a qué servicios tiene acceso la clave (ej: una clave exclusiva para transcripción de audio con Whisper, otra clave para chat LLM y síntesis TTS, etc.).
-    *   Soportan **fecha de expiración opcional** (la clave se suspende automáticamente al llegar a la fecha límite).
-    *   Se pueden desactivar (suspender) o eliminar a voluntad con un solo clic desde la interfaz web.
+---
+
+### 🔑 1. Sistema de Claves API (Autenticación)
+
+El acceso a las APIs requiere obligatoriamente una firma Bearer:
+1.  **Clave Maestra (`API_KEY` en `.env`):** Otorga privilegios de administrador y acceso total e irrestricto a los 4 servicios. Es la que utiliza la propia interfaz del Dashboard y Open-WebUI por defecto.
+2.  **Claves API Secundarias (Persistidas en MongoDB):**
+    *   Administradas en caliente desde la pestaña **"Seguridad"** del Dashboard Web.
+    *   Permiten acceso granular por servicios individuales (ej: habilitar solo STT para un bot de transcripción).
+    *   Cuentan con **fecha de expiración opcional** (la clave se suspende automáticamente al expirar) y pueden ser activadas/desactivadas manualmente con un clic.
+
+---
+
+### 🌐 2. Control de Acceso por IP (Whitelist / Blacklist CIDR)
+
+El Gateway valida la IP de origen del cliente contra reglas persistidas en MongoDB:
+*   **Soporte CIDR Completo:** Permite ingresar direcciones IP individuales (ej. `192.168.1.50`) u obtener compatibilidad con rangos y subredes completas utilizando notación CIDR estándar (ej. `192.168.0.0/16`).
+*   **Políticas de Lista:**
+    *   *Lista Blanca (Whitelist):* Si tiene elementos, se comporta como "restrictivo por defecto" (solo entran las IPs que pertenezcan a la lista blanca).
+    *   *Lista Negra (Blacklist):* Si tiene elementos, deniega de inmediato con `403 Forbidden` a cualquier IP que coincida.
+*   **Validación de Sintaxis:** La base de datos y la UI validan la sintaxis utilizando el módulo estándar `ipaddress` para evitar configuraciones de red corruptas.
+*   **Cero Latencia:** Para no degradar el rendimiento de la GPU, el Gateway no consulta la base de datos en cada petición. Valida las peticiones contra copias en memoria RAM de los rangos ($O(1)$) que un hilo asíncrono en segundo plano sincroniza desde MongoDB cada 10 segundos.
+
+---
+
+### 🚨 3. Sistema de Prevención de Intrusos (Fail2ban Nativo)
+
+Para mitigar escaneos de puertos y ataques de fuerza bruta al publicar la suite a Internet:
+*   **Detección en RAM:** El Gateway rastrea los intentos fallidos de autenticación (tokens faltantes o inválidos) en caliente usando un diccionario de memoria RAM protegido contra concurrencia.
+*   **Regla de los 3 Fallos:** Si una IP de cliente genera **3 intentos fallidos en un lapso de 5 minutos (300 segundos)**, el sistema la considera hostil.
+*   **Baneo Automático por 48 horas:**
+    *   La IP es bloqueada automáticamente mediante la inserción de una regla de lista negra (`blacklist`) en MongoDB con una vigencia de 48 horas (`expires_at`).
+    *   El bloqueo se propaga al caché de todos los puertos públicos del Gateway en segundos.
+*   **Autolimpieza Eficiente:** MongoDB limpia y remueve de forma automática las IPs baneadas expiradas utilizando un índice TTL dinámico en la colección `ip_rules` (`expireAfterSeconds=0` sobre el campo `expires_at`). Las reglas de IP estáticas (permanentes) carecen de este campo y nunca expiran.
+
+---
 
 ### ⚙️ Administración del Servicio de Gateway (Systemd)
 
-*   **Instalación/Registro del Servicio:**
+*   **Instalar/Registrar el Servicio:**
     ```bash
     ./install_gateway_service.sh
     ```
@@ -551,7 +580,7 @@ Los motores de inferencia reales están enlazados exclusivamente en la direcció
     ```bash
     sudo systemctl status vllm-gateway
     ```
-*   **Monitorear Peticiones y Logs en Vivo:**
+*   **Monitorear Peticiones e Intentos de Baneo:**
     ```bash
     sudo journalctl -u vllm-gateway -f
     ```
