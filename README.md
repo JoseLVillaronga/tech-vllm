@@ -540,6 +540,62 @@ f5tts.infer(
 
 ---
 
+## 💻 Agentes de Programación en Consola (Aider)
+
+El ecosistema local permite la integración de agentes de programación interactivos basados en terminal como **Aider** (`aider.chat`), permitiéndoles conectarse directamente a tu motor GPU local para realizar modificaciones de código de múltiples archivos y control de versiones automático en Git.
+
+### ⚙️ Instalación en Entornos con Anaconda (Python 3.13+)
+
+Dado que Aider requiere entornos con Python 3.9–3.12 y no soporta de forma nativa versiones muy recientes como Python 3.13 o superior (común en entornos nuevos de Anaconda), se utiliza la utilidad oficial `aider-install` para encapsular la herramienta de manera aislada sin alterar tu entorno Anaconda global:
+
+1. **Instalar el asistente de instalación oficial:**
+   ```bash
+   pip install aider-install
+   ```
+2. **Ejecutar el instalador aislado:**
+   ```bash
+   aider-install
+   ```
+
+---
+
+### 🌐 Configuración del Entorno (`.bashrc`)
+
+Para que Aider se conecte automáticamente al Gateway local y localice el ejecutable aislado, añade las siguientes líneas a tu archivo `~/.bashrc`:
+
+```bash
+# Apuntar Aider al Gateway local
+export OPENAI_API_BASE="http://localhost:8000/v1"
+export OPENAI_API_KEY="vllm_key_6a8415b561c810996239ea3ed66ff41fcbe4452c" # Clave maestra de la suite
+
+# Agregar ejecutables locales al PATH (para ubicar uv y Aider)
+export PATH="/home/jose/.local/bin:$PATH"
+```
+
+Carga la nueva configuración en tu terminal actual:
+```bash
+source ~/.bashrc
+```
+
+---
+
+### 🚀 Uso de Aider con el Modelo de Razonamiento Local
+
+Una vez configurado el entorno, sitúate en la carpeta raíz de cualquier repositorio Git y lanza Aider apuntando al modelo de razonamiento dinámico cargado con LoRA:
+
+```bash
+aider --model openai/gemma-4-reasoning
+```
+
+#### 💡 Consejos de Uso:
+* **Formato de Edición:** El modelo `gemma-4-reasoning` cuenta con razonamiento estructurado avanzado. Si notas imprecisiones en los diffs, puedes forzar a Aider a reescribir archivos completos utilizando:
+  ```bash
+  aider --model openai/gemma-4-reasoning --edit-format whole
+  ```
+* **Salir del Chat:** Para salir de la consola de Aider, escribe `/exit`, `/quit` o presiona `Ctrl + D`.
+
+---
+
 ## 🛡️ Gateway de Seguridad y Protección Perimetral
 
 Para proteger el ecosistema de IA y permitir la exposición segura de la suite a Internet (por ejemplo, detrás de un proxy como **Caddy**), la suite local implementa un **Gateway Proxy Reverso asíncrono** (`app_gateway.py`) que actúa como la primera línea de defensa perimetral.
