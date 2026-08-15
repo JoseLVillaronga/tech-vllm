@@ -93,7 +93,7 @@ def validate_token(token: str, service_name: str) -> bool:
 # Lazo en segundo plano para sincronizar las reglas de IP desde MongoDB cada 10s
 async def sync_ip_rules_loop():
     global cached_whitelist, cached_blacklist
-    print("🛡️ Sincronizador de reglas de IP del Gateway Iniciado.")
+    print("🛡️ Sincronizador de reglas de IP del Gateway Iniciado.", flush=True)
     while True:
         try:
             db = get_db()
@@ -115,13 +115,13 @@ async def sync_ip_rules_loop():
                     elif action == "blacklist":
                         new_blacklist.append(net_obj)
                 except Exception as parse_err:
-                    print(f"⚠️ Error parseando regla de IP '{network_str}': {parse_err}", file=sys.stderr)
+                    print(f"⚠️ Error parseando regla de IP '{network_str}': {parse_err}", file=sys.stderr, flush=True)
             
             cached_whitelist = new_whitelist
             cached_blacklist = new_blacklist
             
         except Exception as e:
-            print(f"⚠️ Error al sincronizar reglas de IP: {e}", file=sys.stderr)
+            print(f"⚠️ Error al sincronizar reglas de IP: {e}", file=sys.stderr, flush=True)
             
         await asyncio.sleep(10)
 
