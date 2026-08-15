@@ -113,9 +113,9 @@
             </button>
             <button onclick="showTab('tab-keys')" id="btn-keys" class="tab-btn w-full flex items-center gap-3 px-4 py-3 rounded-xl border border-transparent text-slate-300 hover:bg-slate-800/50 hover:text-white transition-all font-medium">
                 <svg class="h-5 w-5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
                 </svg>
-                Claves API
+                Seguridad
             </button>
             <div class="mt-auto border-t border-slate-800/60 pt-4 flex flex-col gap-2">
                 <p class="text-xs text-slate-500 font-mono">PUERTOS DE LA SUITE:</p>
@@ -660,6 +660,81 @@
                         </div>
                     </div>
                 </div>
+
+                <!-- Divisor / Línea de separación -->
+                <div class="border-t border-slate-800/60 my-4"></div>
+
+                <!-- CONTROL DE ACCESO POR IP -->
+                <div class="glass-panel p-6 rounded-2xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                    <div>
+                        <h2 class="text-xl font-bold text-slate-100 flex items-center gap-2">
+                            <svg class="h-6 w-6 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                            </svg>
+                            Filtro de Seguridad de Red (Whitelist / Blacklist IP)
+                        </h2>
+                        <p class="text-xs text-slate-400 mt-1">
+                            Restringe el acceso al Gateway Proxy basándote en direcciones IP individuales o subredes mediante notación CIDR (ej. <code class="text-indigo-300">192.168.1.0/24</code>). Si la Lista Blanca está vacía, se permite cualquier IP que no esté en la Lista Negra.
+                        </p>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <!-- Left: Create IP Rule Form -->
+                    <div class="glass-panel p-5 rounded-2xl flex flex-col gap-4">
+                        <h3 class="text-sm font-bold text-slate-200 border-b border-slate-800 pb-2">Crear Regla de IP</h3>
+                        <div class="flex flex-col gap-3">
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-300 mb-1">Nombre / Dispositivo:</label>
+                                <input id="ip-rule-name" type="text" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-500" placeholder="Ej: Mi Laptop, Subred Hogar...">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-300 mb-1">IP o Subred (CIDR):</label>
+                                <input id="ip-rule-network" type="text" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-500" placeholder="Ej: 192.168.1.45 o 192.168.0.0/16">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-300 mb-1">Tipo de Acción:</label>
+                                <select id="ip-rule-action" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-500 cursor-pointer">
+                                    <option value="whitelist" selected>Lista Blanca (Autorizar acceso)</option>
+                                    <option value="blacklist">Lista Negra (Bloquear acceso)</option>
+                                </select>
+                            </div>
+                            <div class="flex items-center gap-2 mt-1">
+                                <input type="checkbox" id="ip-rule-active" checked class="rounded border-slate-800 text-emerald-600 focus:ring-emerald-500 bg-slate-950">
+                                <label for="ip-rule-active" class="text-xs text-slate-300 cursor-pointer select-none">Habilitar regla de inmediato</label>
+                            </div>
+                            <button onclick="createIpRule()" class="w-full mt-2 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition-all shadow-lg flex items-center justify-center gap-2">
+                                <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
+                                </svg>
+                                Añadir Regla de IP
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Right: IP Rules List -->
+                    <div class="glass-panel p-5 rounded-2xl lg:col-span-2 flex flex-col gap-4">
+                        <h3 class="text-sm font-bold text-slate-200 border-b border-slate-800 pb-2">Reglas de IP Configuradas</h3>
+                        <div class="overflow-y-auto max-h-[380px] pr-1">
+                            <table class="w-full text-left text-xs border-collapse">
+                                <thead>
+                                    <tr class="border-b border-slate-850 text-slate-400 font-semibold uppercase">
+                                        <th class="py-2.5 px-3">Dispositivo / Nombre</th>
+                                        <th class="py-2.5 px-3">Dirección IP o Rango CIDR</th>
+                                        <th class="py-2.5 px-3">Acción</th>
+                                        <th class="py-2.5 px-3">Estado</th>
+                                        <th class="py-2.5 px-3 text-right">Opciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="ip-rules-list" class="divide-y divide-slate-850 text-slate-300">
+                                    <tr>
+                                        <td colspan="5" class="text-center py-8 text-slate-500">Cargando reglas de IP...</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <!-- MODAL DE EDICIÓN DE CLAVE -->
@@ -718,6 +793,45 @@
                     </div>
                 </div>
             </div>
+
+            <!-- MODAL DE EDICIÓN DE REGLA DE IP -->
+            <div id="edit-ip-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm hidden z-50 flex items-center justify-center p-4">
+                <div class="glass-panel max-w-md w-full p-6 rounded-2xl flex flex-col gap-4 shadow-2xl border border-slate-850">
+                    <div class="flex justify-between items-center border-b border-slate-800 pb-2">
+                        <h3 class="text-sm font-bold text-slate-100">Editar Regla de IP</h3>
+                        <button onclick="closeEditIpModal()" class="text-slate-400 hover:text-white text-lg">&times;</button>
+                    </div>
+                    <input type="hidden" id="edit-ip-id">
+                    <div class="flex flex-col gap-3">
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-300 mb-1">Nombre / Dispositivo:</label>
+                            <input id="edit-ip-name" type="text" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-500">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-300 mb-1">IP o Subred (CIDR):</label>
+                            <input id="edit-ip-network" type="text" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-500">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-300 mb-1">Tipo de Acción:</label>
+                            <select id="edit-ip-action" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-500">
+                                <option value="whitelist">Lista Blanca (Autorizar acceso)</option>
+                                <option value="blacklist">Lista Negra (Bloquear acceso)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-300 mb-1">Estado de la Regla:</label>
+                            <select id="edit-ip-active" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-500">
+                                <option value="true">Habilitada (Activa)</option>
+                                <option value="false">Desactivada (Inactiva)</option>
+                            </select>
+                        </div>
+                        <div class="flex gap-3 justify-end mt-2">
+                            <button onclick="closeEditIpModal()" class="px-4 py-1.5 bg-slate-900 border border-slate-800 hover:bg-slate-800 rounded-lg text-xs font-semibold text-slate-400 transition-all">Cancelar</button>
+                            <button onclick="updateIpRule()" class="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 rounded-lg text-xs font-semibold text-white transition-all">Guardar Cambios</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </main>
     </div>
 
@@ -744,6 +858,7 @@
             }
             if (tabId === 'tab-keys') {
                 loadApiKeys();
+                loadIpRules();
             }
             if (tabId === 'tab-monitor') {
                 loadTelemetryHistory();
@@ -1682,6 +1797,164 @@
         function changeTimescale(hours) {
             activeHours = parseInt(hours);
             loadTelemetryHistory();
+        }
+
+        // --- Gestión de Reglas de IP (MongoDB) ---
+        async function loadIpRules() {
+            try {
+                const res = await fetch('/api/ip-rules');
+                const rules = await res.json();
+                
+                const container = document.getElementById('ip-rules-list');
+                if (rules.length === 0) {
+                    container.innerHTML = `
+                        <tr>
+                            <td colspan="5" class="text-center py-8 text-slate-500">
+                                No hay reglas de IP configuradas. El Gateway permite acceso libre desde cualquier IP (validando la API Key).
+                            </td>
+                        </tr>
+                    `;
+                    return;
+                }
+                
+                container.innerHTML = rules.map(r => {
+                    const badgeAction = r.action === 'whitelist' 
+                        ? '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-600/10 text-emerald-400 border border-emerald-500/20 font-mono">LISTA BLANCA</span>' 
+                        : '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-600/10 text-rose-400 border border-rose-500/20 font-mono">LISTA NEGRA</span>';
+                        
+                    const badgeActive = r.is_active 
+                        ? '<span class="px-2 py-0.5 rounded text-[10px] font-mono font-semibold bg-emerald-650/10 text-emerald-400 border border-emerald-500/20">ACTIVA</span>' 
+                        : '<span class="px-2 py-0.5 rounded text-[10px] font-mono font-semibold bg-slate-800 text-slate-500 border border-slate-700/20">INACTIVA</span>';
+                        
+                    return `
+                        <tr class="hover:bg-slate-900/40 transition-colors">
+                            <td class="py-3 px-3 font-semibold text-slate-200">${escapeHtml(r.name)}</td>
+                            <td class="py-3 px-3 font-mono text-xs text-indigo-300">${escapeHtml(r.network)}</td>
+                            <td class="py-3 px-3">${badgeAction}</td>
+                            <td class="py-3 px-3">${badgeActive}</td>
+                            <td class="py-3 px-3 text-right">
+                                <div class="flex gap-2 justify-end">
+                                    <button onclick="openEditIpModal('${r.id}', '${escapeJs(r.name)}', '${escapeJs(r.network)}', '${r.action}', ${r.is_active})" class="p-1 hover:text-emerald-400 text-slate-400 transition-colors" title="Editar">
+                                        <svg class="h-4.5 w-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                            <path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                        </svg>
+                                    </button>
+                                    <button onclick="deleteIpRule('${r.id}')" class="p-1 hover:text-rose-400 text-slate-400 transition-colors" title="Eliminar">
+                                        <svg class="h-4.5 w-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                            <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                        </svg>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                    `;
+                }).join('');
+            } catch (err) {
+                console.error("Error al cargar reglas de IP:", err);
+            }
+        }
+
+        async function createIpRule() {
+            const name = document.getElementById('ip-rule-name').value.trim();
+            const network = document.getElementById('ip-rule-network').value.trim();
+            const action = document.getElementById('ip-rule-action').value;
+            const isActive = document.getElementById('ip-rule-active').checked;
+            
+            if (!name || !network) {
+                alert("Completa todos los campos antes de guardar.");
+                return;
+            }
+            
+            try {
+                const res = await fetch('/api/ip-rules', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        name: name,
+                        network: network,
+                        action: action,
+                        is_active: isActive
+                    })
+                });
+                
+                const data = await res.json();
+                if (res.ok) {
+                    document.getElementById('ip-rule-name').value = '';
+                    document.getElementById('ip-rule-network').value = '';
+                    loadIpRules();
+                } else {
+                    alert(`Error: ${data.error}`);
+                }
+            } catch (err) {
+                alert(`Error al conectar con la API: ${err.message}`);
+            }
+        }
+
+        function openEditIpModal(id, name, network, action, isActive) {
+            document.getElementById('edit-ip-id').value = id;
+            document.getElementById('edit-ip-name').value = name;
+            document.getElementById('edit-ip-network').value = network;
+            document.getElementById('edit-ip-action').value = action;
+            document.getElementById('edit-ip-active').value = String(isActive);
+            document.getElementById('edit-ip-modal').classList.remove('hidden');
+        }
+
+        function closeEditIpModal() {
+            document.getElementById('edit-ip-modal').classList.add('hidden');
+        }
+
+        async function updateIpRule() {
+            const id = document.getElementById('edit-ip-id').value;
+            const name = document.getElementById('edit-ip-name').value.trim();
+            const network = document.getElementById('edit-ip-network').value.trim();
+            const action = document.getElementById('edit-ip-action').value;
+            const isActive = document.getElementById('edit-ip-active').value === 'true';
+            
+            if (!name || !network) {
+                alert("Completa todos los campos.");
+                return;
+            }
+            
+            try {
+                const res = await fetch(`/api/ip-rules/${id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        name: name,
+                        network: network,
+                        action: action,
+                        is_active: isActive
+                    })
+                });
+                
+                const data = await res.json();
+                if (res.ok) {
+                    closeEditIpModal();
+                    loadIpRules();
+                } else {
+                    alert(`Error: ${data.error}`);
+                }
+            } catch (err) {
+                alert(`Error al actualizar la regla: ${err.message}`);
+            }
+        }
+
+        async function deleteIpRule(id) {
+            if (!confirm("¿Estás seguro de que quieres eliminar esta regla de IP?")) return;
+            
+            try {
+                const res = await fetch(`/api/ip-rules/${id}`, {
+                    method: 'DELETE'
+                });
+                if (res.ok) {
+                    loadIpRules();
+                } else {
+                    const data = await res.json();
+                    alert(`Error: ${data.error}`);
+                }
+            } catch (err) {
+                alert(`Error al eliminar regla: ${err.message}`);
+            }
         }
 
         // Loop de actualización

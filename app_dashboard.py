@@ -8,6 +8,7 @@ import uuid
 import torchaudio
 import threading
 import time
+import ipaddress
 from datetime import datetime, timedelta
 from flask import Flask, render_template, request, jsonify, Response
 from dotenv import load_dotenv
@@ -581,6 +582,113 @@ def api_telemetry_history():
             })
             
         return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# Gestión de Reglas de IP (Whitelist/Blacklist CIDR) en MongoDB
+@app.route("/api/ip-rules", methods=["GET"])
+def api_get_ip_rules():
+    try:
+        db = get_db()
+        rules = list(db.ip_rules.find())
+        result = []
+        for r in rules:
+            result.append({
+                "id": str(r["_id"]),
+                "name": r.get("name", "Sin nombre"),
+                "network": r.get("network", ""),
+                "action": r.get("action", "whitelist"),
+                "is_active": r.get("is_active", True)
+            })
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/ip-rules", methods=["POST"])
+def api_create_ip_rule():
+    try:
+        data = request.json or {}
+        name = data.get("name", "").strip()
+        network_str = data.get("network", "").strip()
+        action = data.get("action", "whitelist").lower()
+        is_active = data.get("is_active", True)
+        
+        if not name or not network_str:
+            return jsonify({"error": "Nombre y Red/IP son requeridos"}), 400
+            
+        if action not in ["whitelist", "blacklist"]:
+            return jsonify({"error": "Acción inválida. Debe ser whitelist o blacklist"}), 400
+            
+        # Validar la IP o el CIDR usando la biblioteca ipaddress
+        try:
+            ipaddress.ip_network(network_str, strict=False)
+        except ValueError as val_err:
+            return jsonify({"error": f"Sintaxis de Red/IP inválida: {val_err}"}), 400
+            
+        db = get_db()
+        # Verificar duplicados
+        existing = db.ip_rules.find_one({"network": network_str})
+        if existing:
+            return jsonify({"error": f"La IP o rango '{network_str}' ya existe registrado."}), 400
+            
+        rule = {
+            "name": name,
+            "network": network_str,
+            "action": action,
+            "is_active": is_active
+        }
+        res = db.ip_rules.insert_one(rule)
+        return jsonify({"message": "Regla de IP creada con éxito", "id": str(res.inserted_id)}), 201
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/ip-rules/<rule_id>", methods=["PUT"])
+def api_update_ip_rule(rule_id):
+    try:
+        data = request.json or {}
+        name = data.get("name", "").strip()
+        network_str = data.get("network", "").strip()
+        action = data.get("action", "whitelist").lower()
+        is_active = data.get("is_active", True)
+        
+        if not name or not network_str:
+            return jsonify({"error": "Nombre y Red/IP son requeridos"}), 400
+            
+        if action not in ["whitelist", "blacklist"]:
+            return jsonify({"error": "Acción inválida"}), 400
+            
+        # Validar sintaxis
+        try:
+            ipaddress.ip_network(network_str, strict=False)
+        except ValueError as val_err:
+            return jsonify({"error": f"Sintaxis de Red/IP inválida: {val_err}"}), 400
+            
+        db = get_db()
+        res = db.ip_rules.update_one(
+            {"_id": ObjectId(rule_id)},
+            {"$set": {
+                "name": name,
+                "network": network_str,
+                "action": action,
+                "is_active": is_active
+            }}
+        )
+        if res.matched_count == 0:
+            return jsonify({"error": "Regla de IP no encontrada"}), 404
+            
+        return jsonify({"message": "Regla de IP actualizada con éxito"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/ip-rules/<rule_id>", methods=["DELETE"])
+def api_delete_ip_rule(rule_id):
+    try:
+        db = get_db()
+        res = db.ip_rules.delete_one({"_id": ObjectId(rule_id)})
+        if res.deleted_count == 0:
+            return jsonify({"error": "Regla de IP no encontrada"}), 404
+            
+        return jsonify({"message": "Regla de IP eliminada con éxito"})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

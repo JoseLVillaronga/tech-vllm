@@ -2,6 +2,7 @@ import os
 import sys
 import asyncio
 import uvicorn
+import ipaddress
 from fastapi import FastAPI, Request, Response, HTTPException, status
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,6 +13,10 @@ from dotenv import load_dotenv
 
 # Cargar variables de entorno
 load_dotenv()
+
+# Listas de subredes autorizadas/bloqueadas cargadas en caché en memoria RAM
+cached_whitelist = []
+cached_blacklist = []
 
 # Clave API Maestra
 MASTER_KEY = os.getenv("API_KEY", "token-abc123")
@@ -85,6 +90,41 @@ def validate_token(token: str, service_name: str) -> bool:
         print(f"⚠️ Error al validar token en MongoDB: {e}", file=sys.stderr)
         return False
 
+# Lazo en segundo plano para sincronizar las reglas de IP desde MongoDB cada 10s
+async def sync_ip_rules_loop():
+    global cached_whitelist, cached_blacklist
+    print("🛡️ Sincronizador de reglas de IP del Gateway Iniciado.")
+    while True:
+        try:
+            db = get_db()
+            rules = list(db.ip_rules.find({"is_active": True}))
+            
+            new_whitelist = []
+            new_blacklist = []
+            
+            for r in rules:
+                network_str = r.get("network", "").strip()
+                action = r.get("action", "").lower()
+                if not network_str or not action:
+                    continue
+                try:
+                    # Parsear rango/IP única como objeto de red IPv4Network/IPv6Network
+                    net_obj = ipaddress.ip_network(network_str, strict=False)
+                    if action == "whitelist":
+                        new_whitelist.append(net_obj)
+                    elif action == "blacklist":
+                        new_blacklist.append(net_obj)
+                except Exception as parse_err:
+                    print(f"⚠️ Error parseando regla de IP '{network_str}': {parse_err}", file=sys.stderr)
+            
+            cached_whitelist = new_whitelist
+            cached_blacklist = new_blacklist
+            
+        except Exception as e:
+            print(f"⚠️ Error al sincronizar reglas de IP: {e}", file=sys.stderr)
+            
+        await asyncio.sleep(10)
+
 # Creador de Apps Proxy
 def create_proxy_app(service_name: str, target_port: int) -> FastAPI:
     app = FastAPI(title=f"Gateway Proxy para {service_name.upper()}")
@@ -99,6 +139,30 @@ def create_proxy_app(service_name: str, target_port: int) -> FastAPI:
     
     @app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD", "PATCH"])
     async def proxy(request: Request, path: str):
+        # 1. Validar reglas de IP antes de cualquier otra comprobación
+        client_ip = request.client.host
+        try:
+            client_ip_obj = ipaddress.ip_address(client_ip)
+            
+            # Comprobar Lista Negra (Blacklist)
+            if any(client_ip_obj in net for net in cached_blacklist):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=f"Acceso denegado: Dirección IP ({client_ip}) bloqueada por lista negra."
+                )
+                
+            # Comprobar Lista Blanca (Whitelist)
+            if cached_whitelist:
+                if not any(client_ip_obj in net for net in cached_whitelist):
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail=f"Acceso denegado: Dirección IP ({client_ip}) no autorizada en lista blanca."
+                    )
+        except HTTPException:
+            raise
+        except Exception as ip_err:
+            print(f"⚠️ Error validando IP de cliente '{client_ip}': {ip_err}", file=sys.stderr)
+
         # Permitir peticiones preflight CORS libres
         if request.method == "OPTIONS":
             return Response(status_code=200)
@@ -218,6 +282,7 @@ async def run_servers():
     
     try:
         await asyncio.gather(
+            sync_ip_rules_loop(),
             server_gemma.serve(),
             server_whisper.serve(),
             server_tts.serve(),
