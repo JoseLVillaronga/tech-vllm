@@ -8,8 +8,10 @@ project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 dotenv_path = os.path.join(project_dir, ".env")
 load_dotenv(dotenv_path)
 
+import shutil
+
 def main():
-    repo_id = "deadbydawn101/gemma-4-E4B-opus-reasoning-claude-code-lora"
+    repo_id = "josuediazflores/gemma-4-e4b-opus-reasoning-lora"
     local_dir = "/home/jose/modelos/loras/gemma-4-E4B-opus-reasoning-claude-code-lora"
     hf_token = os.getenv("HF_TOKEN")
     
@@ -17,6 +19,11 @@ def main():
     print(f"📂 Destino local: {local_dir}")
     
     try:
+        # Limpiar directorio para borrar archivos MLX previos y evitar conflictos
+        if os.path.exists(local_dir):
+            print(f"🧹 Limpiando directorio previo {local_dir}...")
+            shutil.rmtree(local_dir, ignore_errors=True)
+            
         os.makedirs(local_dir, exist_ok=True)
         # Descargar el repositorio completo del LoRA usando el token de Hugging Face
         snapshot_download(
