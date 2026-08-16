@@ -808,6 +808,7 @@
                                 <option value="">Todos</option>
                                 <option value="whitelist">Lista Blanca</option>
                                 <option value="blacklist">Lista Negra</option>
+                                <option value="api_key">Clave API Error</option>
                             </select>
                         </div>
                     </div>
@@ -2180,9 +2181,14 @@
                 
                 // 1. Pintar Filas de la Tabla
                 container.innerHTML = data.logs.map(l => {
-                    const badgeReason = l.reason === 'whitelist'
-                        ? '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-600/10 text-amber-400 border border-amber-500/20 font-mono">LISTA BLANCA</span>'
-                        : '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-600/10 text-rose-400 border border-rose-500/20 font-mono">LISTA NEGRA</span>';
+                    let badgeReason = "";
+                    if (l.reason === 'whitelist') {
+                        badgeReason = '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-600/10 text-amber-400 border border-amber-500/20 font-mono">LISTA BLANCA</span>';
+                    } else if (l.reason === 'api_key') {
+                        badgeReason = '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-cyan-650/10 text-cyan-400 border border-cyan-500/20 font-mono">CLAVE API ERROR</span>';
+                    } else {
+                        badgeReason = '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-600/10 text-rose-400 border border-rose-500/20 font-mono">LISTA NEGRA</span>';
+                    }
                         
                     const date = new Date(l.timestamp);
                     const localTime = date.toLocaleString();

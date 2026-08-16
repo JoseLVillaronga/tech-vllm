@@ -261,6 +261,7 @@ def create_proxy_app(service_name: str, target_port: int) -> FastAPI:
         if not token:
             # Registrar intento de autenticación fallido
             await register_failed_attempt(client_ip)
+            asyncio.create_task(asyncio.to_thread(save_blocked_request_log, client_ip, service_name, path, "api_key"))
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="API Key faltante. Debe proporcionarse en la cabecera 'Authorization: Bearer <key>'"
@@ -270,6 +271,7 @@ def create_proxy_app(service_name: str, target_port: int) -> FastAPI:
         if not validate_token(token, service_name):
             # Registrar intento de autenticación fallido
             await register_failed_attempt(client_ip)
+            asyncio.create_task(asyncio.to_thread(save_blocked_request_log, client_ip, service_name, path, "api_key"))
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="API Key inválida, desactivada, expirada o sin permisos para este servicio."

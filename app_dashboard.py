@@ -868,7 +868,7 @@ def api_export_blocked_requests():
                 l.get("ip", ""),
                 l.get("service", ""),
                 l.get("endpoint", ""),
-                "LISTA BLANCA" if l.get("reason") == "whitelist" else "LISTA NEGRA"
+                "LISTA BLANCA" if l.get("reason") == "whitelist" else ("CLAVE API ERROR" if l.get("reason") == "api_key" else "LISTA NEGRA")
             ])
             
         response = make_response(si.getvalue())
