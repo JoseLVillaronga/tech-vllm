@@ -758,6 +758,72 @@
                     </div>
                 </div>
 
+                <!-- PROVEEDORES DE IA EN LA NUBE (OpenAI, OpenRouter, etc.) -->
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
+                    <!-- Registrar Proveedor -->
+                    <div class="glass-panel p-5 rounded-2xl flex flex-col gap-4">
+                        <div class="border-b border-slate-800 pb-2 flex justify-between items-center">
+                            <h3 class="text-sm font-bold text-slate-200" id="cloud-form-title">Registrar Proveedor en la Nube</h3>
+                            <button id="btn-cancel-cloud-edit" onclick="cancelCloudEdit()" class="hidden text-xs text-rose-450 hover:text-rose-400 transition-colors">Cancelar</button>
+                        </div>
+                        <input type="hidden" id="cloud-provider-id" value="">
+                        
+                        <div class="flex flex-col gap-3">
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-400 mb-1">Nombre del Proveedor</label>
+                                <input type="text" id="cloud-provider-name" placeholder="Ej: OpenRouter o DeepSeek" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500">
+                            </div>
+                            
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-400 mb-1">URL Base de la API</label>
+                                <input type="text" id="cloud-provider-url" placeholder="Ej: https://openrouter.ai/api/v1" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500 font-mono">
+                            </div>
+                            
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-400 mb-1">Clave API (Bearer Token)</label>
+                                <input type="password" id="cloud-provider-key" placeholder="Pegar token del proveedor..." class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500 font-mono">
+                            </div>
+                            
+                            <div class="flex items-center gap-2 py-1">
+                                <input type="checkbox" id="cloud-provider-active" checked class="rounded border-slate-800 bg-slate-950 text-cyan-600 focus:ring-cyan-500 focus:ring-offset-slate-900">
+                                <label for="cloud-provider-active" class="text-xs text-slate-350 select-none">Habilitar proveedor de inmediato</label>
+                            </div>
+                            
+                            <button onclick="saveCloudProvider()" id="btn-save-cloud" class="w-full mt-2 py-2 bg-cyan-600 hover:bg-cyan-500 text-slate-950 font-bold rounded-xl text-xs transition-all shadow-lg flex items-center justify-center gap-1.5">
+                                <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
+                                </svg>
+                                <span id="btn-save-cloud-text">Añadir Proveedor</span>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Proveedores Registrados -->
+                    <div class="lg:col-span-2 glass-panel p-5 rounded-2xl flex flex-col gap-4">
+                        <div class="border-b border-slate-800 pb-2">
+                            <h3 class="text-sm font-bold text-slate-200">Proveedores en la Nube Configurados</h3>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left text-xs border-collapse">
+                                <thead>
+                                    <tr class="border-b border-slate-850 text-slate-400 font-semibold uppercase">
+                                        <th class="py-2.5 px-3">Proveedor</th>
+                                        <th class="py-2.5 px-3">URL Base</th>
+                                        <th class="py-2.5 px-3">Clave API</th>
+                                        <th class="py-2.5 px-3">Estado</th>
+                                        <th class="py-2.5 px-3 text-right">Opciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="cloud-providers-list" class="divide-y divide-slate-850 text-slate-300">
+                                    <tr>
+                                        <td colspan="5" class="text-center py-8 text-slate-500">Cargando proveedores en la nube...</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Historial de Intentos de Acceso Bloqueados (Firewall IP) -->
                 <div class="glass-panel p-5 rounded-2xl flex flex-col gap-4 mt-6">
                     <div class="flex items-center justify-between border-b border-slate-800 pb-2">
@@ -1139,6 +1205,7 @@
             if (tabId === 'tab-keys') {
                 loadApiKeys();
                 loadIpRules();
+                loadCloudProviders();
                 loadBlockedRequests();
             }
             if (tabId === 'tab-monitor') {
@@ -2136,6 +2203,141 @@
             } catch (err) {
                 console.error("Error al cargar reglas de IP:", err);
             }
+        }
+
+        // --- Gestión de Proveedores de IA en la Nube ---
+        async function loadCloudProviders() {
+            try {
+                const res = await fetch('/api/cloud-providers');
+                const providers = await res.json();
+                
+                const container = document.getElementById('cloud-providers-list');
+                if (providers.length === 0) {
+                    container.innerHTML = `
+                        <tr>
+                            <td colspan="5" class="text-center py-8 text-slate-500 font-medium">
+                                No hay proveedores de IA en la nube configurados. La suite solo procesará modelos locales.
+                            </td>
+                        </tr>
+                    `;
+                    return;
+                }
+                
+                container.innerHTML = providers.map(p => {
+                    const badgeActive = p.is_active 
+                        ? '<span class="px-2 py-0.5 rounded text-[10px] font-mono font-semibold bg-cyan-950/15 text-cyan-400 border border-cyan-500/20">ACTIVO</span>' 
+                        : '<span class="px-2 py-0.5 rounded text-[10px] font-mono font-semibold bg-slate-800 text-slate-500 border border-slate-700/20">INACTIVO</span>';
+                        
+                    return `
+                        <tr class="hover:bg-slate-900/40 transition-colors">
+                            <td class="py-3 px-3 font-semibold text-slate-200">${escapeHtml(p.name)}</td>
+                            <td class="py-3 px-3 font-mono text-xs text-indigo-300">${escapeHtml(p.base_url)}</td>
+                            <td class="py-3 px-3 font-mono text-xs text-slate-450">${escapeHtml(p.api_key)}</td>
+                            <td class="py-3 px-3">${badgeActive}</td>
+                            <td class="py-3 px-3 text-right">
+                                <div class="flex gap-2 justify-end">
+                                    <button onclick="editCloudProvider('${p.id}', '${escapeJs(p.name)}', '${escapeJs(p.base_url)}', '${escapeJs(p.api_key)}', ${p.is_active})" class="p-1 hover:text-cyan-400 text-slate-400 transition-colors" title="Editar">
+                                        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                            <path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                        </svg>
+                                    </button>
+                                    <button onclick="deleteCloudProvider('${p.id}')" class="p-1 hover:text-rose-400 text-slate-400 transition-colors" title="Eliminar">
+                                        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                            <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                        </svg>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                    `;
+                }).join('');
+            } catch (err) {
+                console.error("Error al cargar proveedores en la nube:", err);
+            }
+        }
+
+        async function saveCloudProvider() {
+            const id = document.getElementById('cloud-provider-id').value;
+            const name = document.getElementById('cloud-provider-name').value.trim();
+            const url = document.getElementById('cloud-provider-url').value.trim();
+            const key = document.getElementById('cloud-provider-key').value.trim();
+            const isActive = document.getElementById('cloud-provider-active').checked;
+            
+            if (!name || !url || !key) {
+                alert("Por favor completa todos los campos.");
+                return;
+            }
+            
+            const payload = {
+                name: name,
+                base_url: url,
+                api_key: key,
+                is_active: isActive
+            };
+            
+            const method = id ? 'PUT' : 'POST';
+            const urlEndpoint = id ? `/api/cloud-providers/${id}` : '/api/cloud-providers';
+            
+            try {
+                const res = await fetch(urlEndpoint, {
+                    method: method,
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                
+                const data = await res.json();
+                if (data.error) {
+                    alert(data.error);
+                } else {
+                    cancelCloudEdit();
+                    loadCloudProviders();
+                }
+            } catch (err) {
+                console.error("Error al guardar proveedor:", err);
+                alert("Error al guardar proveedor.");
+            }
+        }
+
+        async function deleteCloudProvider(id) {
+            if (!confirm("¿Estás seguro de eliminar este proveedor? Esto removerá de inmediato el acceso a todos sus modelos.")) {
+                return;
+            }
+            
+            try {
+                const res = await fetch(`/api/cloud-providers/${id}`, { method: 'DELETE' });
+                const data = await res.json();
+                if (data.error) {
+                    alert(data.error);
+                } else {
+                    loadCloudProviders();
+                }
+            } catch (err) {
+                console.error("Error al eliminar proveedor:", err);
+            }
+        }
+
+        function editCloudProvider(id, name, url, key, isActive) {
+            document.getElementById('cloud-provider-id').value = id;
+            document.getElementById('cloud-provider-name').value = name;
+            document.getElementById('cloud-provider-url').value = url;
+            document.getElementById('cloud-provider-key').value = key;
+            document.getElementById('cloud-provider-active').checked = isActive;
+            
+            document.getElementById('cloud-form-title').textContent = "Editar Proveedor en la Nube";
+            document.getElementById('btn-save-cloud-text').textContent = "Guardar Cambios";
+            document.getElementById('btn-cancel-cloud-edit').classList.remove('hidden');
+        }
+
+        function cancelCloudEdit() {
+            document.getElementById('cloud-provider-id').value = "";
+            document.getElementById('cloud-provider-name').value = "";
+            document.getElementById('cloud-provider-url').value = "";
+            document.getElementById('cloud-provider-key').value = "";
+            document.getElementById('cloud-provider-active').checked = true;
+            
+            document.getElementById('cloud-form-title').textContent = "Registrar Proveedor en la Nube";
+            document.getElementById('btn-save-cloud-text').textContent = "Añadir Proveedor";
+            document.getElementById('btn-cancel-cloud-edit').classList.add('hidden');
         }
 
         let currentSecPage = 1;

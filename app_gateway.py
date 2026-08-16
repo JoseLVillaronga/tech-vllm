@@ -22,6 +22,10 @@ cached_blacklist = []
 failed_attempts = {}
 failed_attempts_lock = asyncio.Lock()
 
+# Modelos en la nube integrados (sincronizados periódicamente)
+cached_cloud_models = {}
+cached_cloud_models_lock = asyncio.Lock()
+
 # Clave API Maestra
 MASTER_KEY = os.getenv("API_KEY", "token-abc123")
 
@@ -176,6 +180,51 @@ async def sync_ip_rules_loop():
             
         await asyncio.sleep(10)
 
+async def sync_cloud_providers_loop():
+    global cached_cloud_models
+    print("☁️ Sincronizador de modelos externos en la nube del Gateway Iniciado.", flush=True)
+    while True:
+        try:
+            db = get_db()
+            providers = list(db.cloud_providers.find({"is_active": True}))
+            
+            new_cloud_models = {}
+            for p in providers:
+                provider_id = str(p["_id"])
+                name = p.get("name", "Desconocido")
+                base_url = p.get("base_url", "").rstrip("/")
+                api_key = p.get("api_key", "")
+                
+                if not base_url or not api_key:
+                    continue
+                    
+                try:
+                    # Usar un cliente temporal rápido para no retrasar la sincronización de otros
+                    async with httpx.AsyncClient(timeout=5.0) as client:
+                        headers = {"Authorization": f"Bearer {api_key}"}
+                        resp = await client.get(f"{base_url}/models", headers=headers)
+                        if resp.status_code == 200:
+                            models_data = resp.json()
+                            for m in models_data.get("data", []):
+                                m_id = m.get("id")
+                                if m_id:
+                                    new_cloud_models[m_id] = {
+                                        "provider_id": provider_id,
+                                        "provider_name": name,
+                                        "base_url": base_url,
+                                        "api_key": api_key
+                                    }
+                except Exception as p_err:
+                    print(f"⚠️ Gateway: Error obteniendo modelos del proveedor '{name}': {p_err}", file=sys.stderr, flush=True)
+            
+            async with cached_cloud_models_lock:
+                cached_cloud_models = new_cloud_models
+                
+        except Exception as e:
+            print(f"⚠️ Gateway: Error al sincronizar proveedores de la nube: {e}", file=sys.stderr, flush=True)
+            
+        await asyncio.sleep(60)
+
 # Registrar un intento de autenticación fallido y banear la IP si llega a 3 fallos en 5m
 async def register_failed_attempt(client_ip: str):
     global failed_attempts
@@ -277,12 +326,43 @@ def create_proxy_app(service_name: str, target_port: int) -> FastAPI:
                 detail="API Key inválida, desactivada, expirada o sin permisos para este servicio."
             )
             
-        target_url = f"http://127.0.0.1:{target_port}/{path}"
-        
+        # Interceptar /v1/models en gemma proxy para combinar locales y en la nube
+        if service_name == "gemma" and path.strip("/") == "v1/models" and request.method == "GET":
+            try:
+                import json
+                import time
+                
+                local_models = []
+                try:
+                    async with httpx.AsyncClient(timeout=3.0) as temp_cli:
+                        headers_local = {"Authorization": f"Bearer {MASTER_KEY}"}
+                        resp_local = await temp_cli.get(f"http://127.0.0.1:{target_port}/v1/models", headers=headers_local)
+                        if resp_local.status_code == 200:
+                            local_models = resp_local.json().get("data", [])
+                except Exception as le:
+                    print(f"⚠️ Gateway: Error obteniendo modelos locales: {le}", file=sys.stderr, flush=True)
+                
+                combined_models = list(local_models)
+                async with cached_cloud_models_lock:
+                    for m_id, p_info in cached_cloud_models.items():
+                        if not any(lm.get("id") == m_id for lm in local_models):
+                            combined_models.append({
+                                "id": m_id,
+                                "object": "model",
+                                "created": int(time.time()),
+                                "owned_by": p_info["provider_name"]
+                            })
+                            
+                return Response(
+                    content=json.dumps({"object": "list", "data": combined_models}),
+                    media_type="application/json",
+                    status_code=200
+                )
+            except Exception as e:
+                print(f"⚠️ Gateway: Error al combinar /v1/models: {e}", file=sys.stderr, flush=True)
+
         # Clonar cabeceras normalizando a minúsculas para evitar duplicados y colisiones de mayúsculas/minúsculas
         headers = {k.lower(): v for k, v in request.headers.items()}
-        headers["host"] = f"127.0.0.1:{target_port}"
-        headers["authorization"] = f"Bearer {MASTER_KEY}"
         
         # Quitar cabeceras de control hop-by-hop y de transferencia para evitar colisiones
         headers.pop("connection", None)
@@ -302,6 +382,10 @@ def create_proxy_app(service_name: str, target_port: int) -> FastAPI:
             model_name = "SWivid/F5-TTS"
         elif service_name == "diarization":
             model_name = "pyannote/speaker-diarization-3.1"
+            
+        # Determinar si es una petición a un modelo en la nube o local
+        is_cloud_request = False
+        cloud_provider = None
         
         # Interceptar peticiones de chat para inyectar el prompt de sistema para razonamiento en gemma-4-reasoning
         if service_name == "gemma" and path.strip("/") == "v1/chat/completions" and request.method == "POST" and body:
@@ -310,10 +394,14 @@ def create_proxy_app(service_name: str, target_port: int) -> FastAPI:
                 data = json.loads(body)
                 model_name = data.get("model", "google/gemma-4-E4B-it")
                 
-                # 1. Inyectar el system prompt de razonamiento para gemma-4-reasoning
-                if data.get("model") == "gemma-4-reasoning" and "messages" in data:
+                async with cached_cloud_models_lock:
+                    if model_name in cached_cloud_models:
+                        is_cloud_request = True
+                        cloud_provider = cached_cloud_models[model_name]
+                        
+                # 1. Inyectar el system prompt de razonamiento para gemma-4-reasoning si es local
+                if not is_cloud_request and data.get("model") == "gemma-4-reasoning" and "messages" in data:
                     messages = data["messages"]
-                    # Buscar si hay un mensaje de sistema existente
                     system_msg = next((m for m in messages if m.get("role") == "system"), None)
                     reasoning_instruction = (
                         "Eres un modelo de razonamiento. Debes escribir tu proceso de pensamiento "
@@ -326,11 +414,25 @@ def create_proxy_app(service_name: str, target_port: int) -> FastAPI:
                             system_msg["content"] = f"{original_content}\n\n{reasoning_instruction}".strip()
                     else:
                         messages.insert(0, {"role": "system", "content": reasoning_instruction})
-                
-                # Volver a serializar el cuerpo modificado si cambió
-                body = json.dumps(data).encode("utf-8")
+                    
+                    body = json.dumps(data).encode("utf-8")
             except Exception as json_err:
                 print(f"⚠️ Error al interceptar y parsear JSON en el Gateway: {json_err}", file=sys.stderr, flush=True)
+
+        if is_cloud_request:
+            base_url = cloud_provider['base_url'].rstrip("/")
+            if base_url.endswith("/v1") and path.startswith("v1/"):
+                target_url = f"{base_url[:-3]}/{path}"
+            else:
+                target_url = f"{base_url}/{path}"
+            from urllib.parse import urlparse
+            parsed_url = urlparse(cloud_provider['base_url'])
+            headers["host"] = parsed_url.netloc
+            headers["authorization"] = f"Bearer {cloud_provider['api_key']}"
+        else:
+            target_url = f"http://127.0.0.1:{target_port}/{path}"
+            headers["host"] = f"127.0.0.1:{target_port}"
+            headers["authorization"] = f"Bearer {MASTER_KEY}"
 
         client = get_http_client()
         
@@ -362,12 +464,18 @@ def create_proxy_app(service_name: str, target_port: int) -> FastAPI:
                 accumulated_text = ""
                 usage_data = None
                 
+                is_streaming = "text/event-stream" in resp_headers.get("content-type", "").lower()
+                non_stream_body = b""
+                
                 try:
                     async for chunk in resp.aiter_raw():
                         total_bytes_yielded += len(chunk)
                         
+                        if not is_streaming:
+                            non_stream_body += chunk
+                        
                         # Extraer tokens del stream en caliente si es Gemma y la petición fue exitosa
-                        if service_name == "gemma" and resp.status_code == 200:
+                        if service_name == "gemma" and resp.status_code == 200 and is_streaming:
                             try:
                                 chunk_str = chunk.decode("utf-8", errors="ignore")
                                 for line in chunk_str.split("\n"):
@@ -407,6 +515,15 @@ def create_proxy_app(service_name: str, target_port: int) -> FastAPI:
                         yield buffer
                     await resp.aclose()
                     
+                    # Extraer tokens de respuestas no-streaming
+                    if not is_streaming and non_stream_body and resp.status_code == 200:
+                        try:
+                            import json
+                            resp_json = json.loads(non_stream_body.decode("utf-8", errors="ignore"))
+                            if "usage" in resp_json and resp_json["usage"]:
+                                usage_data = resp_json["usage"]
+                        except Exception as parse_err:
+                            print(f"⚠️ Error al parsear JSON de respuesta no-streaming: {parse_err}", file=sys.stderr, flush=True)
                     # Registrar telemetría al finalizar el stream si el status fue 200 OK
                     if resp.status_code == 200:
                         duration_sec = (datetime.utcnow() - start_time).total_seconds()
@@ -516,6 +633,7 @@ async def run_servers():
     try:
         await asyncio.gather(
             sync_ip_rules_loop(),
+            sync_cloud_providers_loop(),
             server_gemma.serve(),
             server_whisper.serve(),
             server_tts.serve(),

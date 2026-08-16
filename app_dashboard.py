@@ -967,6 +967,90 @@ def api_delete_ip_rule(rule_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route("/api/cloud-providers", methods=["GET"])
+def api_get_cloud_providers():
+    try:
+        db = get_db()
+        providers = list(db.cloud_providers.find())
+        result = []
+        for p in providers:
+            key = p.get("api_key", "")
+            masked_key = key[:8] + "..." if len(key) > 8 else "..."
+            result.append({
+                "id": str(p["_id"]),
+                "name": p.get("name", ""),
+                "base_url": p.get("base_url", ""),
+                "api_key": masked_key,
+                "is_active": p.get("is_active", True)
+            })
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/cloud-providers", methods=["POST"])
+def api_create_cloud_provider():
+    try:
+        data = request.json or {}
+        name = data.get("name", "").strip()
+        base_url = data.get("base_url", "").strip()
+        api_key = data.get("api_key", "").strip()
+        is_active = data.get("is_active", True)
+        
+        if not name or not base_url or not api_key:
+            return jsonify({"error": "Todos los campos son requeridos"}), 400
+            
+        db = get_db()
+        db.cloud_providers.insert_one({
+            "name": name,
+            "base_url": base_url,
+            "api_key": api_key,
+            "is_active": is_active
+        })
+        return jsonify({"message": "Proveedor en la nube creado con éxito"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/cloud-providers/<provider_id>", methods=["PUT"])
+def api_update_cloud_provider(provider_id):
+    try:
+        data = request.json or {}
+        name = data.get("name", "").strip()
+        base_url = data.get("base_url", "").strip()
+        api_key = data.get("api_key", "").strip()
+        is_active = data.get("is_active", True)
+        
+        update_doc = {
+            "name": name,
+            "base_url": base_url,
+            "is_active": is_active
+        }
+        if api_key and not api_key.endswith("..."):
+            update_doc["api_key"] = api_key
+            
+        db = get_db()
+        res = db.cloud_providers.update_one(
+            {"_id": ObjectId(provider_id)},
+            {"$set": update_doc}
+        )
+        if res.matched_count == 0:
+            return jsonify({"error": "Proveedor no encontrado"}), 404
+            
+        return jsonify({"message": "Proveedor en la nube actualizado con éxito"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/cloud-providers/<provider_id>", methods=["DELETE"])
+def api_delete_cloud_provider(provider_id):
+    try:
+        db = get_db()
+        res = db.cloud_providers.delete_one({"_id": ObjectId(provider_id)})
+        if res.deleted_count == 0:
+            return jsonify({"error": "Proveedor no encontrado"}), 404
+            
+        return jsonify({"message": "Proveedor en la nube eliminado con éxito"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route("/api/status", methods=["GET"])
 def api_status():
     """
