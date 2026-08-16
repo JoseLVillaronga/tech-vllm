@@ -727,6 +727,22 @@ Para garantizar que el proyecto se pueda instalar y clonar en cualquier máquina
 
 ---
 
+### ☁️ 7. Integración Híbrida Local/Nube (AI Cloud Proxy)
+
+Para combinar la potencia local de la GPU RTX 3090 con modelos externos avanzados, la suite actúa como un **AI Gateway híbrido**:
+*   **Gestión y Sincronización Asíncrona:** El Dashboard web permite dar de alta proveedores compatibles con OpenAI (como OpenRouter, DeepSeek o la propia OpenAI). Cada 60 segundos, un hilo de segundo plano del Gateway consulta el endpoint `/v1/models` de cada proveedor activo y almacena la lista consolidada de modelos en caché de RAM.
+*   **Listado Unificado de Modelos:** Al consultar `/v1/models` en el puerto público `8000`, el Gateway intercepta la petición, lee la lista de modelos locales del motor vLLM y los fusiona dinámicamente con los modelos en la nube activos recopilados, sirviendo una única lista unificada.
+*   **Enrutamiento Dinámico con Saneamiento de Red:** Al recibir una petición a `/v1/chat/completions`, si el modelo seleccionado pertenece a la nube:
+    1.  **Deduplicación de rutas `/v1`:** Detecta y normaliza colisiones del prefijo de API (evitando `/v1/v1/...`) si la URL del proveedor y el endpoint coinciden.
+    2.  **Enmascaramiento de API Keys:** Inyecta la clave real del proveedor en la cabecera `Authorization` de forma invisible para el usuario interno, permitiendo compartir una cuenta corporativa de forma segura.
+    3.  **Reescritura de Cabecera `Host`:** Extrae dinámicamente el host del proveedor y reescribe la cabecera de red (ej: `openrouter.ai` o `api.openai.com`), burlando bloqueos y denegaciones perimetrales de cortafuegos o CDNs (Cloudflare) externos.
+*   **Extracción de Tokens Dual (Streaming / No-Streaming):**
+    *   *Streaming (SSE):* Analiza los chunks de texto en vivo buscando la línea `data: ` para extraer el objeto `usage` y acumular la respuesta de texto.
+    *   *No-Streaming (JSON):* Acumula el búfer de respuesta completo y, si el flujo de datos es un JSON tradicional de API, decodifica el cuerpo al finalizar la petición y lee los contadores oficiales de tokens.
+*   **Exportación de Telemetría a Excel (Consumo):** Implementa el endpoint `/api/metrics/export` que hereda en caliente los filtros visuales (fechas, claves, modelos) de la pestaña Métricas. Este genera un archivo CSV con codificación **BOM UTF-8 (`\ufeff`)** y delimitador de **punto y coma (`;`)**, garantizando una visualización tabulada nativa e inmediata de los costos y consumos de red en Microsoft Excel bajo configuraciones regionales en español.
+
+---
+
 ### ⚙️ Administración del Servicio de Gateway (Systemd)
 
 *   **Instalar/Registrar el Servicio:**
