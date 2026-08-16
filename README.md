@@ -540,6 +540,42 @@ f5tts.infer(
 
 ---
 
+## 🧠 Modelos de Inferencia (vLLM)
+
+El servidor central de inferencia ([app.py](file:///home/jose/vllm/app.py)) ejecuta los LLMs locales utilizando **vLLM**, optimizando el rendimiento mediante el uso compartido de la GPU Nvidia RTX 3090.
+
+### 💻 1. Modelo de Programación MoE: Qwen3 Coder 30B
+Para tareas avanzadas de desarrollo de software (con herramientas como **Aider** y **Goose**), la suite soporta el modelo especializado **`Qwen3-Coder-30B-A3B-Instruct-AWQ`** (Mixture of Experts).
+*   **Parámetros Óptimos de Inferencia:**
+    *   `MODEL`: `dark-side-of-the-code/Qwen3-Coder-30B-A3B-Instruct-AWQ`
+    *   `GPU_MEMORY_UTILIZATION`: `0.81` (~19.4 GB de VRAM asignados por vLLM).
+    *   `MAX_MODEL_LEN`: `16384` (Ventana de contexto segura de 16K en GPU).
+    *   `QUANTIZATION`: `compressed-tensors` (Formato nativo Marlin WNA16 en vLLM).
+*   **Gestión de VRAM y Coexistencia de Servicios:**
+    Al ejecutar Qwen3 Coder, el consumo de VRAM de inferencia asciende a ~18.3 GB totales (pesos y caché KV). Para asegurar un rendimiento fluido y evitar fallos de memoria en la GPU:
+    *   **Con Servicios de Voz:** Con 16K de contexto, quedan ~4.7 GB libres, suficiente para mantener activos los servicios de Whisper (STT) y F5-TTS (TTS).
+    *   **Máximo Margen / Contexto Superior:** Si requieres el máximo rendimiento del modelo o deseas evitar cualquier riesgo de colisión de VRAM, puedes apagar temporalmente los servicios de voz y diarización mediante systemd:
+        ```bash
+        sudo systemctl stop vllm-whisper vllm-tts vllm-diarization
+        ```
+        Para reanudarlos al volver a modelos más ligeros:
+        ```bash
+        sudo systemctl start vllm-whisper vllm-tts vllm-diarization
+        ```
+
+### 💎 2. Modelo de Razonamiento: Gemma 4 E4B-it y Control de LoRA Condicional
+Para inferencia general y razonamiento dinámico, el modelo por defecto es `google/gemma-4-E4B-it` con soporte para adaptadores LoRA de razonamiento (`gemma-4-reasoning`).
+*   **Control de LoRA desde la GUI:**
+    El Dashboard incluye un selector desplegable de **LORA (Adaptador)**. Esto permite activar o desactivar la inyección del adaptador LoRA de razonamiento dinámico en caliente.
+*   **Ajuste Inteligente de VRAM:**
+    Para optimizar el uso de recursos, el Dashboard modifica de manera reactiva el parámetro `GPU_MEMORY_UTILIZATION` de Gemma 4 E4B-it según el estado de LoRA:
+    *   **LORA Habilitado (`True`):** Asigna **`0.55`** para reservar el espacio de memoria requerido por las matrices del adaptador.
+    *   **LORA Deshabilitado (`False`):** Reduce la reserva a **`0.51`**, liberando 1 GB adicional de VRAM en la GPU.
+*   **Protección de Arquitectura:**
+    Para prevenir bloqueos del sistema o errores fatales de `CUDA Out of Memory`, el archivo `app.py` valida la compatibilidad: el cargador de adaptadores LoRA de Gemma 4 sólo se habilitará si el parámetro `LORA` está activo **y** el nombre del modelo contiene la palabra `"gemma"`. Al seleccionar otros modelos (como Qwen3 Coder), el selector de LoRA de la GUI se desactiva automáticamente a `False` por seguridad.
+
+---
+
 ## 💻 Agentes de Programación en Consola (Aider)
 
 El ecosistema local permite la integración de agentes de programación interactivos basados en terminal como **Aider** (`aider.chat`), permitiéndoles conectarse directamente a tu motor GPU local para realizar modificaciones de código de múltiples archivos y control de versiones automático en Git.
