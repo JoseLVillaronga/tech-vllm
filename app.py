@@ -42,9 +42,9 @@ def main():
         "--api-key", api_key
     ]
 
-    # Configurar LoRA si el adaptador está completamente descargado
+    # Configurar LoRA si el adaptador está completamente descargado y el modelo es compatible (Gemma)
     lora_dir = "/home/jose/modelos/loras/gemma-4-E4B-opus-reasoning-claude-code-lora"
-    if os.path.exists(os.path.join(lora_dir, "adapter_config.json")):
+    if "gemma" in model.lower() and os.path.exists(os.path.join(lora_dir, "adapter_config.json")):
         cmd.extend([
             "--enable-lora",
             "--lora-modules", f"gemma-4-reasoning={lora_dir}",
