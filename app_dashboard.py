@@ -701,6 +701,74 @@ def api_metrics():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route("/api/metrics/export", methods=["GET"])
+def api_export_metrics():
+    try:
+        # 1. Parsear filtros
+        days = request.args.get("days", default=7, type=int)
+        service = request.args.get("service", default="", type=str)
+        api_key = request.args.get("api_key", default="", type=str)
+        model = request.args.get("model", default="", type=str)
+        
+        # 2. Calcular fecha de inicio
+        start_date = datetime.utcnow() - timedelta(days=days)
+        
+        # 3. Construir query de filtrado
+        query = {"timestamp": {"$gte": start_date}}
+        if service:
+            query["service"] = service
+        if api_key:
+            query["api_key_name"] = api_key
+        if model:
+            query["model"] = model
+            
+        db = get_db()
+        logs = list(db.usage_logs.find(query).sort("timestamp", -1))
+        
+        # 4. Generar CSV
+        def generate():
+            yield "\ufeff"
+            headers = [
+                "Fecha y Hora",
+                "IP Cliente",
+                "Clave API",
+                "Servicio",
+                "Endpoint",
+                "Modelo",
+                "Tokens Entrada",
+                "Tokens Salida",
+                "Duracion Audio (seg)",
+                "Tiempo Procesamiento (seg)"
+            ]
+            yield ";".join(headers) + "\n"
+            
+            for log in logs:
+                ts = log.get("timestamp")
+                ts_str = ts.strftime("%Y-%m-%d %H:%M:%S") if isinstance(ts, datetime) else str(ts)
+                
+                row = [
+                    ts_str,
+                    log.get("client_ip", ""),
+                    log.get("api_key_name", ""),
+                    log.get("service", ""),
+                    log.get("path", ""),
+                    log.get("model", ""),
+                    str(log.get("prompt_tokens", 0)),
+                    str(log.get("completion_tokens", 0)),
+                    f"{log.get('audio_duration_sec', 0.0):.2f}",
+                    f"{log.get('duration_sec', 0.0):.2f}"
+                ]
+                row_cleaned = [str(val).replace(";", " ").replace("\n", " ").replace("\r", " ") for val in row]
+                yield ";".join(row_cleaned) + "\n"
+                
+        return Response(
+            generate(),
+            mimetype="text/csv",
+            headers={"Content-Disposition": "attachment; filename=telemetria_consumo.csv"}
+        )
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 # Gestión de Reglas de IP (Whitelist/Blacklist CIDR) en MongoDB
 @app.route("/api/ip-rules", methods=["GET"])
 def api_get_ip_rules():
