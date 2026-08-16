@@ -3,7 +3,7 @@ import sys
 import asyncio
 import uvicorn
 import ipaddress
-from fastapi import FastAPI, Request, Response, HTTPException, status
+from fastapi import FastAPI, Request, Response, HTTPException, status, BackgroundTasks
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 import httpx
@@ -94,6 +94,37 @@ def validate_token(token: str, service_name: str) -> bool:
         print(f"⚠️ Error al validar token en MongoDB: {e}", file=sys.stderr)
         return False
 
+# Función síncrona ejecutada en BackgroundTasks para no bloquear el bucle de eventos
+def save_usage_log(ip: str, token: str, service: str, endpoint: str, model: str,
+                   prompt_tokens: int, completion_tokens: int, audio_duration_sec: float,
+                   duration_sec: float):
+    try:
+        db = get_db()
+        # 1. Determinar el nombre de la API Key de forma segura
+        if token == MASTER_KEY:
+            key_name = "Master Key"
+        else:
+            key_doc = db.api_keys.find_one({"key": token})
+            key_name = key_doc.get("name", "Clave Desconocida") if key_doc else "Clave Desconocida"
+            
+        # 2. Construir e insertar el log de auditoría
+        log_doc = {
+            "timestamp": datetime.utcnow(),
+            "ip": ip,
+            "api_key_name": key_name,
+            "service": service,
+            "model": model or service,
+            "endpoint": endpoint,
+            "prompt_tokens": int(prompt_tokens) if prompt_tokens is not None else 0,
+            "completion_tokens": int(completion_tokens) if completion_tokens is not None else 0,
+            "audio_duration_sec": float(audio_duration_sec) if audio_duration_sec is not None else 0.0,
+            "duration_sec": float(duration_sec) if duration_sec is not None else 0.0
+        }
+        db.usage_logs.insert_one(log_doc)
+        print(f"📊 Telemetría: Registro de uso guardado para '{service}' ({key_name}) - Modelo: {model}", flush=True)
+    except Exception as e:
+        print(f"⚠️ Error al guardar telemetría de uso en MongoDB: {e}", file=sys.stderr, flush=True)
+
 # Lazo en segundo plano para sincronizar las reglas de IP desde MongoDB cada 10s
 async def sync_ip_rules_loop():
     global cached_whitelist, cached_blacklist
@@ -172,7 +203,7 @@ def create_proxy_app(service_name: str, target_port: int) -> FastAPI:
     )
     
     @app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD", "PATCH"])
-    async def proxy(request: Request, path: str):
+    async def proxy(request: Request, path: str, background_tasks: BackgroundTasks):
         # 1. Validar reglas de IP antes de cualquier otra comprobación
         client_ip = request.client.host
         try:
@@ -242,11 +273,22 @@ def create_proxy_app(service_name: str, target_port: int) -> FastAPI:
         
         body = await request.body()
         
+        # Inicializar variables de telemetría
+        start_time = datetime.utcnow()
+        model_name = service_name
+        if service_name == "whisper":
+            model_name = "openai/whisper-large-v3-turbo"
+        elif service_name == "tts":
+            model_name = "SWivid/F5-TTS"
+        elif service_name == "diarization":
+            model_name = "pyannote/speaker-diarization-3.1"
+        
         # Interceptar peticiones de chat para inyectar el prompt de sistema para razonamiento en gemma-4-reasoning
         if service_name == "gemma" and path.strip("/") == "v1/chat/completions" and request.method == "POST" and body:
             try:
                 import json
                 data = json.loads(body)
+                model_name = data.get("model", "google/gemma-4-E4B-it")
                 
                 # 1. Inyectar el system prompt de razonamiento para gemma-4-reasoning
                 if data.get("model") == "gemma-4-reasoning" and "messages" in data:
@@ -296,8 +338,39 @@ def create_proxy_app(service_name: str, target_port: int) -> FastAPI:
             # o si el cliente aborta la conexión a mitad de camino (evita fugas de descriptores de archivos).
             async def event_generator():
                 buffer = b""
+                total_bytes_yielded = 0
+                accumulated_text = ""
+                usage_data = None
+                
                 try:
                     async for chunk in resp.aiter_raw():
+                        total_bytes_yielded += len(chunk)
+                        
+                        # Extraer tokens del stream en caliente si es Gemma y la petición fue exitosa
+                        if service_name == "gemma" and resp.status_code == 200:
+                            try:
+                                chunk_str = chunk.decode("utf-8", errors="ignore")
+                                for line in chunk_str.split("\n"):
+                                    line = line.strip()
+                                    if line.startswith("data: "):
+                                        data_str = line[6:].strip()
+                                        if data_str == "[DONE]":
+                                            continue
+                                        try:
+                                            import json
+                                            obj = json.loads(data_str)
+                                            if "usage" in obj and obj["usage"]:
+                                                usage_data = obj["usage"]
+                                            if "choices" in obj and obj["choices"]:
+                                                delta = obj["choices"][0].get("delta", {})
+                                                content = delta.get("content", "")
+                                                if content:
+                                                    accumulated_text += content
+                                        except Exception:
+                                            pass
+                            except Exception:
+                                pass
+                                
                         buffer += chunk
                         if b"<turn|>" in buffer:
                             buffer = buffer.replace(b"<turn|>", b"")
@@ -310,8 +383,59 @@ def create_proxy_app(service_name: str, target_port: int) -> FastAPI:
                     if buffer:
                         if b"<turn|>" in buffer:
                             buffer = buffer.replace(b"<turn|>", b"")
+                        total_bytes_yielded += len(buffer)
                         yield buffer
                     await resp.aclose()
+                    
+                    # Registrar telemetría al finalizar el stream si el status fue 200 OK
+                    if resp.status_code == 200:
+                        duration_sec = (datetime.utcnow() - start_time).total_seconds()
+                        prompt_tokens = 0
+                        completion_tokens = 0
+                        audio_duration_sec = 0.0
+                        
+                        if service_name == "gemma":
+                            if usage_data:
+                                prompt_tokens = usage_data.get("prompt_tokens", 0)
+                                completion_tokens = usage_data.get("completion_tokens", 0)
+                            else:
+                                # Estimación en caso de que no venga el campo usage
+                                completion_tokens = len(accumulated_text) // 4
+                                try:
+                                    import json
+                                    req_data = json.loads(body)
+                                    messages = req_data.get("messages", [])
+                                    prompt_chars = sum(len(m.get("content", "")) for m in messages if isinstance(m, dict))
+                                    prompt_tokens = prompt_chars // 4
+                                    # Asegurar mínimo de 1 token si hay contenido
+                                    if prompt_chars > 0 and prompt_tokens == 0:
+                                        prompt_tokens = 1
+                                    if len(accumulated_text) > 0 and completion_tokens == 0:
+                                        completion_tokens = 1
+                                except Exception:
+                                    pass
+                        elif service_name == "tts":
+                            # PCM 24kHz Mono = 48,000 bytes por segundo de audio (descontando cabecera de 44 bytes)
+                            if total_bytes_yielded > 44:
+                                audio_duration_sec = (total_bytes_yielded - 44) / 48000.0
+                        elif service_name in ("whisper", "diarization"):
+                            # Estimación sobre el cuerpo del archivo (WAV 16kHz mono = 32,000 bytes/segundo)
+                            if body:
+                                audio_duration_sec = len(body) / 32000.0
+                                
+                        # Agendar la escritura en MongoDB de forma asíncrona y no bloqueante
+                        background_tasks.add_task(
+                            save_usage_log,
+                            client_ip,
+                            token,
+                            service_name,
+                            path,
+                            model_name,
+                            prompt_tokens,
+                            completion_tokens,
+                            audio_duration_sec,
+                            duration_sec
+                        )
                     
             return StreamingResponse(
                 event_generator(),
@@ -332,9 +456,11 @@ async def run_servers():
     try:
         db = get_db()
         db.ip_rules.create_index("expires_at", expireAfterSeconds=0)
-        print("💾 MongoDB: Índice TTL dinámico configurado o verificado en ip_rules.", flush=True)
+        # Asegurar la creación del índice TTL de 6 meses en la colección usage_logs (15,552,000 segundos)
+        db.usage_logs.create_index("timestamp", expireAfterSeconds=15552000)
+        print("💾 MongoDB: Índices TTL verificados en ip_rules y usage_logs.", flush=True)
     except Exception as e:
-        print(f"⚠️ Error al inicializar índice TTL de IP en Gateway startup: {e}", file=sys.stderr, flush=True)
+        print(f"⚠️ Error al inicializar índices de MongoDB en Gateway startup: {e}", file=sys.stderr, flush=True)
 
     gemma_port = int(os.getenv("GEMMA_BACKEND_PORT", "18000"))
     whisper_port = int(os.getenv("WHISPER_BACKEND_PORT", "18001"))

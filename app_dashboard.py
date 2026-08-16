@@ -589,6 +589,117 @@ def api_telemetry_history():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route("/api/metrics", methods=["GET"])
+def api_metrics():
+    try:
+        # 1. Parsear filtros
+        days = request.args.get("days", default=7, type=int)
+        service = request.args.get("service", default="", type=str)
+        api_key = request.args.get("api_key", default="", type=str)
+        model = request.args.get("model", default="", type=str)
+        
+        # 2. Calcular fecha de inicio
+        start_date = datetime.utcnow() - timedelta(days=days)
+        
+        # 3. Construir query de filtrado
+        query = {"timestamp": {"$gte": start_date}}
+        if service:
+            query["service"] = service
+        if api_key:
+            query["api_key_name"] = api_key
+        if model:
+            query["model"] = model
+            
+        db = get_db()
+        logs = list(db.usage_logs.find(query).sort("timestamp", 1))
+        
+        # 4. Agrupar datos por fecha (YYYY-MM-DD) para la serie temporal
+        # y acumular estadísticas agregadas
+        time_series = {}
+        service_shares = {}
+        api_key_shares = {}
+        model_shares = {}
+        
+        total_prompt_tokens = 0
+        total_completion_tokens = 0
+        total_audio_sec = 0.0
+        total_calls = len(logs)
+        
+        # Inicializar serie temporal con ceros para todos los días en el rango
+        for i in range(days):
+            day_str = (datetime.utcnow() - timedelta(days=i)).strftime("%Y-%m-%d")
+            time_series[day_str] = {
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "audio_duration_sec": 0.0,
+                "calls": 0
+            }
+            
+        for log in logs:
+            ts = log["timestamp"]
+            day_str = ts.strftime("%Y-%m-%d") if isinstance(ts, datetime) else ts[:10]
+            
+            p_tokens = log.get("prompt_tokens", 0)
+            c_tokens = log.get("completion_tokens", 0)
+            a_sec = log.get("audio_duration_sec", 0.0)
+            
+            total_prompt_tokens += p_tokens
+            total_completion_tokens += c_tokens
+            total_audio_sec += a_sec
+            
+            # Acumular en serie temporal
+            if day_str in time_series:
+                time_series[day_str]["prompt_tokens"] += p_tokens
+                time_series[day_str]["completion_tokens"] += c_tokens
+                time_series[day_str]["audio_duration_sec"] += a_sec
+                time_series[day_str]["calls"] += 1
+                
+            # Acumular reparto por servicio
+            srv = log.get("service", "unknown")
+            service_shares[srv] = service_shares.get(srv, 0) + 1
+            
+            # Acumular reparto por clave API
+            key = log.get("api_key_name", "unknown")
+            api_key_shares[key] = api_key_shares.get(key, 0) + 1
+            
+            # Acumular reparto por modelo
+            mdl = log.get("model", "unknown")
+            model_shares[mdl] = model_shares.get(mdl, 0) + 1
+            
+        # Ordenar cronológicamente la serie temporal para gráficos
+        sorted_time_series = [
+            {"date": date, **metrics}
+            for date, metrics in sorted(time_series.items())
+        ]
+        
+        # Obtener lista de claves API y modelos únicos en la BD para llenar los dropdowns de filtros en la interfaz
+        api_keys_list = list(db.api_keys.find({}, {"name": 1}))
+        api_key_names = ["Master Key"] + [k["name"] for k in api_keys_list if k.get("name")]
+        
+        # Modelos únicos en usage_logs
+        unique_models = db.usage_logs.distinct("model")
+        
+        return jsonify({
+            "summary": {
+                "total_calls": total_calls,
+                "total_prompt_tokens": total_prompt_tokens,
+                "total_completion_tokens": total_completion_tokens,
+                "total_audio_sec": round(total_audio_sec, 2),
+            },
+            "time_series": sorted_time_series,
+            "shares": {
+                "service": service_shares,
+                "api_key": api_key_shares,
+                "model": model_shares
+            },
+            "filters_data": {
+                "api_keys": api_key_names,
+                "models": unique_models
+            }
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 # Gestión de Reglas de IP (Whitelist/Blacklist CIDR) en MongoDB
 @app.route("/api/ip-rules", methods=["GET"])
 def api_get_ip_rules():
