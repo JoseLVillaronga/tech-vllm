@@ -326,13 +326,13 @@
                                         <input type="text" id="model-input" name="MODEL" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 font-mono">
                                         <div class="flex flex-wrap gap-1.5">
                                             <button type="button" onclick="selectQuickModel('google/gemma-4-E4B-it', 0.55, 131072, 'bitsandbytes')" class="px-2.5 py-1 rounded bg-slate-950 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 text-[10px] font-semibold text-indigo-300 transition-all cursor-pointer">Gemma 4 E4B-it (Reasoning/Default)</button>
-                                            <button type="button" onclick="selectQuickModel('dark-side-of-the-code/Qwen3-Coder-30B-A3B-Instruct-AWQ', 0.81, 16384, 'compressed-tensors')" class="px-2.5 py-1 rounded bg-slate-950 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 text-[10px] font-semibold text-indigo-300 transition-all cursor-pointer">Qwen3 Coder 30B MoE (AWQ Coding)</button>
-                                            <button type="button" onclick="selectQuickModel('google/gemma-4-E2B-it', 0.25, 8192, '')" class="px-2.5 py-1 rounded bg-slate-950 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 text-[10px] font-semibold text-indigo-300 transition-all cursor-pointer">Gemma 4 E2B-it (Lightweight 2B)</button>
-                                            <button type="button" onclick="selectQuickModel('PrithivMLmods/gemma-4-E2B-it-Uncensored-MAX', 0.25, 8192, '')" class="px-2.5 py-1 rounded bg-slate-950 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 text-[10px] font-semibold text-indigo-300 transition-all cursor-pointer">Gemma 4 E2B Uncensored (PyTorch)</button>
+                                            <button type="button" onclick="selectQuickModel('dark-side-of-the-code/Qwen3-Coder-30B-A3B-Instruct-AWQ', 0.81, 16384, 'compressed-tensors', 'False')" class="px-2.5 py-1 rounded bg-slate-950 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 text-[10px] font-semibold text-indigo-300 transition-all cursor-pointer">Qwen3 Coder 30B MoE (AWQ Coding)</button>
+                                            <button type="button" onclick="selectQuickModel('google/gemma-4-E2B-it', 0.25, 8192, '', 'False')" class="px-2.5 py-1 rounded bg-slate-950 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 text-[10px] font-semibold text-indigo-300 transition-all cursor-pointer">Gemma 4 E2B-it (Lightweight 2B)</button>
+                                            <button type="button" onclick="selectQuickModel('PrithivMLmods/gemma-4-E2B-it-Uncensored-MAX', 0.25, 8192, '', 'False')" class="px-2.5 py-1 rounded bg-slate-950 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 text-[10px] font-semibold text-indigo-300 transition-all cursor-pointer">Gemma 4 E2B Uncensored (PyTorch)</button>
                                         </div>
                                     </div>
                                 </div>
-                                <div class="grid grid-cols-2 gap-4">
+                                <div class="grid grid-cols-3 gap-4">
                                     <div>
                                         <label class="block text-xs font-semibold text-slate-300 mb-1">GPU_MEMORY_UTILIZATION</label>
                                         <input type="number" step="0.01" name="GPU_MEMORY_UTILIZATION" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 font-mono">
@@ -340,6 +340,13 @@
                                     <div>
                                         <label class="block text-xs font-semibold text-slate-300 mb-1">MAX_MODEL_LEN</label>
                                         <input type="number" name="MAX_MODEL_LEN" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 font-mono">
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-semibold text-slate-300 mb-1">LORA (Adaptador)</label>
+                                        <select name="LORA" onchange="handleLoraChange(this.value)" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 font-mono cursor-pointer">
+                                                    <option value="True">True</option>
+                                                    <option value="False">False</option>
+                                        </select>
                                     </div>
                                 </div>
                             </div>
@@ -866,14 +873,38 @@
                 .replace(/\r/g, "\\r");
         }
 
-        function selectQuickModel(modelName, gpuMem = '', maxLen = '', quantization = '') {
+        function handleLoraChange(loraValue) {
+            const modelInput = document.getElementById('model-input');
+            if (modelInput && modelInput.value === 'google/gemma-4-E4B-it') {
+                const gpuInput = document.querySelector('input[name="GPU_MEMORY_UTILIZATION"]');
+                if (gpuInput) {
+                    gpuInput.value = loraValue === 'False' ? '0.51' : '0.55';
+                }
+            }
+        }
+
+        function selectQuickModel(modelName, gpuMem = '', maxLen = '', quantization = '', loraVal = null) {
             const input = document.getElementById('model-input');
             if (input) {
                 input.value = modelName;
             }
+            const loraSelect = document.querySelector('select[name="LORA"]');
+            if (loraSelect && loraVal !== null && loraVal !== undefined) {
+                loraSelect.value = loraVal;
+            }
+            let targetGpuMem = gpuMem;
+            if (modelName === 'google/gemma-4-E4B-it') {
+                if (loraSelect) {
+                    if (loraSelect.value === 'False') {
+                        targetGpuMem = '0.51';
+                    } else {
+                        targetGpuMem = '0.55';
+                    }
+                }
+            }
             const gpuInput = document.querySelector('input[name="GPU_MEMORY_UTILIZATION"]');
-            if (gpuInput && gpuMem !== undefined && gpuMem !== null) {
-                gpuInput.value = gpuMem;
+            if (gpuInput && targetGpuMem !== undefined && targetGpuMem !== null) {
+                gpuInput.value = targetGpuMem;
             }
             const lenInput = document.querySelector('input[name="MAX_MODEL_LEN"]');
             if (lenInput && maxLen !== undefined && maxLen !== null) {
