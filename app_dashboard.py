@@ -306,7 +306,7 @@ def api_get_voices():
                 "description": v.get("description", ""),
                 "text": v.get("text", ""),
                 "audio_path": v.get("audio_path", ""),
-                "audio_url": v.get("audio_path", "").replace("/home/jose/vllm", ""),
+                "audio_url": (v.get("audio_path", "")[v.get("audio_path", "").find("/static/"):] if "/static/" in v.get("audio_path", "") else v.get("audio_path", "")),
                 "is_active": v.get("is_active", False)
             })
         return jsonify(result)
@@ -330,7 +330,8 @@ def api_create_voice():
         if file.filename == "":
             return jsonify({"error": "No se seleccionó ningún archivo"}), 400
             
-        upload_dir = "/home/jose/vllm/static/audio/clones"
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        upload_dir = os.path.join(base_dir, "static", "audio", "clones")
         os.makedirs(upload_dir, exist_ok=True)
         
         temp_ext = os.path.splitext(file.filename)[1] or ".wav"
