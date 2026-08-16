@@ -265,19 +265,7 @@ def create_proxy_app(service_name: str, target_port: int) -> FastAPI:
                     else:
                         messages.insert(0, {"role": "system", "content": reasoning_instruction})
                 
-                # 2. Forzar que vLLM no retorne la etiqueta <turn|> al final de la generación
-                # agregándola al array 'stop' de la petición.
-                stop_sequences = data.get("stop", [])
-                if isinstance(stop_sequences, str):
-                    stop_sequences = [stop_sequences]
-                elif not isinstance(stop_sequences, list):
-                    stop_sequences = []
-                
-                if "<turn|>" not in stop_sequences:
-                    stop_sequences.append("<turn|>")
-                    data["stop"] = stop_sequences
-                
-                # Volver a serializar el cuerpo modificado
+                # Volver a serializar el cuerpo modificado si cambió
                 body = json.dumps(data).encode("utf-8")
             except Exception as json_err:
                 print(f"⚠️ Error al interceptar y parsear JSON en el Gateway: {json_err}", file=sys.stderr, flush=True)
