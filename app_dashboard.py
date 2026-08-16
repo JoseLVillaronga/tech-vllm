@@ -722,13 +722,65 @@ def api_get_ip_rules():
 @app.route("/api/blocked-requests", methods=["GET"])
 def api_get_blocked_requests():
     try:
-        hours = request.args.get("hours", default=24, type=int)
-        start_date = datetime.utcnow() - timedelta(hours=hours)
+        # 1. Parsear paginación
+        page = request.args.get("page", default=1, type=int)
+        limit = request.args.get("limit", default=10, type=int)
+        if page < 1:
+            page = 1
+        if limit < 1:
+            limit = 10
+            
+        # 2. Parsear filtros
+        start_date_str = request.args.get("start_date", default="", type=str)
+        end_date_str = request.args.get("end_date", default="", type=str)
+        ip = request.args.get("ip", default="", type=str)
+        service = request.args.get("service", default="", type=str)
+        endpoint = request.args.get("endpoint", default="", type=str)
+        reason = request.args.get("reason", default="", type=str)
         
+        # 3. Construir query MongoDB
+        query = {}
+        
+        # Filtro de rango de fechas
+        if start_date_str or end_date_str:
+            time_filter = {}
+            if start_date_str:
+                try:
+                    start_dt = datetime.fromisoformat(start_date_str)
+                    time_filter["$gte"] = start_dt
+                except Exception:
+                    pass
+            if end_date_str:
+                try:
+                    end_dt = datetime.fromisoformat(end_date_str) + timedelta(days=1) - timedelta(milliseconds=1)
+                    time_filter["$lte"] = end_dt
+                except Exception:
+                    pass
+            if time_filter:
+                query["timestamp"] = time_filter
+        else:
+            # Por defecto las últimas 24h
+            hours = request.args.get("hours", default=24, type=int)
+            start_date = datetime.utcnow() - timedelta(hours=hours)
+            query["timestamp"] = {"$gte": start_date}
+            
+        if ip:
+            query["ip"] = {"$regex": re.escape(ip), "$options": "i"}
+        if service:
+            query["service"] = service
+        if endpoint:
+            query["endpoint"] = {"$regex": re.escape(endpoint), "$options": "i"}
+        if reason:
+            query["reason"] = reason
+            
         db = get_db()
-        logs = list(db.blocked_requests.find(
-            {"timestamp": {"$gte": start_date}}
-        ).sort("timestamp", -1).limit(50))
+        
+        # 4. Calcular conteo total y paginar
+        total_records = db.blocked_requests.count_documents(query)
+        total_pages = (total_records + limit - 1) // limit if total_records > 0 else 1
+        
+        skip = (page - 1) * limit
+        logs = list(db.blocked_requests.find(query).sort("timestamp", -1).skip(skip).limit(limit))
         
         result = []
         for l in logs:
@@ -741,7 +793,88 @@ def api_get_blocked_requests():
                 "endpoint": l.get("endpoint", ""),
                 "reason": l.get("reason", "")
             })
-        return jsonify(result)
+            
+        return jsonify({
+            "logs": result,
+            "total_records": total_records,
+            "total_pages": total_pages,
+            "current_page": page,
+            "limit": limit
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/blocked-requests/export", methods=["GET"])
+def api_export_blocked_requests():
+    try:
+        # 1. Parsear filtros
+        start_date_str = request.args.get("start_date", default="", type=str)
+        end_date_str = request.args.get("end_date", default="", type=str)
+        ip = request.args.get("ip", default="", type=str)
+        service = request.args.get("service", default="", type=str)
+        endpoint = request.args.get("endpoint", default="", type=str)
+        reason = request.args.get("reason", default="", type=str)
+        
+        query = {}
+        if start_date_str or end_date_str:
+            time_filter = {}
+            if start_date_str:
+                try:
+                    start_dt = datetime.fromisoformat(start_date_str)
+                    time_filter["$gte"] = start_dt
+                except Exception:
+                    pass
+            if end_date_str:
+                try:
+                    end_dt = datetime.fromisoformat(end_date_str) + timedelta(days=1) - timedelta(milliseconds=1)
+                    time_filter["$lte"] = end_dt
+                except Exception:
+                    pass
+            if time_filter:
+                query["timestamp"] = time_filter
+        else:
+            hours = request.args.get("hours", default=24, type=int)
+            start_date = datetime.utcnow() - timedelta(hours=hours)
+            query["timestamp"] = {"$gte": start_date}
+            
+        if ip:
+            query["ip"] = {"$regex": re.escape(ip), "$options": "i"}
+        if service:
+            query["service"] = service
+        if endpoint:
+            query["endpoint"] = {"$regex": re.escape(endpoint), "$options": "i"}
+        if reason:
+            query["reason"] = reason
+            
+        db = get_db()
+        logs = list(db.blocked_requests.find(query).sort("timestamp", -1))
+        
+        # 2. Generar CSV compatible con Excel en Español
+        import io
+        import csv
+        from flask import make_response
+        
+        si = io.StringIO()
+        si.write('\ufeff') # UTF-8 BOM
+        cw = csv.writer(si, delimiter=';')
+        
+        cw.writerow(["Fecha y Hora (UTC)", "Dirección IP", "Servicio", "Ruta (Endpoint)", "Motivo / Filtro"])
+        
+        for l in logs:
+            ts = l["timestamp"]
+            ts_str = ts.strftime("%Y-%m-%d %H:%M:%S") if isinstance(ts, datetime) else str(ts)
+            cw.writerow([
+                ts_str,
+                l.get("ip", ""),
+                l.get("service", ""),
+                l.get("endpoint", ""),
+                "LISTA BLANCA" if l.get("reason") == "whitelist" else "LISTA NEGRA"
+            ])
+            
+        response = make_response(si.getvalue())
+        response.headers["Content-Disposition"] = "attachment; filename=bloqueos_seguridad.csv"
+        response.headers["Content-type"] = "text/csv; charset=utf-8"
+        return response
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
