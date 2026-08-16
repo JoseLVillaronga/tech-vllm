@@ -125,6 +125,22 @@ def save_usage_log(ip: str, token: str, service: str, endpoint: str, model: str,
     except Exception as e:
         print(f"⚠️ Error al guardar telemetría de uso en MongoDB: {e}", file=sys.stderr, flush=True)
 
+# Función síncrona para guardar bloqueos de seguridad en MongoDB en un hilo de fondo
+def save_blocked_request_log(ip: str, service: str, endpoint: str, reason: str):
+    try:
+        db = get_db()
+        log_doc = {
+            "timestamp": datetime.utcnow(),
+            "ip": ip,
+            "service": service,
+            "endpoint": endpoint or "/",
+            "reason": reason
+        }
+        db.blocked_requests.insert_one(log_doc)
+        print(f"🛡️ Seguridad: Intento de acceso bloqueado registrado para {ip} en servicio {service} ({reason})", flush=True)
+    except Exception as e:
+        print(f"⚠️ Error al guardar telemetría de seguridad en MongoDB: {e}", file=sys.stderr, flush=True)
+
 # Lazo en segundo plano para sincronizar las reglas de IP desde MongoDB cada 10s
 async def sync_ip_rules_loop():
     global cached_whitelist, cached_blacklist
@@ -211,6 +227,7 @@ def create_proxy_app(service_name: str, target_port: int) -> FastAPI:
             
             # Comprobar Lista Negra (Blacklist)
             if any(client_ip_obj in net for net in cached_blacklist):
+                asyncio.create_task(asyncio.to_thread(save_blocked_request_log, client_ip, service_name, path, "blacklist"))
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail=f"Acceso denegado: Dirección IP ({client_ip}) bloqueada por lista negra."
@@ -219,6 +236,7 @@ def create_proxy_app(service_name: str, target_port: int) -> FastAPI:
             # Comprobar Lista Blanca (Whitelist)
             if cached_whitelist:
                 if not any(client_ip_obj in net for net in cached_whitelist):
+                    asyncio.create_task(asyncio.to_thread(save_blocked_request_log, client_ip, service_name, path, "whitelist"))
                     raise HTTPException(
                         status_code=status.HTTP_403_FORBIDDEN,
                         detail=f"Acceso denegado: Dirección IP ({client_ip}) no autorizada en lista blanca."
@@ -458,7 +476,9 @@ async def run_servers():
         db.ip_rules.create_index("expires_at", expireAfterSeconds=0)
         # Asegurar la creación del índice TTL de 6 meses en la colección usage_logs (15,552,000 segundos)
         db.usage_logs.create_index("timestamp", expireAfterSeconds=15552000)
-        print("💾 MongoDB: Índices TTL verificados en ip_rules y usage_logs.", flush=True)
+        # Asegurar la creación del índice TTL de 6 meses en la colección blocked_requests (15,552,000 segundos)
+        db.blocked_requests.create_index("timestamp", expireAfterSeconds=15552000)
+        print("💾 MongoDB: Índices TTL verificados en ip_rules, usage_logs y blocked_requests.", flush=True)
     except Exception as e:
         print(f"⚠️ Error al inicializar índices de MongoDB en Gateway startup: {e}", file=sys.stderr, flush=True)
 

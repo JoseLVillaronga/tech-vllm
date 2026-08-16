@@ -719,6 +719,32 @@ def api_get_ip_rules():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route("/api/blocked-requests", methods=["GET"])
+def api_get_blocked_requests():
+    try:
+        hours = request.args.get("hours", default=24, type=int)
+        start_date = datetime.utcnow() - timedelta(hours=hours)
+        
+        db = get_db()
+        logs = list(db.blocked_requests.find(
+            {"timestamp": {"$gte": start_date}}
+        ).sort("timestamp", -1).limit(50))
+        
+        result = []
+        for l in logs:
+            ts_str = l["timestamp"].isoformat() + "Z" if isinstance(l["timestamp"], datetime) else l["timestamp"]
+            result.append({
+                "id": str(l["_id"]),
+                "timestamp": ts_str,
+                "ip": l.get("ip", ""),
+                "service": l.get("service", ""),
+                "endpoint": l.get("endpoint", ""),
+                "reason": l.get("reason", "")
+            })
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route("/api/ip-rules", methods=["POST"])
 def api_create_ip_rule():
     try:
