@@ -1,5 +1,7 @@
 # 🚀 vLLM Local Server: Gemma 4 26B (Multimodal & Reasoning)
 
+![vLLM Local Server Banner](screenshots/project_banner.jpg)
+
 Servidor de Inferencia de Modelos de Lenguaje (LLM) de alto rendimiento basado en **vLLM**, configurado para desplegar el modelo **NVIDIA Gemma 4 26B-A4B-NVFP4** con soporte **Multimodal (Visión/OCR)**, **Razonamiento** y **Llamadas a Herramientas (*Tool Choice*)**, totalmente integrado con clientes como **Open-WebUI**.
 
 ---
