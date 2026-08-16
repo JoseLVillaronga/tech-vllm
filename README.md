@@ -277,9 +277,13 @@ El Dashboard incluye una copia local de la biblioteca Tailwind CSS en `static/js
 | :---: | :---: |
 | ![Monitor e Hilos](screenshots/dashboard_monitor.png) | ![Variables .env](screenshots/dashboard_variables.png) |
 
-| **Laboratorio / Test** (Playground de APIs) | **Voces Clonadas** (Gestor de Audio) | **Seguridad** (Claves API & Firewalls) |
-| :---: | :---: | :---: |
-| ![Laboratorio / Test](screenshots/dashboard_laboratorio.png) | ![Voces Clonadas](screenshots/dashboard_voces.png) | ![Seguridad](screenshots/dashboard_seguridad.png) |
+| **Laboratorio / Test** (Playground de APIs) | **Voces Clonadas** (Gestor de Audio) |
+| :---: | :---: |
+| ![Laboratorio / Test](screenshots/dashboard_laboratorio.png) | ![Voces Clonadas](screenshots/dashboard_voces.png) |
+
+| **Seguridad** (Claves API & Firewalls) | **Métricas** (Estadísticas y Reportes de Consumo) |
+| :---: | :---: |
+| ![Seguridad](screenshots/dashboard_seguridad.png) | ![Métricas](screenshots/dashboard_metricas.png) |
 
 ---
 
