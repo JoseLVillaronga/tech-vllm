@@ -39,6 +39,7 @@ def main():
         "--reasoning-parser", "gemma4",
         "--enable-auto-tool-choice",
         "--trust-remote-code",
+        "--enable-chunked-prefill",
         "--api-key", api_key
     ]
 
