@@ -19,6 +19,7 @@ def main():
     kv_cache_dtype = os.getenv("KV_CACHE_DTYPE", "bfloat16")
     swap_space = os.getenv("SWAP_SPACE", "0")
     quantization = os.getenv("QUANTIZATION")
+    max_num_batched_tokens = os.getenv("MAX_NUM_BATCHED_TOKENS", "4096")
 
     # Exportar HF_TOKEN si está definido
     if hf_token:
@@ -40,6 +41,7 @@ def main():
         "--enable-auto-tool-choice",
         "--trust-remote-code",
         "--enable-chunked-prefill",
+        "--max-num-batched-tokens", str(max_num_batched_tokens),
         "--api-key", api_key
     ]
 
