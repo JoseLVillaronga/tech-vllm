@@ -748,10 +748,10 @@ def api_export_metrics():
                 
                 row = [
                     ts_str,
-                    log.get("client_ip", ""),
+                    log.get("ip") or log.get("client_ip", ""),
                     log.get("api_key_name", ""),
                     log.get("service", ""),
-                    log.get("path", ""),
+                    log.get("endpoint") or log.get("path", ""),
                     log.get("model", ""),
                     str(log.get("prompt_tokens", 0)),
                     str(log.get("completion_tokens", 0)),
