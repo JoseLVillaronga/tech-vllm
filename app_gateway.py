@@ -270,7 +270,14 @@ def create_proxy_app(service_name: str, target_port: int) -> FastAPI:
     @app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD", "PATCH"])
     async def proxy(request: Request, path: str, background_tasks: BackgroundTasks):
         # 1. Validar reglas de IP antes de cualquier otra comprobación
-        client_ip = request.client.host
+        # Extraer IP real detrás de proxies (Caddy, Nginx, etc.)
+        client_ip = request.headers.get("x-real-ip")
+        if not client_ip:
+            x_forwarded = request.headers.get("x-forwarded-for")
+            if x_forwarded:
+                client_ip = x_forwarded.split(",")[0].strip()
+            else:
+                client_ip = request.client.host
         try:
             client_ip_obj = ipaddress.ip_address(client_ip)
             
