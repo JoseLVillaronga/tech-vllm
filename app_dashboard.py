@@ -61,7 +61,8 @@ SERVICES = {
     "gemma": "vllm",
     "whisper": "vllm-whisper",
     "tts": "vllm-tts",
-    "diarization": "vllm-diarization"
+    "diarization": "vllm-diarization",
+    "gateway": "vllm-gateway"
 }
 
 # Puertos locales de cada servicio
@@ -69,7 +70,8 @@ SERVICE_PORTS = {
     "gemma": 8000,
     "whisper": 8001,
     "tts": 8002,
-    "diarization": 8003
+    "diarization": 8003,
+    "gateway": "8000-8003"
 }
 
 # Puertos internos de los motores reales detrás del Gateway
@@ -446,6 +448,42 @@ def api_delete_voice(voice_id):
 
 # Gestión de Claves API específicas en MongoDB
 
+def check_and_reset_key_quota_dict(k: dict, db) -> dict:
+    quota_reset = k.get("quota_reset", "none")
+    if quota_reset in ["daily", "monthly"]:
+        last_reset_at = k.get("last_reset_at")
+        now = datetime.utcnow()
+        reset_needed = False
+        
+        if not last_reset_at:
+            reset_needed = True
+        else:
+            if isinstance(last_reset_at, str):
+                try:
+                    last_dt = datetime.fromisoformat(last_reset_at.replace("Z", "+00:00")).replace(tzinfo=None)
+                except Exception:
+                    last_dt = now
+            elif isinstance(last_reset_at, datetime):
+                last_dt = last_reset_at.replace(tzinfo=None)
+            else:
+                last_dt = now
+                
+            if quota_reset == "daily":
+                if now.date() > last_dt.date():
+                    reset_needed = True
+            elif quota_reset == "monthly":
+                if (now.year, now.month) > (last_dt.year, last_dt.month):
+                    reset_needed = True
+                    
+        if reset_needed:
+            db.api_keys.update_one(
+                {"_id": k["_id"]},
+                {"$set": {"used_tokens": 0, "last_reset_at": now}}
+            )
+            k["used_tokens"] = 0
+            k["last_reset_at"] = now
+    return k
+
 @app.route("/api/keys", methods=["GET"])
 def api_get_keys():
     try:
@@ -453,12 +491,18 @@ def api_get_keys():
         keys = list(db.api_keys.find())
         result = []
         for k in keys:
+            k = check_and_reset_key_quota_dict(k, db)
             result.append({
                 "id": str(k["_id"]),
                 "name": k.get("name", "Sin nombre"),
                 "description": k.get("description", ""),
                 "key": k.get("key", ""),
                 "services": k.get("services", []),
+                "allowed_providers": k.get("allowed_providers", []),
+                "max_tokens": int(k.get("max_tokens") or 0),
+                "used_tokens": int(k.get("used_tokens") or 0),
+                "quota_reset": k.get("quota_reset", "none"),
+                "last_reset_at": str(k.get("last_reset_at") or ""),
                 "expires_at": k.get("expires_at", ""),
                 "is_active": k.get("is_active", True)
             })
@@ -473,13 +517,18 @@ def api_create_key():
         name = data.get("name", "").strip()
         description = data.get("description", "").strip()
         services = data.get("services", [])
+        allowed_providers = data.get("allowed_providers", [])
+        max_tokens = int(data.get("max_tokens") or 0)
+        quota_reset = data.get("quota_reset", "none")
+        if quota_reset not in ["none", "daily", "monthly"]:
+            quota_reset = "none"
         expires_at = data.get("expires_at", "").strip()
         
         if not name:
             return jsonify({"error": "El nombre es obligatorio"}), 400
             
-        if not services:
-            return jsonify({"error": "Debes seleccionar al menos un servicio"}), 400
+        if not services and not allowed_providers:
+            return jsonify({"error": "Debes seleccionar al menos un servicio local o un proveedor en la nube"}), 400
             
         import secrets
         new_key = "vllm_key_" + secrets.token_hex(20)
@@ -494,6 +543,11 @@ def api_create_key():
             "description": description,
             "key": new_key,
             "services": services,
+            "allowed_providers": allowed_providers,
+            "max_tokens": max_tokens,
+            "used_tokens": 0,
+            "quota_reset": quota_reset,
+            "last_reset_at": datetime.utcnow(),
             "expires_at": expires_val,
             "is_active": True
         }).inserted_id
@@ -513,14 +567,19 @@ def api_update_key(key_id):
         name = data.get("name", "").strip()
         description = data.get("description", "").strip()
         services = data.get("services", [])
+        allowed_providers = data.get("allowed_providers", [])
+        max_tokens = int(data.get("max_tokens") or 0)
+        quota_reset = data.get("quota_reset", "none")
+        if quota_reset not in ["none", "daily", "monthly"]:
+            quota_reset = "none"
         expires_at = data.get("expires_at", "").strip()
         is_active = data.get("is_active", True)
         
         if not name:
             return jsonify({"error": "El nombre es obligatorio"}), 400
             
-        if not services:
-            return jsonify({"error": "Debes seleccionar al menos un servicio"}), 400
+        if not services and not allowed_providers:
+            return jsonify({"error": "Debes seleccionar al menos un servicio local o un proveedor en la nube"}), 400
             
         expires_val = None
         if expires_at:
@@ -533,6 +592,9 @@ def api_update_key(key_id):
                 "name": name,
                 "description": description,
                 "services": services,
+                "allowed_providers": allowed_providers,
+                "max_tokens": max_tokens,
+                "quota_reset": quota_reset,
                 "expires_at": expires_val,
                 "is_active": is_active
             }}
@@ -542,6 +604,22 @@ def api_update_key(key_id):
             return jsonify({"error": "Clave API no encontrada"}), 404
             
         return jsonify({"message": "Clave API actualizada con éxito"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/keys/<key_id>/reset-quota", methods=["POST"])
+def api_reset_key_quota(key_id):
+    try:
+        db = get_db()
+        now = datetime.utcnow()
+        res = db.api_keys.update_one(
+            {"_id": ObjectId(key_id)},
+            {"$set": {"used_tokens": 0, "last_reset_at": now}}
+        )
+        if res.matched_count == 0:
+            return jsonify({"error": "Clave API no encontrada"}), 404
+            
+        return jsonify({"message": "Cupo de tokens reiniciado a cero con éxito"})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

@@ -1,5 +1,6 @@
 import os
 import sys
+import re
 import asyncio
 import uvicorn
 import ipaddress
@@ -23,8 +24,13 @@ failed_attempts = {}
 failed_attempts_lock = asyncio.Lock()
 
 # Modelos en la nube integrados (sincronizados periódicamente)
-cached_cloud_models = {}
+cached_cloud_models = {}         # Mapeo 'provider_slug/m_id' -> dict de información del proveedor
+cached_cloud_models_by_raw = {}  # Mapeo 'm_id' -> lista de dicts de información de proveedores
 cached_cloud_models_lock = asyncio.Lock()
+
+def slugify_provider_name(name: str) -> str:
+    slug = re.sub(r'[^a-zA-Z0-9_\-]', '_', name.strip().lower()).strip('_')
+    return slug or "cloud"
 
 # Clave API Maestra
 MASTER_KEY = os.getenv("API_KEY", "token-abc123")
@@ -59,44 +65,104 @@ def get_db():
     client = MongoClient(uri, serverSelectionTimeoutMS=1000)
     return client[db_name]
 
-# Lógica de validación de tokens
-def validate_token(token: str, service_name: str) -> bool:
+# Helper para obtener el documento de clave API y verificar reinicios periódicos de cupo
+def get_key_doc(token: str):
     if token == MASTER_KEY:
-        return True
-        
+        return {
+            "name": "Master Key",
+            "services": ["gemma", "whisper", "tts", "diarization"],
+            "allowed_providers": ["*"],
+            "is_active": True
+        }
     try:
         db = get_db()
         key_doc = db.api_keys.find_one({"key": token, "is_active": True})
         if not key_doc:
-            return False
+            return None
             
-        # Validar permisos de servicio
-        allowed_services = key_doc.get("services", [])
+        # Evaluación de reinicio periódico de cupo de tokens (Diario / Mensual)
+        quota_reset = key_doc.get("quota_reset", "none")
+        if quota_reset in ["daily", "monthly"]:
+            last_reset_at = key_doc.get("last_reset_at")
+            now = datetime.utcnow()
+            reset_needed = False
+            
+            if not last_reset_at:
+                reset_needed = True
+            else:
+                if isinstance(last_reset_at, str):
+                    try:
+                        last_dt = datetime.fromisoformat(last_reset_at.replace("Z", "+00:00")).replace(tzinfo=None)
+                    except Exception:
+                        last_dt = now
+                elif isinstance(last_reset_at, datetime):
+                    last_dt = last_reset_at.replace(tzinfo=None)
+                else:
+                    last_dt = now
+                    
+                if quota_reset == "daily":
+                    if now.date() > last_dt.date():
+                        reset_needed = True
+                elif quota_reset == "monthly":
+                    if (now.year, now.month) > (last_dt.year, last_dt.month):
+                        reset_needed = True
+                        
+            if reset_needed:
+                db.api_keys.update_one(
+                    {"_id": key_doc["_id"]},
+                    {"$set": {"used_tokens": 0, "last_reset_at": now}}
+                )
+                key_doc["used_tokens"] = 0
+                key_doc["last_reset_at"] = now
+                print(f"🔄 Gateway: Cupo de tokens reiniciado automáticamente ({quota_reset}) para la clave '{key_doc.get('name')}'", flush=True)
+                
+        return key_doc
+    except Exception as e:
+        print(f"⚠️ Error al consultar token en MongoDB: {e}", file=sys.stderr)
+        return None
+
+# Lógica de validación de tokens
+def validate_token_doc(key_doc: dict, service_name: str) -> bool:
+    if not key_doc:
+        return False
+    if key_doc.get("name") == "Master Key":
+        return True
+        
+    # Validar permisos de servicio / proveedores
+    allowed_services = key_doc.get("services", [])
+    allowed_providers = key_doc.get("allowed_providers", [])
+    
+    if service_name == "gemma":
+        # En el proxy gemma (puerto 8000), se permite el paso si tiene 'gemma' local o algún proveedor en la nube
+        if "gemma" not in allowed_services and not allowed_providers:
+            return False
+    else:
         if service_name not in allowed_services:
             return False
+        
+    # Validar expiración
+    expires_at = key_doc.get("expires_at")
+    if expires_at:
+        if isinstance(expires_at, str):
+            # Soporte para fechas en formato ISO con o sin 'Z'
+            expires_dt = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
+        else:
+            expires_dt = expires_at
             
-        # Validar expiración
-        expires_at = key_doc.get("expires_at")
-        if expires_at:
-            if isinstance(expires_at, str):
-                # Soporte para fechas en formato ISO con o sin 'Z'
-                expires_dt = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
-            else:
-                expires_dt = expires_at
-                
-            # Hacer comparación offset-aware si la fecha de expiración tiene zona horaria
-            if expires_dt.tzinfo is not None:
-                now = datetime.now(expires_dt.tzinfo)
-            else:
-                now = datetime.utcnow()
-                
-            if now > expires_dt:
-                return False
-                
-        return True
-    except Exception as e:
-        print(f"⚠️ Error al validar token en MongoDB: {e}", file=sys.stderr)
-        return False
+        # Hacer comparación offset-aware si la fecha de expiración tiene zona horaria
+        if expires_dt.tzinfo is not None:
+            now = datetime.now(expires_dt.tzinfo)
+        else:
+            now = datetime.utcnow()
+            
+        if now > expires_dt:
+            return False
+            
+    return True
+
+def validate_token(token: str, service_name: str) -> bool:
+    key_doc = get_key_doc(token)
+    return validate_token_doc(key_doc, service_name)
 
 # Función síncrona ejecutada en BackgroundTasks para no bloquear el bucle de eventos
 def save_usage_log(ip: str, token: str, service: str, endpoint: str, model: str,
@@ -112,6 +178,7 @@ def save_usage_log(ip: str, token: str, service: str, endpoint: str, model: str,
             key_name = key_doc.get("name", "Clave Desconocida") if key_doc else "Clave Desconocida"
             
         # 2. Construir e insertar el log de auditoría
+        total_tokens = (int(prompt_tokens) if prompt_tokens is not None else 0) + (int(completion_tokens) if completion_tokens is not None else 0)
         log_doc = {
             "timestamp": datetime.utcnow(),
             "ip": ip,
@@ -125,7 +192,12 @@ def save_usage_log(ip: str, token: str, service: str, endpoint: str, model: str,
             "duration_sec": float(duration_sec) if duration_sec is not None else 0.0
         }
         db.usage_logs.insert_one(log_doc)
-        print(f"📊 Telemetría: Registro de uso guardado para '{service}' ({key_name}) - Modelo: {model}", flush=True)
+        
+        # 3. Incrementar el contador atómico de tokens consumidos en la clave API de forma desacoplada
+        if token != MASTER_KEY and total_tokens > 0:
+            db.api_keys.update_one({"key": token}, {"$inc": {"used_tokens": total_tokens}})
+            
+        print(f"📊 Telemetría: Registro de uso guardado para '{service}' ({key_name}) - Modelo: {model} - Tokens: {total_tokens}", flush=True)
     except Exception as e:
         print(f"⚠️ Error al guardar telemetría de uso en MongoDB: {e}", file=sys.stderr, flush=True)
 
@@ -181,7 +253,7 @@ async def sync_ip_rules_loop():
         await asyncio.sleep(10)
 
 async def sync_cloud_providers_loop():
-    global cached_cloud_models
+    global cached_cloud_models, cached_cloud_models_by_raw
     print("☁️ Sincronizador de modelos externos en la nube del Gateway Iniciado.", flush=True)
     while True:
         try:
@@ -189,9 +261,11 @@ async def sync_cloud_providers_loop():
             providers = list(db.cloud_providers.find({"is_active": True}))
             
             new_cloud_models = {}
+            new_cloud_models_by_raw = {}
             for p in providers:
                 provider_id = str(p["_id"])
                 name = p.get("name", "Desconocido")
+                provider_slug = slugify_provider_name(name)
                 base_url = p.get("base_url", "").rstrip("/")
                 api_key = p.get("api_key", "")
                 
@@ -208,17 +282,28 @@ async def sync_cloud_providers_loop():
                             for m in models_data.get("data", []):
                                 m_id = m.get("id")
                                 if m_id:
-                                    new_cloud_models[m_id] = {
+                                    provider_info = {
                                         "provider_id": provider_id,
                                         "provider_name": name,
+                                        "provider_slug": provider_slug,
+                                        "raw_model_id": m_id,
                                         "base_url": base_url,
                                         "api_key": api_key
                                     }
+                                    # Registro con prefijo único por proveedor (ej: 'openrouter/anthropic/claude-3.5-sonnet')
+                                    prefixed_id = f"{provider_slug}/{m_id}"
+                                    new_cloud_models[prefixed_id] = provider_info
+                                    
+                                    # Registro por nombre nativo (para resolución retrocompatible inteligente)
+                                    if m_id not in new_cloud_models_by_raw:
+                                        new_cloud_models_by_raw[m_id] = []
+                                    new_cloud_models_by_raw[m_id].append(provider_info)
                 except Exception as p_err:
                     print(f"⚠️ Gateway: Error obteniendo modelos del proveedor '{name}': {p_err}", file=sys.stderr, flush=True)
             
             async with cached_cloud_models_lock:
                 cached_cloud_models = new_cloud_models
+                cached_cloud_models_by_raw = new_cloud_models_by_raw
                 
         except Exception as e:
             print(f"⚠️ Gateway: Error al sincronizar proveedores de la nube: {e}", file=sys.stderr, flush=True)
@@ -324,7 +409,8 @@ def create_proxy_app(service_name: str, target_port: int) -> FastAPI:
             )
             
         # Validar token
-        if not validate_token(token, service_name):
+        key_doc = get_key_doc(token)
+        if not validate_token_doc(key_doc, service_name):
             # Registrar intento de autenticación fallido
             await register_failed_attempt(client_ip)
             asyncio.create_task(asyncio.to_thread(save_blocked_request_log, client_ip, service_name, path, "api_key"))
@@ -333,31 +419,60 @@ def create_proxy_app(service_name: str, target_port: int) -> FastAPI:
                 detail="API Key inválida, desactivada, expirada o sin permisos para este servicio."
             )
             
-        # Interceptar /v1/models en gemma proxy para combinar locales y en la nube
+        # Validar cupo máximo de tokens
+        if token != MASTER_KEY and key_doc:
+            max_tokens = int(key_doc.get("max_tokens") or 0)
+            used_tokens = int(key_doc.get("used_tokens") or 0)
+            if max_tokens > 0 and used_tokens >= max_tokens:
+                asyncio.create_task(asyncio.to_thread(save_blocked_request_log, client_ip, service_name, path, f"token_quota_exceeded:{used_tokens}/{max_tokens}"))
+                raise HTTPException(
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    detail=f"Cupo de tokens agotado para esta clave API ({used_tokens:,} / {max_tokens:,} consumidos). Contacta al administrador para renovar o reiniciar tu cupo."
+                )
+            
+        # Interceptar /v1/models en gemma proxy para combinar locales y en la nube según permisos granulares
         if service_name == "gemma" and path.strip("/") == "v1/models" and request.method == "GET":
             try:
                 import json
                 import time
                 
-                local_models = []
-                try:
-                    async with httpx.AsyncClient(timeout=3.0) as temp_cli:
-                        headers_local = {"Authorization": f"Bearer {MASTER_KEY}"}
-                        resp_local = await temp_cli.get(f"http://127.0.0.1:{target_port}/v1/models", headers=headers_local)
-                        if resp_local.status_code == 200:
-                            local_models = resp_local.json().get("data", [])
-                except Exception as le:
-                    print(f"⚠️ Gateway: Error obteniendo modelos locales: {le}", file=sys.stderr, flush=True)
+                is_master = (token == MASTER_KEY)
+                allowed_services = key_doc.get("services", []) if key_doc else []
+                key_allowed_providers = key_doc.get("allowed_providers", []) if key_doc else []
                 
-                combined_models = list(local_models)
+                combined_models = []
+                # 1. Modelos locales expuestos con prefijo 'local/'
+                if is_master or ("gemma" in allowed_services):
+                    try:
+                        async with httpx.AsyncClient(timeout=3.0) as temp_cli:
+                            headers_local = {"Authorization": f"Bearer {MASTER_KEY}"}
+                            resp_local = await temp_cli.get(f"http://127.0.0.1:{target_port}/v1/models", headers=headers_local)
+                            if resp_local.status_code == 200:
+                                local_data = resp_local.json().get("data", [])
+                                for lm in local_data:
+                                    raw_id = lm.get("id", "")
+                                    prefixed_id = f"local/{raw_id}" if not raw_id.startswith("local/") else raw_id
+                                    combined_models.append({
+                                        "id": prefixed_id,
+                                        "object": "model",
+                                        "created": lm.get("created", int(time.time())),
+                                        "owned_by": "local"
+                                    })
+                    except Exception as le:
+                        print(f"⚠️ Gateway: Error obteniendo modelos locales: {le}", file=sys.stderr, flush=True)
+                
+                # 2. Modelos de proveedores en la nube expuestos con prefijo '<provider_slug>/'
                 async with cached_cloud_models_lock:
-                    for m_id, p_info in cached_cloud_models.items():
-                        if not any(lm.get("id") == m_id for lm in local_models):
+                    for pref_id, p_info in cached_cloud_models.items():
+                        prov_id = p_info.get("provider_id", "")
+                        prov_name = p_info.get("provider_name", "")
+                        prov_slug = p_info.get("provider_slug", "")
+                        if is_master or ("*" in key_allowed_providers) or (prov_id in key_allowed_providers) or (prov_name in key_allowed_providers) or (prov_slug in key_allowed_providers):
                             combined_models.append({
-                                "id": m_id,
+                                "id": pref_id,
                                 "object": "model",
                                 "created": int(time.time()),
-                                "owned_by": p_info["provider_name"]
+                                "owned_by": prov_name
                             })
                             
                 return Response(
@@ -394,20 +509,65 @@ def create_proxy_app(service_name: str, target_port: int) -> FastAPI:
         is_cloud_request = False
         cloud_provider = None
         
-        # Interceptar peticiones de chat para inyectar el prompt de sistema para razonamiento en gemma-4-reasoning
-        if service_name == "gemma" and path.strip("/") == "v1/chat/completions" and request.method == "POST" and body:
+        if service_name == "gemma" and body:
             try:
                 import json
                 data = json.loads(body)
-                model_name = data.get("model", "google/gemma-4-E4B-it")
+                req_model = data.get("model", "")
                 
-                async with cached_cloud_models_lock:
-                    if model_name in cached_cloud_models:
-                        is_cloud_request = True
-                        cloud_provider = cached_cloud_models[model_name]
-                        
-                # 1. Inyectar el system prompt de razonamiento para gemma-4-reasoning si es local
-                if not is_cloud_request and data.get("model") == "gemma-4-reasoning" and "messages" in data:
+                is_master = (token == MASTER_KEY)
+                allowed_services = key_doc.get("services", []) if key_doc else []
+                key_allowed_providers = key_doc.get("allowed_providers", []) if key_doc else []
+                
+                actual_model = req_model
+                
+                if req_model.startswith("local/"):
+                    # Caso 1: Modelo local con prefijo explícito 'local/'
+                    is_cloud_request = False
+                    actual_model = req_model[6:] # Despojar 'local/'
+                    data["model"] = actual_model
+                else:
+                    async with cached_cloud_models_lock:
+                        if req_model in cached_cloud_models:
+                            # Caso 2: Modelo en la nube con prefijo de proveedor exacto (ej: 'openrouter/anthropic/claude-3.5-sonnet')
+                            is_cloud_request = True
+                            cloud_provider = cached_cloud_models[req_model]
+                            actual_model = cloud_provider.get("raw_model_id", req_model)
+                            data["model"] = actual_model # Despojar prefijo de proveedor antes de enviar a la nube
+                        elif req_model in cached_cloud_models_by_raw:
+                            # Caso 3: Modelo enviado por nombre nativo (sin prefijo).
+                            # Seleccionar el proveedor candidato que esté autorizado para esta clave API
+                            candidate_providers = cached_cloud_models_by_raw[req_model]
+                            authorized_candidate = None
+                            for cp in candidate_providers:
+                                p_id = cp.get("provider_id", "")
+                                p_name = cp.get("provider_name", "")
+                                p_slug = cp.get("provider_slug", "")
+                                if is_master or ("*" in key_allowed_providers) or (p_id in key_allowed_providers) or (p_name in key_allowed_providers) or (p_slug in key_allowed_providers):
+                                    authorized_candidate = cp
+                                    break
+                            
+                            # Si coincide con local y la clave tiene permiso gemma, o si no hay candidato autorizado en nube
+                            if ("gemma" in allowed_services or is_master) and (req_model in ["gemma-4-reasoning", "google/gemma-4-E4B-it"] or not authorized_candidate):
+                                is_cloud_request = False
+                                actual_model = req_model
+                            elif authorized_candidate:
+                                is_cloud_request = True
+                                cloud_provider = authorized_candidate
+                                actual_model = req_model
+                                data["model"] = actual_model
+                            else:
+                                is_cloud_request = True
+                                cloud_provider = candidate_providers[0]
+                                actual_model = req_model
+                        else:
+                            is_cloud_request = False
+                            actual_model = req_model
+
+                model_name = actual_model or service_name
+                
+                # Inyectar el system prompt de razonamiento para gemma-4-reasoning si es local
+                if not is_cloud_request and actual_model == "gemma-4-reasoning" and path.strip("/") == "v1/chat/completions" and "messages" in data:
                     messages = data["messages"]
                     system_msg = next((m for m in messages if m.get("role") == "system"), None)
                     reasoning_instruction = (
@@ -421,10 +581,33 @@ def create_proxy_app(service_name: str, target_port: int) -> FastAPI:
                             system_msg["content"] = f"{original_content}\n\n{reasoning_instruction}".strip()
                     else:
                         messages.insert(0, {"role": "system", "content": reasoning_instruction})
-                    
-                    body = json.dumps(data).encode("utf-8")
+                
+                body = json.dumps(data).encode("utf-8")
             except Exception as json_err:
                 print(f"⚠️ Error al interceptar y parsear JSON en el Gateway: {json_err}", file=sys.stderr, flush=True)
+
+        # Validación granular de permisos por modelo/proveedor en el servicio Gemma
+        if service_name == "gemma":
+            is_master = (token == MASTER_KEY)
+            if is_cloud_request and cloud_provider:
+                provider_id = cloud_provider.get("provider_id", "")
+                provider_name = cloud_provider.get("provider_name", "")
+                provider_slug = cloud_provider.get("provider_slug", "")
+                key_allowed_providers = key_doc.get("allowed_providers", []) if key_doc else []
+                if not is_master and ("*" not in key_allowed_providers) and (provider_id not in key_allowed_providers) and (provider_name not in key_allowed_providers) and (provider_slug not in key_allowed_providers):
+                    asyncio.create_task(asyncio.to_thread(save_blocked_request_log, client_ip, service_name, path, f"cloud_provider_denied:{provider_name}"))
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail=f"Acceso denegado: Esta clave API no tiene permisos para acceder al proveedor en la nube '{provider_name}'."
+                    )
+            elif not is_cloud_request and path.strip("/") != "v1/models":
+                allowed_services = key_doc.get("services", []) if key_doc else []
+                if not is_master and ("gemma" not in allowed_services):
+                    asyncio.create_task(asyncio.to_thread(save_blocked_request_log, client_ip, service_name, path, "local_gemma_denied"))
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="Acceso denegado: Esta clave API no tiene permisos para acceder al modelo local Gemma."
+                    )
 
         if is_cloud_request:
             base_url = cloud_provider['base_url'].rstrip("/")

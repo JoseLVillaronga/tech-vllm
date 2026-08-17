@@ -844,7 +844,19 @@ Para garantizar que el proyecto se pueda instalar y clonar en cualquier máquina
 Para combinar la potencia local de la GPU RTX 3090 con modelos externos avanzados, la suite actúa como un **AI Gateway híbrido**:
 
 * **Gestión y Sincronización Asíncrona:** El Dashboard web permite dar de alta proveedores compatibles con OpenAI (como OpenRouter, DeepSeek o la propia OpenAI). Cada 60 segundos, un hilo de segundo plano del Gateway consulta el endpoint `/v1/models` de cada proveedor activo y almacena la lista consolidada de modelos en caché de RAM.
-* **Listado Unificado de Modelos:** Al consultar `/v1/models` en el puerto público `8000`, el Gateway intercepta la petición, lee la lista de modelos locales del motor vLLM y los fusiona dinámicamente con los modelos en la nube activos recopilados, sirviendo una única lista unificada.
+* **Espacios de Nombres (*Namespaces*) y Prefijos de Modelos (`local/` y `<proveedor>/`):**
+  * *¿Por qué se hizo?* Si múltiples proveedores en la nube (o el motor local) exponen modelos con el mismo nombre (ej: `deepseek-chat` o `gemma-4`), la indexación plana tradicional provocaba que el último proveedor sincronizado sobrescribiera a los anteriores en la memoria del Gateway. Además, los usuarios no podían elegir explícitamente qué proveedor debía facturar o atender su petición.
+  * *¿Cómo funciona?*
+    * **Modelos Locales:** Se exponen en `/v1/models` con el prefijo unívoco `local/` (ej: `local/gemma-4-reasoning`, `local/google/gemma-4-E4B-it`) con `owned_by: "local"`.
+    * **Modelos en la Nube:** Se exponen bajo el espacio de nombres de su proveedor (ej: `deepseek/deepseek-chat`, `openrouter/anthropic/claude-3.5-sonnet`) con `owned_by: <nombre_proveedor>`.
+    * **Eliminación Automática de Prefijo (*Prefix Stripping*):** En tiempo de ejecución (`/v1/chat/completions`), el Gateway analiza el modelo solicitado, despoja el prefijo `local/` antes de delegar a vLLM (puerto 18000), o despoja el prefijo `<proveedor>/` antes de reenviar el JSON al endpoint externo en la nube.
+    * **Retrocompatibilidad Inteligente:** Si un cliente envía el nombre nativo sin prefijo, el Gateway evalúa los permisos de la clave API para enrutar la petición de forma segura al proveedor autorizado correspondiente.
+* **Control Granular de Acceso por Clave API y Filtrado de Catálogo:**
+  * *¿Por qué se hizo?* Para aplicar el principio de mínimo privilegio y evitar que claves secundarias o usuarios no autorizados consuman crédito en proveedores de pago específicos o accedan a modelos restringidos.
+  * *¿Cómo funciona?*
+    * En la pestaña **Seguridad** de la GUI, cada clave API permite seleccionar qué servicios locales (`gemma`, `whisper`, `tts`, `diarization`) y qué proveedores en la nube registrados (`allowed_providers`) tiene habilitados.
+    * Al consultar `GET /v1/models` con una clave API, el Gateway filtra en tiempo real el catálogo de modelos, mostrando **únicamente** los modelos de los proveedores autorizados para esa clave.
+    * En peticiones de inferencia directa (`POST /v1/chat/completions`), si un cliente intenta invocar un modelo de un proveedor no autorizado, el Gateway rechaza la petición con **`403 Forbidden`** (*"Acceso denegado: Esta clave API no tiene permisos para acceder al proveedor en la nube..."*) y registra el incidente en la auditoría de seguridad (`blocked_requests`).
 * **Enrutamiento Dinámico con Saneamiento de Red:** Al recibir una petición a `/v1/chat/completions`, si el modelo seleccionado pertenece a la nube:
     1. **Deduplicación de rutas `/v1`:** Detecta y normaliza colisiones del prefijo de API (evitando `/v1/v1/...`) si la URL del proveedor y el endpoint coinciden.
     2. **Enmascaramiento de API Keys:** Inyecta la clave real del proveedor en la cabecera `Authorization` de forma invisible para el usuario interno, permitiendo compartir una cuenta corporativa de forma segura.
@@ -853,6 +865,45 @@ Para combinar la potencia local de la GPU RTX 3090 con modelos externos avanzado
   * *Streaming (SSE):* Analiza los chunks de texto en vivo buscando la línea `data:` para extraer el objeto `usage` y acumular la respuesta de texto.
   * *No-Streaming (JSON):* Acumula el búfer de respuesta completo y, si el flujo de datos es un JSON tradicional de API, decodifica el cuerpo al finalizar la petición y lee los contadores oficiales de tokens.
 * **Exportación de Telemetría a Excel (Consumo):** Implementa el endpoint `/api/metrics/export` que hereda en caliente los filtros visuales (fechas, claves, modelos) de la pestaña Métricas. Este genera un archivo CSV con codificación **BOM UTF-8 (`\ufeff`)** y delimitador de **punto y coma (`;`)**, garantizando una visualización tabulada nativa e inmediata de los costos y consumos de red en Microsoft Excel bajo configuraciones regionales en español.
+
+---
+
+### 💳 8. Control Desacoplado de Cupo de Tokens por Clave API (HTTP 429)
+
+Para prevenir abusos, bucles infinitos en aplicaciones cliente o sobrecostos en proveedores externos, la suite incorpora un sistema de **límite y cupo de tokens** de alto rendimiento:
+
+* **¿Por qué se hizo?**
+  * Brinda un control presupuestario y de recursos estricto por cliente/aplicación.
+  * Protege la GPU local contra saturación y previene el vaciado involuntario de saldo en APIs externas.
+* **Cero Latencia en Inferencia (Diseño Desacoplado):**
+  * El cómputo y la suma de tokens consumidos se ejecutan de forma **asíncrona** en segundo plano (`BackgroundTasks`) al finalizar la petición mediante un incremento atómico `$inc: {"used_tokens": total_tokens}` en la colección `api_keys` de MongoDB.
+  * Durante la autenticación previa a la inferencia, el Gateway realiza una validación $O(1)$ comparando `used_tokens >= max_tokens`. No se realizan consultas pesadas de agregación (`sum`) ni bloqueos en la ruta crítica de streaming.
+* **Bloqueo Automático (HTTP 429 Too Many Requests):**
+  * Si la clave API ha agotado su cupo (`used_tokens >= max_tokens`), el Gateway bloquea inmediatamente la inferencia y devuelve:
+    ```json
+    {
+      "detail": "Cupo de tokens agotado para esta clave API (161 / 100 consumidos). Contacta al administrador para renovar o reiniciar tu cupo."
+    }
+    ```
+  * El intento bloqueado se guarda de inmediato en la tabla de auditoría de seguridad bajo la causa `token_quota_exceeded`.
+* **Periodos de Renovación Automática de Cupo (Diario / Mensual / Manual):**
+  * *¿Por qué se hizo?* Para permitir esquemas de asignación de crédito recurrentes (como cuotas diarias de desarrollo o presupuestos mensuales de departamento) sin requerir intervención manual constante del administrador.
+  * *Modalidades Disponibles:*
+    * ⏹️ **Manual / Sin reinicio (`none`):** El contador de tokens se acumula continuamente como saldo total hasta que se reinicie manualmente.
+    * 📅 **Diario (`daily`):** El contador `used_tokens` se restablece a `0` automáticamente a las 00:00 hs UTC al iniciar cada nuevo día.
+    * 🗓️ **Mensual (`monthly`):** El contador `used_tokens` se restablece a `0` automáticamente el día 1 de cada nuevo mes.
+  * *Evaluación Transparente y Desacoplada:* Al procesar una petición en el Gateway o cargar la lista en el Dashboard, se evalúa `last_reset_at`. Si el periodo expiró, se efectúa un reseteo instantáneo en MongoDB sin demoras ni procesos pesados en segundo plano.
+* **Panel Visual y Reinicio de Crédito en la GUI:**
+  * **Creación y Edición:** Selector *"Periodo de Renovación de Cupo"* y campo *"Cupo Máximo de Tokens"*.
+  * **Barra de Progreso Reactiva:** Cada tarjeta de clave API muestra su avance (`Tokens: 45,210 / 100,000 (45.2%)`) con insignia del periodo (`📅 Diario`, `🗓️ Mensual`, `Manual`) y código de colores dinámico (🟢 < 75%, 🟡 75%-90%, 🔴 ≥ 90%).
+  * **Botón "Reiniciar Cupo":** Permite al administrador restablecer el contador `used_tokens = 0` y actualizar `last_reset_at` al instante con un solo clic a través del endpoint `POST /api/keys/<id>/reset-quota`.
+
+---
+
+### 🎛️ 9. Supervisión y Control del Gateway desde el Dashboard
+
+* **Monitoreo Unificado en "Monitor e Hilos":** Se integró la tarjeta de estado del servicio `vllm-gateway` en el panel de control de servicios systemd junto a Gemma, Whisper, F5-TTS y Diarización.
+* **Control de Ciclo de Vida en Caliente:** Permite iniciar, detener o reiniciar el servicio `vllm-gateway` directamente desde la interfaz web, agilizando la propagación inmediata de cambios en reglas de red o nuevos proveedores sin requerir acceso por terminal SSH.
 
 ---
 

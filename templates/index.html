@@ -225,7 +225,7 @@
                         <span class="h-2 w-2 rounded-full bg-indigo-500 animate-ping"></span>
                         Estado de Servicios Systemd
                     </h2>
-                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
                         <!-- Service Card: Gemma -->
                         <div class="bg-slate-900/60 border border-slate-800/80 p-5 rounded-xl flex flex-col justify-between">
                             <div>
@@ -287,6 +287,22 @@
                                 <button onclick="controlService('diarization', 'start')" class="flex-1 py-1.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600 text-emerald-300 hover:text-white text-xs font-medium transition-all">Start</button>
                                 <button onclick="controlService('diarization', 'stop')" class="flex-1 py-1.5 rounded-lg bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white text-xs font-medium transition-all">Stop</button>
                                 <button onclick="controlService('diarization', 'restart')" class="flex-1 py-1.5 rounded-lg bg-indigo-600/20 hover:bg-indigo-600 text-indigo-300 hover:text-white text-xs font-medium transition-all">Restart</button>
+                            </div>
+                        </div>
+
+                        <!-- Service Card: API Gateway -->
+                        <div class="bg-slate-900/60 border border-slate-800/80 p-5 rounded-xl flex flex-col justify-between">
+                            <div>
+                                <div class="flex justify-between items-center mb-2">
+                                    <span class="font-bold text-slate-200">API Gateway</span>
+                                    <span id="status-gateway" class="px-2 py-0.5 rounded text-xs font-mono font-bold uppercase bg-slate-800 text-slate-400">Cargando...</span>
+                                </div>
+                                <p class="text-xs text-slate-400">Puertos 8000-8003 | Proxy & Auth</p>
+                            </div>
+                            <div class="flex gap-2 mt-4 pt-4 border-t border-slate-800/50">
+                                <button onclick="controlService('gateway', 'start')" class="flex-1 py-1.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600 text-emerald-300 hover:text-white text-xs font-medium transition-all">Start</button>
+                                <button onclick="controlService('gateway', 'stop')" class="flex-1 py-1.5 rounded-lg bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white text-xs font-medium transition-all">Stop</button>
+                                <button onclick="controlService('gateway', 'restart')" class="flex-1 py-1.5 rounded-lg bg-indigo-600/20 hover:bg-indigo-600 text-indigo-300 hover:text-white text-xs font-medium transition-all">Restart</button>
                             </div>
                         </div>
                     </div>
@@ -644,7 +660,7 @@
                                 <input id="key-desc" type="text" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500" placeholder="Ej: Usada para transcripción...">
                             </div>
                             <div>
-                                <label class="block text-xs font-semibold text-slate-300 mb-1">Servicios Autorizados:</label>
+                                <label class="block text-xs font-semibold text-slate-300 mb-1">Servicios Locales Autorizados:</label>
                                 <div class="flex flex-col gap-2 mt-1.5 bg-slate-900/50 border border-slate-800 rounded-xl p-3">
                                     <label class="flex items-center gap-2.5 text-xs text-slate-300 cursor-pointer">
                                         <input type="checkbox" name="key-services" value="gemma" class="rounded border-slate-800 text-cyan-600 focus:ring-cyan-500 bg-slate-950">
@@ -663,6 +679,24 @@
                                         Diarización (Puerto 8003)
                                     </label>
                                 </div>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-300 mb-1">Proveedores en la Nube Autorizados:</label>
+                                <div id="key-cloud-providers-container" class="flex flex-col gap-2 mt-1.5 bg-slate-900/50 border border-slate-800 rounded-xl p-3 max-h-36 overflow-y-auto">
+                                    <span class="text-[10px] text-slate-500">Cargando proveedores...</span>
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-300 mb-1">Cupo Máximo de Tokens (Opcional, 0 = Ilimitado):</label>
+                                <input id="key-max-tokens" type="number" min="0" step="1000" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500" placeholder="Ej: 500000 (0 = Sin límite)">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-300 mb-1">Periodo de Renovación de Cupo:</label>
+                                <select id="key-quota-reset" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500">
+                                    <option value="none">Manual / Sin reinicio (Saldo Acumulado)</option>
+                                    <option value="daily">📅 Diario (Se reinicia a las 00:00 hs UTC)</option>
+                                    <option value="monthly">🗓️ Mensual (Se reinicia el día 1 de cada mes)</option>
+                                </select>
                             </div>
                             <div>
                                 <label class="block text-xs font-semibold text-slate-300 mb-1">Fecha de Expiración (Opcional):</label>
@@ -939,7 +973,7 @@
                             <input id="edit-key-desc" type="text" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500">
                         </div>
                         <div>
-                            <label class="block text-xs font-semibold text-slate-300 mb-1">Servicios Autorizados:</label>
+                            <label class="block text-xs font-semibold text-slate-300 mb-1">Servicios Locales Autorizados:</label>
                             <div class="flex flex-col gap-2 mt-1.5 bg-slate-900/50 border border-slate-800 rounded-xl p-3">
                                 <label class="flex items-center gap-2.5 text-xs text-slate-300 cursor-pointer">
                                     <input type="checkbox" id="edit-key-service-gemma" class="rounded border-slate-800 text-cyan-600 focus:ring-cyan-500 bg-slate-950">
@@ -958,6 +992,24 @@
                                     Diarización (Puerto 8003)
                                 </label>
                             </div>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-300 mb-1">Proveedores en la Nube Autorizados:</label>
+                            <div id="edit-key-cloud-providers-container" class="flex flex-col gap-2 mt-1.5 bg-slate-900/50 border border-slate-800 rounded-xl p-3 max-h-36 overflow-y-auto">
+                                <span class="text-[10px] text-slate-500">Cargando proveedores...</span>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-300 mb-1">Cupo Máximo de Tokens (0 = Ilimitado):</label>
+                            <input id="edit-key-max-tokens" type="number" min="0" step="1000" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500" placeholder="Ej: 500000 (0 = Sin límite)">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-300 mb-1">Periodo de Renovación de Cupo:</label>
+                            <select id="edit-key-quota-reset" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500">
+                                <option value="none">Manual / Sin reinicio (Saldo Acumulado)</option>
+                                <option value="daily">📅 Diario (Se reinicia a las 00:00 hs UTC)</option>
+                                <option value="monthly">🗓️ Mensual (Se reinicia el día 1 de cada mes)</option>
+                            </select>
                         </div>
                         <div>
                             <label class="block text-xs font-semibold text-slate-300 mb-1">Fecha de Expiración (Opcional):</label>
@@ -1191,8 +1243,11 @@
             }
         }
 
+        window.currentActiveTab = 'tab-monitor';
+
         // Cambiar pestañas
         function showTab(tabId) {
+            window.currentActiveTab = tabId;
             document.querySelectorAll('.tab-content').forEach(content => content.classList.add('hidden'));
             document.querySelectorAll('.tab-btn').forEach(btn => {
                 btn.classList.remove('active', 'bg-slate-800/80', 'text-cyan-400', 'border-cyan-500/30');
@@ -1248,10 +1303,11 @@
                 document.getElementById('progress-vram').style.width = `${data.system.vram_percent}%`;
                 
                 // Actualizar estado de servicios
-                updateServiceBadge('status-gemma', data.services.gemma.status);
-                updateServiceBadge('status-whisper', data.services.whisper.status);
-                updateServiceBadge('status-tts', data.services.tts.status);
-                updateServiceBadge('status-diarization', data.services.diarization.status);
+                updateServiceBadge('status-gemma', data.services?.gemma?.status || 'inactive');
+                updateServiceBadge('status-whisper', data.services?.whisper?.status || 'inactive');
+                updateServiceBadge('status-tts', data.services?.tts?.status || 'inactive');
+                updateServiceBadge('status-diarization', data.services?.diarization?.status || 'inactive');
+                updateServiceBadge('status-gateway', data.services?.gateway?.status || 'inactive');
                 
                 // Hora de actualización
                 const now = new Date();
@@ -1754,11 +1810,65 @@
         }
 
         // --- Gestión de Claves API Específicas (MongoDB) ---
-        async function loadApiKeys() {
+        window.cachedCloudProviders = [];
+
+        function renderCloudProviderCheckboxes() {
+            const createContainer = document.getElementById('key-cloud-providers-container');
+            if (!createContainer) return;
+
+            if (!window.cachedCloudProviders || window.cachedCloudProviders.length === 0) {
+                createContainer.innerHTML = '<span class="text-[10px] text-slate-500">No hay proveedores en la nube registrados.</span>';
+                return;
+            }
+
+            createContainer.innerHTML = window.cachedCloudProviders.map(p => `
+                <label class="flex items-center gap-2.5 text-xs text-slate-300 cursor-pointer">
+                    <input type="checkbox" name="key-providers" value="${p.id}" class="rounded border-slate-800 text-indigo-500 focus:ring-indigo-500 bg-slate-950">
+                    <span class="font-medium text-slate-200">☁️ ${escapeHtml(p.name)}</span>
+                    <span class="text-[10px] text-slate-500 truncate">(${escapeHtml(p.base_url)})</span>
+                </label>
+            `).join('');
+        }
+
+        function renderEditCloudProviderCheckboxes(allowedProviders) {
+            const editContainer = document.getElementById('edit-key-cloud-providers-container');
+            if (!editContainer) return;
+
+            if (!window.cachedCloudProviders || window.cachedCloudProviders.length === 0) {
+                editContainer.innerHTML = '<span class="text-[10px] text-slate-500">No hay proveedores en la nube registrados.</span>';
+                return;
+            }
+
+            editContainer.innerHTML = window.cachedCloudProviders.map(p => {
+                const isChecked = (allowedProviders || []).includes(p.id) || (allowedProviders || []).includes(p.name) || (allowedProviders || []).includes('*');
+                return `
+                    <label class="flex items-center gap-2.5 text-xs text-slate-300 cursor-pointer">
+                        <input type="checkbox" name="edit-key-providers" value="${p.id}" ${isChecked ? 'checked' : ''} class="rounded border-slate-800 text-indigo-500 focus:ring-indigo-500 bg-slate-950">
+                        <span class="font-medium text-slate-200">☁️ ${escapeHtml(p.name)}</span>
+                        <span class="text-[10px] text-slate-500 truncate">(${escapeHtml(p.base_url)})</span>
+                    </label>
+                `;
+            }).join('');
+        }
+
+        async function loadApiKeys(isSilent = false) {
             const container = document.getElementById('keys-list-container');
-            container.innerHTML = '<div class="text-center py-8 text-xs text-slate-500">Cargando claves...</div>';
+            if (!container) return;
+            
+            if (!isSilent && container.children.length === 0) {
+                container.innerHTML = '<div class="text-center py-8 text-xs text-slate-500">Cargando claves...</div>';
+            }
             
             try {
+                // Asegurar que los proveedores estén en caché para resolver nombres
+                if (!window.cachedCloudProviders || window.cachedCloudProviders.length === 0) {
+                    try {
+                        const pRes = await fetch('/api/cloud-providers');
+                        window.cachedCloudProviders = await pRes.json();
+                        renderCloudProviderCheckboxes();
+                    } catch(e) {}
+                }
+
                 const res = await fetch('/api/keys');
                 const keys = await res.json();
                 
@@ -1772,7 +1882,55 @@
                     return;
                 }
                 
-                container.innerHTML = '';
+                // Comprobamos si la estructura de IDs ha cambiado
+                const currentIds = keys.map(k => k.id).join(',');
+                const existingCards = container.querySelectorAll('[data-key-card-id]');
+                const existingIds = Array.from(existingCards).map(c => c.getAttribute('data-key-card-id')).join(',');
+                
+                // Si las tarjetas ya existen y la lista es idéntica, actualizamos valores in-place de forma suave
+                if (existingIds === currentIds && isSilent) {
+                    keys.forEach(k => {
+                        const usedTokens = Number(k.used_tokens) || 0;
+                        const maxTokens = Number(k.max_tokens) || 0;
+                        
+                        if (maxTokens > 0) {
+                            const pct = Math.min(100, Math.round((usedTokens / maxTokens) * 1000) / 10);
+                            let barColor = 'bg-cyan-500';
+                            let textColor = 'text-cyan-400 font-semibold';
+                            if (pct >= 90) {
+                                barColor = 'bg-rose-500';
+                                textColor = 'text-rose-400 font-bold';
+                            } else if (pct >= 75) {
+                                barColor = 'bg-amber-500';
+                                textColor = 'text-amber-400 font-semibold';
+                            }
+                            
+                            const textEl = document.getElementById(`key-quota-used-text-${k.id}`);
+                            if (textEl) {
+                                textEl.className = textColor;
+                                textEl.textContent = `${usedTokens.toLocaleString()} / ${maxTokens.toLocaleString()}`;
+                            }
+                            const pctEl = document.getElementById(`key-quota-pct-${k.id}`);
+                            if (pctEl) {
+                                pctEl.className = textColor;
+                                pctEl.textContent = `${pct}%`;
+                            }
+                            const barEl = document.getElementById(`key-quota-bar-${k.id}`);
+                            if (barEl) {
+                                barEl.className = `${barColor} h-1.5 rounded-full transition-all duration-500`;
+                                barEl.style.width = `${pct}%`;
+                            }
+                        } else {
+                            const unlEl = document.getElementById(`key-unlimited-used-text-${k.id}`);
+                            if (unlEl) {
+                                unlEl.textContent = usedTokens.toLocaleString();
+                            }
+                        }
+                    });
+                    return;
+                }
+                
+                let html = '';
                 keys.forEach(k => {
                     const activeClass = k.is_active 
                         ? 'border-emerald-500/30 bg-emerald-950/5' 
@@ -1791,54 +1949,115 @@
                     
                     let servicesHtml = '';
                     const svcMap = {
-                        'gemma': { name: 'LLM', color: 'bg-indigo-500/10 text-indigo-400' },
+                        'gemma': { name: 'LLM Local', color: 'bg-indigo-500/10 text-indigo-400' },
                         'whisper': { name: 'STT', color: 'bg-cyan-500/10 text-cyan-400' },
                         'tts': { name: 'TTS', color: 'bg-emerald-500/10 text-emerald-400' },
                         'diarization': { name: 'DIAR', color: 'bg-amber-500/10 text-amber-400' }
                     };
-                    k.services.forEach(s => {
+                    (k.services || []).forEach(s => {
                         const info = svcMap[s] || { name: s, color: 'bg-slate-500/10 text-slate-400' };
                         servicesHtml += `<span class="px-2 py-0.5 rounded text-[9px] font-bold ${info.color} uppercase text-center">${info.name}</span>`;
                     });
 
-                    const escName = k.name.replace(/'/g, "\\'").replace(/"/g, '&quot;');
-                    const escDesc = k.description.replace(/'/g, "\\'").replace(/"/g, '&quot;');
-                    const svcJson = JSON.stringify(k.services).replace(/"/g, '&quot;');
+                    let providersHtml = '';
+                    (k.allowed_providers || []).forEach(pId => {
+                        const prov = (window.cachedCloudProviders || []).find(p => p.id === pId || p.name === pId);
+                        const pName = prov ? prov.name : (pId === '*' ? 'Todos los Proveedores' : pId);
+                        providersHtml += `<span class="px-2 py-0.5 rounded text-[9px] font-bold bg-indigo-500/20 text-indigo-300 uppercase text-center flex items-center gap-1">☁️ ${escapeHtml(pName)}</span>`;
+                    });
 
-                    container.innerHTML += `
-                        <div class="glass-panel p-4 rounded-xl border flex flex-col md:flex-row justify-between items-start md:items-center gap-4 transition-all ${activeClass}">
+                    // Barra de progreso de cupo de tokens
+                    const usedTokens = Number(k.used_tokens) || 0;
+                    const maxTokens = Number(k.max_tokens) || 0;
+                    const quotaReset = k.quota_reset || 'none';
+                    let resetBadge = '';
+                    if (quotaReset === 'daily') {
+                        resetBadge = '<span class="text-[9px] px-1.5 py-0.5 rounded bg-indigo-500/15 text-indigo-300 font-semibold border border-indigo-500/30">📅 Diario</span>';
+                    } else if (quotaReset === 'monthly') {
+                        resetBadge = '<span class="text-[9px] px-1.5 py-0.5 rounded bg-cyan-500/15 text-cyan-300 font-semibold border border-cyan-500/30">🗓️ Mensual</span>';
+                    } else if (maxTokens > 0) {
+                        resetBadge = '<span class="text-[9px] px-1.5 py-0.5 rounded bg-slate-800/80 text-slate-400 font-semibold border border-slate-700/50">Manual</span>';
+                    }
+
+                    let quotaHtml = '';
+                    if (maxTokens > 0) {
+                        const pct = Math.min(100, Math.round((usedTokens / maxTokens) * 1000) / 10);
+                        let barColor = 'bg-cyan-500';
+                        let textColor = 'text-cyan-400 font-semibold';
+                        if (pct >= 90) {
+                            barColor = 'bg-rose-500';
+                            textColor = 'text-rose-400 font-bold';
+                        } else if (pct >= 75) {
+                            barColor = 'bg-amber-500';
+                            textColor = 'text-amber-400 font-semibold';
+                        }
+                        quotaHtml = `
+                            <div class="mt-2 flex flex-col gap-1 w-full max-w-sm">
+                                <div class="flex justify-between items-center text-[10px]">
+                                    <span class="text-slate-400 flex items-center gap-1.5">Cupo de Tokens: <span id="key-quota-used-text-${k.id}" class="${textColor}">${usedTokens.toLocaleString()} / ${maxTokens.toLocaleString()}</span> ${resetBadge}</span>
+                                    <span id="key-quota-pct-${k.id}" class="${textColor}">${pct}%</span>
+                                </div>
+                                <div class="w-full bg-slate-900 rounded-full h-1.5 overflow-hidden border border-slate-800">
+                                    <div id="key-quota-bar-${k.id}" class="${barColor} h-1.5 rounded-full transition-all duration-500" style="width: ${pct}%"></div>
+                                </div>
+                            </div>
+                        `;
+                    } else {
+                        quotaHtml = `
+                            <div class="mt-1 text-[10px] text-slate-400 flex items-center gap-1.5">
+                                <span>Tokens consumidos: <span id="key-unlimited-used-text-${k.id}" class="font-mono text-slate-300 font-semibold">${usedTokens.toLocaleString()}</span> <span class="text-slate-500 font-mono">(Ilimitado)</span></span>
+                                ${resetBadge}
+                            </div>
+                        `;
+                    }
+
+                    const escName = k.name.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+                    const escDesc = (k.description || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+                    const svcJson = JSON.stringify(k.services || []).replace(/"/g, '&quot;');
+                    const provJson = JSON.stringify(k.allowed_providers || []).replace(/"/g, '&quot;');
+
+                    html += `
+                        <div data-key-card-id="${k.id}" class="glass-panel p-4 rounded-xl border flex flex-col md:flex-row justify-between items-start md:items-center gap-4 transition-all ${activeClass}">
                             <div class="flex-1 flex flex-col gap-1 min-w-[200px]">
                                 <div class="flex items-center gap-2">
-                                    <span class="text-xs font-bold text-slate-200">${k.name}</span>
+                                    <span class="text-xs font-bold text-slate-200">${escapeHtml(k.name)}</span>
                                     ${activePill}
                                 </div>
-                                <span class="text-[10px] text-slate-400 font-medium">${k.description || 'Sin descripción'}</span>
-                                <div class="flex items-center gap-2 mt-1.5">
+                                <span class="text-[10px] text-slate-400 font-medium">${escapeHtml(k.description || 'Sin descripción')}</span>
+                                <div class="flex flex-wrap items-center gap-2 mt-1.5">
                                     ${servicesHtml}
+                                    ${providersHtml}
                                     <span class="text-slate-600">|</span>
                                     ${expiryHtml}
                                 </div>
+                                ${quotaHtml}
                             </div>
                             <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full md:w-auto">
                                 <div class="flex items-center bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 font-mono text-[10px] select-all relative group max-w-xs overflow-hidden text-ellipsis whitespace-nowrap">
                                     <span id="key-text-${k.id}" class="text-slate-400 select-all">${k.key}</span>
                                 </div>
                                 <div class="flex gap-2 justify-end">
-                                    <button onclick="openEditKeyModal('${k.id}', '${escName}', '${escDesc}', '${svcJson}', '${k.expires_at}', ${k.is_active})" class="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded text-[10px] font-semibold border border-slate-700 transition-all">Editar</button>
+                                    <button onclick="resetKeyQuota('${k.id}', '${escName}')" class="px-2 py-1 bg-cyan-950/40 hover:bg-cyan-900/50 text-cyan-400 hover:text-cyan-300 rounded text-[10px] font-semibold border border-cyan-800/40 transition-all" title="Reiniciar contador de tokens a cero">Reiniciar Cupo</button>
+                                    <button onclick="openEditKeyModal('${k.id}', '${escName}', '${escDesc}', '${svcJson}', '${provJson}', ${maxTokens}, '${quotaReset}', '${k.expires_at || ''}', ${k.is_active})" class="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded text-[10px] font-semibold border border-slate-700 transition-all">Editar</button>
                                     <button onclick="deleteApiKey('${k.id}')" class="px-2 py-1 bg-red-950/50 hover:bg-red-900/50 text-red-400 hover:text-red-300 rounded text-[10px] font-semibold border border-red-900/30 transition-all">Borrar</button>
                                 </div>
                             </div>
                         </div>
                     `;
                 });
+                container.innerHTML = html;
             } catch (err) {
-                container.innerHTML = `<div class="text-center py-8 text-xs text-red-400">Error al cargar claves: ${err.message}</div>`;
+                if (!isSilent) {
+                    container.innerHTML = `<div class="text-center py-8 text-xs text-red-400">Error al cargar claves: ${err.message}</div>`;
+                }
             }
         }
 
         async function createApiKey() {
             const name = document.getElementById('key-name').value.trim();
             const desc = document.getElementById('key-desc').value.trim();
+            const maxTokens = parseInt(document.getElementById('key-max-tokens').value) || 0;
+            const quotaReset = document.getElementById('key-quota-reset').value;
             const expiry = document.getElementById('key-expiry').value;
             
             const services = [];
@@ -1846,13 +2065,18 @@
                 services.push(cb.value);
             });
 
+            const allowed_providers = [];
+            document.querySelectorAll('input[name="key-providers"]:checked').forEach(cb => {
+                allowed_providers.push(cb.value);
+            });
+
             if (!name) {
                 alert("El nombre de la clave es obligatorio.");
                 return;
             }
 
-            if (services.length === 0) {
-                alert("Debes seleccionar al menos un servicio autorizado.");
+            if (services.length === 0 && allowed_providers.length === 0) {
+                alert("Debes seleccionar al menos un servicio local o un proveedor en la nube.");
                 return;
             }
 
@@ -1864,6 +2088,9 @@
                         name: name,
                         description: desc,
                         services: services,
+                        allowed_providers: allowed_providers,
+                        max_tokens: maxTokens,
+                        quota_reset: quotaReset,
                         expires_at: expiry
                     })
                 });
@@ -1872,8 +2099,11 @@
                 if (res.ok) {
                     document.getElementById('key-name').value = '';
                     document.getElementById('key-desc').value = '';
+                    document.getElementById('key-max-tokens').value = '';
+                    document.getElementById('key-quota-reset').value = 'none';
                     document.getElementById('key-expiry').value = '';
                     document.querySelectorAll('input[name="key-services"]').forEach(cb => cb.checked = false);
+                    document.querySelectorAll('input[name="key-providers"]').forEach(cb => cb.checked = false);
                     
                     loadApiKeys();
                 } else {
@@ -1881,6 +2111,23 @@
                 }
             } catch (err) {
                 alert(`Error al guardar clave: ${err.message}`);
+            }
+        }
+
+        async function resetKeyQuota(keyId, keyName) {
+            if (!confirm(`¿Estás seguro de reiniciar el contador de tokens a cero para la clave '${keyName}'?`)) {
+                return;
+            }
+            try {
+                const res = await fetch(`/api/keys/${keyId}/reset-quota`, { method: 'POST' });
+                const data = await res.json();
+                if (res.ok) {
+                    loadApiKeys();
+                } else {
+                    alert(`Error: ${data.error}`);
+                }
+            } catch (err) {
+                alert(`Error al reiniciar cupo: ${err.message}`);
             }
         }
 
@@ -1902,12 +2149,15 @@
             }
         }
 
-        function openEditKeyModal(id, name, desc, servicesJson, expiry, isActive) {
-            const services = typeof servicesJson === 'string' ? JSON.parse(servicesJson) : servicesJson;
+        function openEditKeyModal(id, name, desc, servicesJson, providersJson, maxTokens, quotaReset, expiry, isActive) {
+            const services = typeof servicesJson === 'string' ? JSON.parse(servicesJson) : (servicesJson || []);
+            const providers = typeof providersJson === 'string' ? JSON.parse(providersJson) : (providersJson || []);
             
             document.getElementById('edit-key-id').value = id;
             document.getElementById('edit-key-name').value = name;
             document.getElementById('edit-key-desc').value = desc;
+            document.getElementById('edit-key-max-tokens').value = maxTokens || '';
+            document.getElementById('edit-key-quota-reset').value = quotaReset || 'none';
             document.getElementById('edit-key-expiry').value = expiry ? expiry.split('T')[0] : '';
             document.getElementById('edit-key-active').value = String(isActive);
             
@@ -1915,6 +2165,8 @@
             document.getElementById('edit-key-service-whisper').checked = services.includes('whisper');
             document.getElementById('edit-key-service-tts').checked = services.includes('tts');
             document.getElementById('edit-key-service-diarization').checked = services.includes('diarization');
+            
+            renderEditCloudProviderCheckboxes(providers);
             
             document.getElementById('edit-key-modal').classList.remove('hidden');
         }
@@ -1927,6 +2179,8 @@
             const id = document.getElementById('edit-key-id').value;
             const name = document.getElementById('edit-key-name').value.trim();
             const desc = document.getElementById('edit-key-desc').value.trim();
+            const maxTokens = parseInt(document.getElementById('edit-key-max-tokens').value) || 0;
+            const quotaReset = document.getElementById('edit-key-quota-reset').value;
             const expiry = document.getElementById('edit-key-expiry').value;
             const isActive = document.getElementById('edit-key-active').value === 'true';
             
@@ -1936,13 +2190,18 @@
             if (document.getElementById('edit-key-service-tts').checked) services.push('tts');
             if (document.getElementById('edit-key-service-diarization').checked) services.push('diarization');
 
+            const allowed_providers = [];
+            document.querySelectorAll('input[name="edit-key-providers"]:checked').forEach(cb => {
+                allowed_providers.push(cb.value);
+            });
+
             if (!name) {
                 alert("El nombre de la clave es obligatorio.");
                 return;
             }
 
-            if (services.length === 0) {
-                alert("Debes seleccionar al menos un servicio autorizado.");
+            if (services.length === 0 && allowed_providers.length === 0) {
+                alert("Debes seleccionar al menos un servicio local o un proveedor en la nube.");
                 return;
             }
 
@@ -1954,6 +2213,9 @@
                         name: name,
                         description: desc,
                         services: services,
+                        allowed_providers: allowed_providers,
+                        max_tokens: maxTokens,
+                        quota_reset: quotaReset,
                         expires_at: expiry,
                         is_active: isActive
                     })
@@ -2218,47 +2480,51 @@
             try {
                 const res = await fetch('/api/cloud-providers');
                 const providers = await res.json();
+                window.cachedCloudProviders = providers;
                 
+                renderCloudProviderCheckboxes();
+
                 const container = document.getElementById('cloud-providers-list');
-                if (providers.length === 0) {
-                    container.innerHTML = `
-                        <tr>
-                            <td colspan="5" class="text-center py-8 text-slate-500 font-medium">
-                                No hay proveedores de IA en la nube configurados. La suite solo procesará modelos locales.
-                            </td>
-                        </tr>
-                    `;
-                    return;
+                if (container) {
+                    if (providers.length === 0) {
+                        container.innerHTML = `
+                            <tr>
+                                <td colspan="5" class="text-center py-8 text-slate-500 font-medium">
+                                    No hay proveedores de IA en la nube configurados. La suite solo procesará modelos locales.
+                                </td>
+                            </tr>
+                        `;
+                    } else {
+                        container.innerHTML = providers.map(p => {
+                            const badgeActive = p.is_active 
+                                ? '<span class="px-2 py-0.5 rounded text-[10px] font-mono font-semibold bg-cyan-950/15 text-cyan-400 border border-cyan-500/20">ACTIVO</span>' 
+                                : '<span class="px-2 py-0.5 rounded text-[10px] font-mono font-semibold bg-slate-800 text-slate-500 border border-slate-700/20">INACTIVO</span>';
+                                
+                            return `
+                                <tr class="hover:bg-slate-900/40 transition-colors">
+                                    <td class="py-3 px-3 font-semibold text-slate-200">${escapeHtml(p.name)}</td>
+                                    <td class="py-3 px-3 font-mono text-xs text-indigo-300">${escapeHtml(p.base_url)}</td>
+                                    <td class="py-3 px-3 font-mono text-xs text-slate-450">${escapeHtml(p.api_key)}</td>
+                                    <td class="py-3 px-3">${badgeActive}</td>
+                                    <td class="py-3 px-3 text-right">
+                                        <div class="flex gap-2 justify-end">
+                                            <button onclick="editCloudProvider('${p.id}', '${escapeJs(p.name)}', '${escapeJs(p.base_url)}', '${escapeJs(p.api_key)}', ${p.is_active})" class="p-1 hover:text-cyan-400 text-slate-400 transition-colors" title="Editar">
+                                                <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                                </svg>
+                                            </button>
+                                            <button onclick="deleteCloudProvider('${p.id}')" class="p-1 hover:text-rose-400 text-slate-400 transition-colors" title="Eliminar">
+                                                <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                                </svg>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            `;
+                        }).join('');
+                    }
                 }
-                
-                container.innerHTML = providers.map(p => {
-                    const badgeActive = p.is_active 
-                        ? '<span class="px-2 py-0.5 rounded text-[10px] font-mono font-semibold bg-cyan-950/15 text-cyan-400 border border-cyan-500/20">ACTIVO</span>' 
-                        : '<span class="px-2 py-0.5 rounded text-[10px] font-mono font-semibold bg-slate-800 text-slate-500 border border-slate-700/20">INACTIVO</span>';
-                        
-                    return `
-                        <tr class="hover:bg-slate-900/40 transition-colors">
-                            <td class="py-3 px-3 font-semibold text-slate-200">${escapeHtml(p.name)}</td>
-                            <td class="py-3 px-3 font-mono text-xs text-indigo-300">${escapeHtml(p.base_url)}</td>
-                            <td class="py-3 px-3 font-mono text-xs text-slate-450">${escapeHtml(p.api_key)}</td>
-                            <td class="py-3 px-3">${badgeActive}</td>
-                            <td class="py-3 px-3 text-right">
-                                <div class="flex gap-2 justify-end">
-                                    <button onclick="editCloudProvider('${p.id}', '${escapeJs(p.name)}', '${escapeJs(p.base_url)}', '${escapeJs(p.api_key)}', ${p.is_active})" class="p-1 hover:text-cyan-400 text-slate-400 transition-colors" title="Editar">
-                                        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                                            <path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                                        </svg>
-                                    </button>
-                                    <button onclick="deleteCloudProvider('${p.id}')" class="p-1 hover:text-rose-400 text-slate-400 transition-colors" title="Eliminar">
-                                        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                                            <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                        </svg>
-                                    </button>
-                                </div>
-                            </td>
-                        </tr>
-                    `;
-                }).join('');
             } catch (err) {
                 console.error("Error al cargar proveedores en la nube:", err);
             }
@@ -2298,7 +2564,8 @@
                     alert(data.error);
                 } else {
                     cancelCloudEdit();
-                    loadCloudProviders();
+                    await loadCloudProviders();
+                    loadApiKeys();
                 }
             } catch (err) {
                 console.error("Error al guardar proveedor:", err);
@@ -2317,7 +2584,8 @@
                 if (data.error) {
                     alert(data.error);
                 } else {
-                    loadCloudProviders();
+                    await loadCloudProviders();
+                    loadApiKeys();
                 }
             } catch (err) {
                 console.error("Error al eliminar proveedor:", err);
@@ -2863,13 +3131,36 @@
             });
         }
 
+        function shouldLazyRefreshKeys() {
+            // 1. Debe estar activa la pestaña de Seguridad
+            if (window.currentActiveTab !== 'tab-keys') return false;
+            // 2. La pestaña del navegador debe estar visible / enfocada
+            if (document.hidden) return false;
+            // 3. No debe haber ningún modal de edición abierto
+            const editModal = document.getElementById('edit-key-modal');
+            if (editModal && !editModal.classList.contains('hidden')) return false;
+            // 4. El contenedor de claves debe existir y estar en el viewport visible
+            const container = document.getElementById('keys-list-container');
+            if (!container) return false;
+            const rect = container.getBoundingClientRect();
+            return (
+                rect.top < (window.innerHeight || document.documentElement.clientHeight) &&
+                rect.bottom > 0
+            );
+        }
+
         // Loop de actualización
         initCharts();
         refreshData();
         loadConfig();
         loadTelemetryHistory();
-        setInterval(refreshData, 5000); // Actualizar cada 5s
+        setInterval(refreshData, 5000); // Actualizar estado de servicios y métricas cada 5s
         setInterval(loadTelemetryHistory, 60000); // Actualizar gráficos cada 60s
+        setInterval(() => {
+            if (shouldLazyRefreshKeys()) {
+                loadApiKeys(true); // Actualización lazy y silenciosa in-place sin parpadeo
+            }
+        }, 4000); // Polling suave de claves API cada 4s si están visibles
     </script>
 </body>
 </html>
