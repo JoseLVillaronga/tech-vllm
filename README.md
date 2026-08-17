@@ -745,6 +745,45 @@ El Gateway valida la IP de origen del cliente contra reglas persistidas en Mongo
   * *Lista Blanca (Whitelist):* Si tiene elementos, se comporta como "restrictivo por defecto" (solo entran las IPs que pertenezcan a la lista blanca).
   * *Lista Negra (Blacklist):* Si tiene elementos, deniega de inmediato con `403 Forbidden` a cualquier IP que coincida.
 * **Compatibilidad con Proxy Reverso (Caddy, Nginx):** El Gateway analiza automáticamente las cabeceras estándar `X-Real-IP` y `X-Forwarded-For` (extrayendo el primer cliente). Esto garantiza que la IP validada en los filtros y registrada en la telemetría sea siempre la IP pública del usuario original y no la IP local del host o del proxy reverso.
+* **Ejemplo de Configuración de Caddy (Proxy Reverso):**
+  Para exponer las APIs públicas de la suite (`8000`-`8003`) a internet de forma segura bajo puertos SSL dedicados, puedes usar la siguiente plantilla de configuración de Caddy (`Caddyfile`). Nota cómo se configuran las cabeceras `X-Real-IP` para que el Gateway pueda extraer la IP pública real del cliente de forma correcta:
+  ```caddy
+  # Exponer Gemma Proxy (vLLM)
+  tu-dominio.com.ar:19000 {
+      reverse_proxy http://127.0.0.1:8000 {
+          header_up X-Real-IP {remote_host}
+          header_up X-Forwarded-For {remote_host}
+          header_up X-Forwarded-Proto {scheme}
+      }
+  }
+
+  # Exponer Whisper Proxy (ASR)
+  tu-dominio.com.ar:19001 {
+      reverse_proxy http://127.0.0.1:8001 {
+          header_up X-Real-IP {remote_host}
+          header_up X-Forwarded-For {remote_host}
+          header_up X-Forwarded-Proto {scheme}
+      }
+  }
+
+  # Exponer F5-TTS Proxy (Voz)
+  tu-dominio.com.ar:19002 {
+      reverse_proxy http://127.0.0.1:8002 {
+          header_up X-Real-IP {remote_host}
+          header_up X-Forwarded-For {remote_host}
+          header_up X-Forwarded-Proto {scheme}
+      }
+  }
+
+  # Exponer Diarización Proxy (PyAnnote)
+  tu-dominio.com.ar:19003 {
+      reverse_proxy http://127.0.0.1:8003 {
+          header_up X-Real-IP {remote_host}
+          header_up X-Forwarded-For {remote_host}
+          header_up X-Forwarded-Proto {scheme}
+      }
+  }
+  ```
 * **Validación de Sintaxis:** La base de datos y la UI validan la sintaxis utilizando el módulo estándar `ipaddress` para evitar configuraciones de red corruptas.
 * **Cero Latencia:** Para no degradar el rendimiento de la GPU, el Gateway no consulta la base de datos en cada petición. Valida las peticiones contra copias en memoria RAM de los rangos ($O(1)$) que un hilo asíncrono en segundo plano sincroniza desde MongoDB cada 10 segundos.
 
