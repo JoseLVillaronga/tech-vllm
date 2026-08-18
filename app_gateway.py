@@ -867,7 +867,7 @@ def create_proxy_app(service_name: str, target_port: int) -> FastAPI:
                 non_stream_body = b""
                 
                 try:
-                    async for chunk in resp.aiter_raw():
+                    async for chunk in resp.aiter_bytes():
                         total_bytes_yielded += len(chunk)
                         
                         if not is_streaming:
