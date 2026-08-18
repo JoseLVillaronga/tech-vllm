@@ -55,6 +55,77 @@ async def close_http_client():
         await _http_client.aclose()
         _http_client = None
 
+# Helper para leer variables de entorno dinámicamente desde el sistema o archivo .env
+def get_env_setting(key: str, default: str = "") -> str:
+    val = os.getenv(key)
+    if val is not None and val.strip() != "":
+        return val.strip()
+    try:
+        env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+        if os.path.exists(env_path):
+            with open(env_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith("#") and "=" in line:
+                        k, v = line.split("=", 1)
+                        if k.strip() == key:
+                            clean_v = v.strip()
+                            if (clean_v.startswith('"') and clean_v.endswith('"')) or (clean_v.startswith("'") and clean_v.endswith("'")):
+                                clean_v = clean_v[1:-1]
+                            return clean_v
+    except Exception:
+        pass
+    return default
+
+# Helper para ejecutar búsquedas en la web usando la API de Ollama Cloud
+async def perform_ollama_web_search(query: str, max_results: int = 3) -> list:
+    ollama_api_key = get_env_setting("OLLAMA_API_KEY", "").strip()
+    search_enabled = get_env_setting("OLLAMA_SEARCH_ENABLED", "true").strip().lower() in ["true", "1", "yes"]
+    
+    if not search_enabled:
+        print("⚠️ Ollama Web Search: Búsqueda web deshabilitada (OLLAMA_SEARCH_ENABLED=false)", file=sys.stderr, flush=True)
+        return []
+        
+    if not ollama_api_key:
+        print("⚠️ Ollama Web Search: OLLAMA_API_KEY no está configurada en .env", file=sys.stderr, flush=True)
+        return []
+        
+    if not query or not query.strip():
+        return []
+        
+    url = "https://ollama.com/api/web_search"
+    headers = {
+        "Authorization": f"Bearer {ollama_api_key}",
+        "Content-Type": "application/json"
+    }
+    payload = {"query": query.strip()}
+    
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.post(url, headers=headers, json=payload)
+            if resp.status_code == 200:
+                data = resp.json()
+                results = data.get("results", [])
+                formatted = []
+                for item in results[:max_results]:
+                    title = item.get("title", "Sin título").strip()
+                    item_url = item.get("url", "").strip()
+                    content = item.get("content", "").strip()
+                    if len(content) > 1500:
+                        content = content[:1500] + "..."
+                    formatted.append({
+                        "title": title,
+                        "url": item_url,
+                        "content": content
+                    })
+                return formatted
+            else:
+                print(f"⚠️ Ollama Web Search API error: HTTP {resp.status_code} - {resp.text}", file=sys.stderr, flush=True)
+                return []
+    except Exception as e:
+        print(f"⚠️ Error al consultar Ollama Web Search API: {e}", file=sys.stderr, flush=True)
+        return []
+
 # Helper de conexión a MongoDB (timeout de 1s para evitar esperas infinitas)
 def get_db():
     user = os.getenv("MONGO_USER", "admin")
@@ -430,6 +501,66 @@ def create_proxy_app(service_name: str, target_port: int) -> FastAPI:
                     detail=f"Cupo de tokens agotado para esta clave API ({used_tokens:,} / {max_tokens:,} consumidos). Contacta al administrador para renovar o reiniciar tu cupo."
                 )
             
+        # Interceptar endpoint de Tool de Búsqueda Web (Ollama Cloud)
+        if service_name == "gemma" and path.strip("/") in ["api/tools/web-search", "v1/tools/web_search", "v1/tools/web-search"] and request.method == "POST":
+            try:
+                import json
+                tool_body = await request.body()
+                tool_data = json.loads(tool_body) if tool_body else {}
+                
+                query = ""
+                if "query" in tool_data:
+                    query = tool_data["query"]
+                elif "input" in tool_data:
+                    query = tool_data["input"]
+                elif "arguments" in tool_data and isinstance(tool_data["arguments"], dict):
+                    query = tool_data["arguments"].get("query", "")
+                elif "arguments" in tool_data and isinstance(tool_data["arguments"], str):
+                    try:
+                        arg_obj = json.loads(tool_data["arguments"])
+                        query = arg_obj.get("query", "")
+                    except Exception:
+                        query = tool_data["arguments"]
+                elif "messages" in tool_data:
+                    user_msgs = [m.get("content", "") for m in tool_data["messages"] if m.get("role") == "user"]
+                    if user_msgs:
+                        query = user_msgs[-1]
+                
+                max_results = int(tool_data.get("max_results") or os.getenv("OLLAMA_SEARCH_MAX_RESULTS", "3"))
+                
+                search_results = await perform_ollama_web_search(query, max_results=max_results)
+                
+                formatted_snippets = []
+                for idx, item in enumerate(search_results, 1):
+                    formatted_snippets.append(
+                        f"[{idx}] {item['title']}\n"
+                        f"URL: {item['url']}\n"
+                        f"Contenido: {item['content']}"
+                    )
+                formatted_text = "\n\n".join(formatted_snippets) if formatted_snippets else "No se encontraron resultados web para la consulta."
+                
+                response_payload = {
+                    "success": True,
+                    "query": query,
+                    "count": len(search_results),
+                    "results": search_results,
+                    "formatted_context": formatted_text,
+                    "text": formatted_text
+                }
+                
+                return Response(
+                    content=json.dumps(response_payload),
+                    media_type="application/json",
+                    status_code=200
+                )
+            except Exception as tool_err:
+                print(f"⚠️ Error procesando tool de búsqueda web: {tool_err}", file=sys.stderr, flush=True)
+                return Response(
+                    content=json.dumps({"success": False, "error": str(tool_err)}),
+                    media_type="application/json",
+                    status_code=500
+                )
+            
         # Interceptar /v1/models en gemma proxy para combinar locales y en la nube según permisos granulares
         if service_name == "gemma" and path.strip("/") == "v1/models" and request.method == "GET":
             try:
@@ -457,6 +588,17 @@ def create_proxy_app(service_name: str, target_port: int) -> FastAPI:
                                         "object": "model",
                                         "created": lm.get("created", int(time.time())),
                                         "owned_by": "local"
+                                    })
+                                
+                                # Si la búsqueda web está configurada, exponer también el modelo virtual local/gemma-4-web
+                                ollama_api_key = get_env_setting("OLLAMA_API_KEY", "").strip()
+                                ollama_search_on = get_env_setting("OLLAMA_SEARCH_ENABLED", "true").strip().lower() in ["true", "1", "yes"]
+                                if ollama_search_on and ollama_api_key:
+                                    combined_models.append({
+                                        "id": "local/gemma-4-web",
+                                        "object": "model",
+                                        "created": int(time.time()),
+                                        "owned_by": "local-web-search"
                                     })
                     except Exception as le:
                         print(f"⚠️ Gateway: Error obteniendo modelos locales: {le}", file=sys.stderr, flush=True)
@@ -521,7 +663,13 @@ def create_proxy_app(service_name: str, target_port: int) -> FastAPI:
                 
                 actual_model = req_model
                 
-                if req_model.startswith("local/"):
+                if req_model in ["local/gemma-4-web", "gemma-4-web"]:
+                    # Caso Especial: Modelo virtual con Búsqueda Web Integrada
+                    is_cloud_request = False
+                    actual_model = "gemma-4-web"
+                    base_vllm_model = os.getenv("MODEL", "google/gemma-4-E4B-it").strip('"').strip("'")
+                    data["model"] = base_vllm_model
+                elif req_model.startswith("local/"):
                     # Caso 1: Modelo local con prefijo explícito 'local/'
                     is_cloud_request = False
                     actual_model = req_model[6:] # Despojar 'local/'
@@ -548,9 +696,11 @@ def create_proxy_app(service_name: str, target_port: int) -> FastAPI:
                                     break
                             
                             # Si coincide con local y la clave tiene permiso gemma, o si no hay candidato autorizado en nube
-                            if ("gemma" in allowed_services or is_master) and (req_model in ["gemma-4-reasoning", "google/gemma-4-E4B-it"] or not authorized_candidate):
+                            if ("gemma" in allowed_services or is_master) and (req_model in ["gemma-4-reasoning", "gemma-4-web", "google/gemma-4-E4B-it"] or not authorized_candidate):
                                 is_cloud_request = False
                                 actual_model = req_model
+                                if req_model == "gemma-4-web":
+                                    data["model"] = os.getenv("MODEL", "google/gemma-4-E4B-it").strip('"').strip("'")
                             elif authorized_candidate:
                                 is_cloud_request = True
                                 cloud_provider = authorized_candidate
@@ -566,6 +716,24 @@ def create_proxy_app(service_name: str, target_port: int) -> FastAPI:
 
                 model_name = actual_model or service_name
                 
+                # Inyectar fecha y hora actual en el system prompt para todos los modelos (locales y en la nube)
+                if path.strip("/") == "v1/chat/completions" and "messages" in data:
+                    messages = data["messages"]
+                    now_local = datetime.now()
+                    dias_semana = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
+                    meses_ano = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
+                    dia_nombre = dias_semana[now_local.weekday()]
+                    mes_nombre = meses_ano[now_local.month - 1]
+                    fecha_hora_str = f"Fecha y hora actual: {dia_nombre} {now_local.day} de {mes_nombre} de {now_local.year}, {now_local.strftime('%H:%M:%S')} (Hora local)."
+                    
+                    system_msg = next((m for m in messages if m.get("role") == "system"), None)
+                    if system_msg:
+                        orig_system = system_msg.get("content", "")
+                        if "Fecha y hora actual:" not in orig_system:
+                            system_msg["content"] = f"{fecha_hora_str}\n\n{orig_system}".strip()
+                    else:
+                        messages.insert(0, {"role": "system", "content": fecha_hora_str})
+
                 # Inyectar el system prompt de razonamiento para gemma-4-reasoning si es local
                 if not is_cloud_request and actual_model == "gemma-4-reasoning" and path.strip("/") == "v1/chat/completions" and "messages" in data:
                     messages = data["messages"]
@@ -581,6 +749,45 @@ def create_proxy_app(service_name: str, target_port: int) -> FastAPI:
                             system_msg["content"] = f"{original_content}\n\n{reasoning_instruction}".strip()
                     else:
                         messages.insert(0, {"role": "system", "content": reasoning_instruction})
+                        
+                # Inyectar contexto de búsqueda web en tiempo real para el modelo virtual gemma-4-web
+                if not is_cloud_request and actual_model == "gemma-4-web" and path.strip("/") == "v1/chat/completions" and "messages" in data:
+                    messages = data["messages"]
+                    last_user_msg = next((m for m in reversed(messages) if m.get("role") == "user"), None)
+                    user_query = ""
+                    if last_user_msg:
+                        content_val = last_user_msg.get("content", "")
+                        if isinstance(content_val, str):
+                            user_query = content_val
+                        elif isinstance(content_val, list):
+                            text_parts = [p.get("text", "") for p in content_val if isinstance(p, dict) and p.get("type") == "text"]
+                            user_query = " ".join(text_parts)
+                    
+                    if user_query:
+                        max_res = int(get_env_setting("OLLAMA_SEARCH_MAX_RESULTS", "3"))
+                        web_results = await perform_ollama_web_search(user_query, max_results=max_res)
+                        if web_results:
+                            snippets = []
+                            for idx, r in enumerate(web_results, 1):
+                                snippets.append(
+                                    f"[{idx}] {r['title']}\n"
+                                    f"URL: {r['url']}\n"
+                                    f"Contenido: {r['content']}"
+                                )
+                            web_context = "\n\n".join(snippets)
+                            search_prompt = (
+                                f"\n\n[INFORMACIÓN DE BÚSQUEDA WEB EN TIEMPO REAL (VÍA OLLAMA)]:\n"
+                                f"{web_context}\n"
+                                f"--------------------------------------------------\n"
+                                f"Instrucciones: Utiliza la información web anterior para responder de forma precisa, "
+                                f"actualizada y cita las fuentes o enlaces si es relevante."
+                            )
+                            
+                            system_msg = next((m for m in messages if m.get("role") == "system"), None)
+                            if system_msg:
+                                system_msg["content"] = f"{system_msg.get('content', '')}{search_prompt}".strip()
+                            else:
+                                messages.insert(0, {"role": "system", "content": search_prompt.strip()})
                 
                 body = json.dumps(data).encode("utf-8")
             except Exception as json_err:

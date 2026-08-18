@@ -907,6 +907,116 @@ Para prevenir abusos, bucles infinitos en aplicaciones cliente o sobrecostos en 
 
 ---
 
+### 🌐 10. Búsqueda Web en Tiempo Real con Ollama Cloud & Modelo Virtual `local/gemma-4-web`
+
+La suite integra un sistema desacoplado de búsqueda web en internet utilizando la API de **Ollama Cloud** (`https://ollama.com/api/web_search`):
+
+* **¿Por qué se hizo?**
+  * Permite dotar a modelos locales (como Gemma 4) y modelos en la nube (DeepSeek, Claude, OpenAI) de información en tiempo real, noticias recientes y hechos actualizados directamente desde internet sin requerir scrappers pesados de terceros.
+  * Mantiene la GPU completamente aislada y dedicada al cálculo de inferencia vLLM en el puerto `18000`, mientras el Gateway se encarga de las consultas de red HTTP asíncronas de manera no bloqueante.
+
+* **Modalidades de Uso:**
+
+  1. **Modelo Virtual Directo (`local/gemma-4-web`):**
+     * Aparece en el catálogo `/v1/models` como `local/gemma-4-web`.
+     * Al enviar una consulta a este modelo (desde Open-WebUI, cURL, scripts, o el Dashboard), el Gateway extrae la pregunta del usuario, consulta a Ollama Cloud en segundo plano, inyecta los snippets y URLs de las fuentes en el prompt del sistema y envía la petición a vLLM en un solo pase ultrarrápido.
+     * Ejemplo en cURL:
+       ```bash
+       curl -X POST http://localhost:8000/v1/chat/completions \
+         -H "Authorization: Bearer <TU_API_KEY>" \
+         -H "Content-Type: application/json" \
+         -d '{
+           "model": "local/gemma-4-web",
+           "messages": [{"role": "user", "content": "¿Cuáles son las noticias más recientes sobre inteligencia artificial hoy?"}]
+         }'
+       ```
+
+  2. **Endpoint de Herramienta Desacoplada (`POST /api/tools/web-search`):**
+     * Expuesto en el Gateway para ser consumido por herramientas cliente (Open-WebUI, LangChain, Aider, agentes autónomos).
+     * Permite que **cualquier modelo (local o en la nube)** conectado a Open-WebUI ejecute búsquedas web cuando lo considere necesario.
+     * Ejemplo de petición al endpoint:
+       ```bash
+       curl -X POST http://localhost:8000/api/tools/web-search \
+         -H "Authorization: Bearer <TU_API_KEY>" \
+         -H "Content-Type: application/json" \
+         -d '{
+           "query": "lanzamientos espaciales recientes",
+           "max_results": 3
+         }'
+       ```
+
+* **Plantilla de Herramienta (*Custom Tool*) lista para Open-WebUI:**
+  En Open-WebUI, puedes ir a **Workspace** ➔ **Herramientas (Tools)** ➔ **+** y pegar el siguiente código:
+
+  ```python
+  """
+  title: Ollama Web Search Tool
+  author: vLLM Suite Gateway
+  description: Busca información actualizada en tiempo real en internet a través del Gateway local.
+  version: 1.0.0
+  """
+  import requests
+  from typing import Optional
+
+  class Tools:
+      def __init__(self):
+          # URL del Gateway de la suite (ajustar si Open-WebUI corre en contenedor Docker a host.docker.internal:8000)
+          self.gateway_url = "http://127.0.0.1:8000/api/tools/web-search"
+          # Clave API registrada en la suite
+          self.api_key = "TU_API_KEY_AQUI"
+
+      def search_web(self, query: str) -> str:
+          """
+          Busca en internet en tiempo real noticias, datos recientes y hechos actualizados.
+          :param query: La consulta o términos de búsqueda.
+          :return: Texto estructurado con los resultados, fuentes y URLs.
+          """
+          headers = {
+              "Authorization": f"Bearer {self.api_key}",
+              "Content-Type": "application/json"
+          }
+          payload = {
+              "query": query,
+              "max_results": 3
+          }
+          try:
+              resp = requests.post(self.gateway_url, json=payload, headers=headers, timeout=15)
+              if resp.status_code == 200:
+                  data = resp.json()
+                  return data.get("formatted_context", "No se encontraron resultados.")
+              return f"Error en la búsqueda web: HTTP {resp.status_code}"
+          except Exception as e:
+              return f"Error conectando al servicio de búsqueda web: {str(e)}"
+  ```
+
+* **Variables de Configuración en `.env`:**
+  ```env
+  # Integración de Búsqueda Web con Ollama Cloud
+  OLLAMA_API_KEY=b47fbc1199b2455ca...
+  OLLAMA_SEARCH_ENABLED=true
+  OLLAMA_SEARCH_MAX_RESULTS=3
+  ```
+
+---
+
+### 🕒 11. Inyección Dinámica y Universal de Fecha y Hora en Tiempo Real
+
+Los modelos de lenguaje no poseen reloj interno y están sujetos a su fecha de corte de entrenamiento. Para evitar respuestas anacrónicas o requerir que el usuario aclare qué día es hoy, el Gateway incorpora un inyector temporal automático:
+
+* **¿Por qué se hizo?**
+  * Resuelve la desconexión temporal de los modelos frente a consultas relativas como *"¿Qué día es hoy?"*, *"¿Qué clima hará mañana?"*, *"Noticias de esta semana"*, o *"Eventos del mes próximo"*.
+  * Potencia directamente la herramienta de Búsqueda Web y el modelo `local/gemma-4-web`, permitiendo que el LLM formule queries de búsqueda con años y meses precisos sin consultar al usuario.
+* **Mecanismo de Inyección en el Gateway:**
+  * En cada petición entrante a `/v1/chat/completions`, el Gateway genera la marca de tiempo local del servidor:
+    `Fecha y hora actual: martes 18 de agosto de 2026, 13:42:00 (Hora local).`
+  * La antepone de forma transparente al mensaje `system` (o crea uno inicial si no existe).
+* **Alcance Universal:**
+  * Aplica a **todos los modelos locales** (`local/google/gemma-4-E4B-it`, `local/gemma-4-reasoning`, `local/gemma-4-web`).
+  * Aplica a **todos los proveedores en la nube** (`deepseek/*`, `openai/*`, `openrouter/*`).
+  * Consumo marginal despreciable (~15 tokens) y latencia cero ($< 0.001$ ms).
+
+---
+
 ### ⚙️ Administración del Servicio de Gateway (Systemd)
 
 * **Instalar/Registrar el Servicio:**

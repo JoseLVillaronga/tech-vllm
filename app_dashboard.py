@@ -1284,9 +1284,10 @@ def api_test_chat():
     current_vars = parse_env_to_dict()
     api_key = current_vars.get("API_KEY", API_KEY)
     
-    data = request.json
+    data = request.json or {}
     prompt = data.get("prompt", "¡Hola!")
-    model = current_vars.get("MODEL", "google/gemma-4-E4B-it")
+    model = data.get("model") or current_vars.get("MODEL", "google/gemma-4-E4B-it")
+    max_tokens = int(data.get("max_tokens", 400))
     
     url = f"http://127.0.0.1:{BACKEND_PORTS['gemma']}/v1/chat/completions"
     headers = {
@@ -1296,11 +1297,11 @@ def api_test_chat():
     payload = {
         "model": model,
         "messages": [{"role": "user", "content": prompt}],
-        "max_tokens": 150
+        "max_tokens": max_tokens
     }
     
     try:
-        res = requests.post(url, json=payload, headers=headers, timeout=30)
+        res = requests.post(url, json=payload, headers=headers, timeout=60)
         return Response(res.text, status=res.status_code, content_type="application/json")
     except Exception as e:
         return jsonify({"error": f"No se pudo conectar al servicio Gemma (puerto {BACKEND_PORTS['gemma']}): {str(e)}"}), 502

@@ -329,14 +329,31 @@
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <!-- Left: Hugging Face & Keys -->
                             <div class="space-y-4">
-                                <h3 class="text-sm font-bold text-indigo-400 border-b border-slate-800 pb-1.5 uppercase font-mono tracking-wider">Credenciales</h3>
+                                <h3 class="text-sm font-bold text-indigo-400 border-b border-slate-800 pb-1.5 uppercase font-mono tracking-wider">Credenciales & Búsqueda Web</h3>
                                 <div>
                                     <label class="block text-xs font-semibold text-slate-300 mb-1">HF_TOKEN (Hugging Face Auth)</label>
                                     <input type="password" name="HF_TOKEN" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 font-mono">
                                 </div>
                                 <div>
-                                    <label class="block text-xs font-semibold text-slate-300 mb-1">API_KEY (Seguridad Local)</label>
+                                    <label class="block text-xs font-semibold text-slate-300 mb-1">API_KEY (Seguridad Local Gateway)</label>
                                     <input type="password" name="API_KEY" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 font-mono">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-semibold text-slate-300 mb-1">OLLAMA_API_KEY (Búsqueda Web Ollama Cloud)</label>
+                                    <input type="password" name="OLLAMA_API_KEY" placeholder="b47fbc1199b2455ca..." class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 font-mono">
+                                </div>
+                                <div class="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label class="block text-xs font-semibold text-slate-300 mb-1">Búsqueda Web Habilitada</label>
+                                        <select name="OLLAMA_SEARCH_ENABLED" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 font-mono cursor-pointer">
+                                            <option value="true">true (Activada)</option>
+                                            <option value="false">false (Desactivada)</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="block text-xs font-semibold text-slate-300 mb-1">Max Resultados Web</label>
+                                        <input type="number" name="OLLAMA_SEARCH_MAX_RESULTS" placeholder="3" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 font-mono">
+                                    </div>
                                 </div>
                             </div>
                             
@@ -428,15 +445,22 @@
                     <!-- Chat Test -->
                     <div class="glass-panel p-6 rounded-2xl flex flex-col justify-between min-h-[350px]">
                         <div>
-                            <h3 class="text-md font-bold mb-3 flex items-center gap-2 text-indigo-300">
-                                💬 Probar Chat (Gemma 4 - 8000)
-                            </h3>
+                            <div class="flex items-center justify-between mb-3">
+                                <h3 class="text-md font-bold flex items-center gap-2 text-indigo-300">
+                                    💬 Probar Chat (Gemma 4 - 8000)
+                                </h3>
+                                <select id="chat-model-select" class="bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1 text-xs text-indigo-300 font-mono focus:outline-none focus:border-indigo-500 cursor-pointer">
+                                    <option value="">Default (Modelo Local .env)</option>
+                                    <option value="local/gemma-4-reasoning">🧠 local/gemma-4-reasoning</option>
+                                    <option value="local/gemma-4-web">🌐 local/gemma-4-web (Búsqueda Ollama)</option>
+                                </select>
+                            </div>
                             <div id="chat-output" class="bg-slate-900 border border-slate-800 rounded-xl p-4 h-48 overflow-y-auto mb-4 text-xs font-mono whitespace-pre-wrap text-slate-300">
                                 Esperando solicitud de prompt...
                             </div>
                         </div>
                         <div class="flex gap-2">
-                            <input type="text" id="chat-input" placeholder="Pregúntale algo al modelo de Gemma..." class="flex-1 bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-indigo-500">
+                            <input type="text" id="chat-input" placeholder="Pregúntale algo al modelo o busca algo en la web con local/gemma-4-web..." class="flex-1 bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-indigo-500">
                             <button onclick="testChat()" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm font-semibold transition-all">Enviar</button>
                         </div>
                     </div>
@@ -1403,21 +1427,29 @@
         async function testChat() {
             const input = document.getElementById('chat-input');
             const output = document.getElementById('chat-output');
-            const text = input.value.strip ? input.value.strip() : input.value;
+            const modelSelect = document.getElementById('chat-model-select');
+            const text = input.value.trim ? input.value.trim() : input.value;
             if (!text) return;
             
-            output.innerText = "Pensando...";
+            const selectedModel = modelSelect ? modelSelect.value : "";
+            output.innerText = selectedModel ? `Procesando con ${selectedModel}...` : "Pensando...";
             input.value = "";
             
             try {
                 const res = await fetch('/api/test/chat', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ prompt: text })
+                    body: JSON.stringify({
+                        prompt: text,
+                        model: selectedModel || undefined,
+                        max_tokens: 500
+                    })
                 });
                 const data = await res.json();
                 if (data.choices && data.choices[0]) {
                     output.innerText = data.choices[0].message.content;
+                } else if (data.error) {
+                    output.innerText = `⚠️ ${data.error}`;
                 } else {
                     output.innerText = JSON.stringify(data, null, 2);
                 }
