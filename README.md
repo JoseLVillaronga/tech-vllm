@@ -920,6 +920,16 @@ La suite integra un sistema desacoplado de búsqueda web en internet utilizando 
   1. **Modelo Virtual Directo (`local/gemma-4-web`):**
      * Aparece en el catálogo `/v1/models` como `local/gemma-4-web`.
      * Al enviar una consulta a este modelo (desde Open-WebUI, cURL, scripts, o el Dashboard), el Gateway extrae la pregunta del usuario, consulta a Ollama Cloud en segundo plano, inyecta los snippets y URLs de las fuentes en el prompt del sistema y envía la petición a vLLM en un solo pase ultrarrápido.
+     * **Prompt de Sistema Recomendado (Razonamiento + Búsqueda Estricta sin Alucinación):**
+       Para obtener respuestas estructuradas, con citas precisas y razonamiento visible (`<think>`) en Open-WebUI o clientes compatibles, se recomienda el siguiente prompt de sistema:
+       ```text
+       Eres un modelo de razonamiento. Debes escribir tu proceso de pensamiento paso a paso envuelto dentro de etiquetas <think>...</think>
+       Tu función principal es buscar lo que el usuario te pida, como un buscador en Internet inteligente, siempre muestra las fuentes detallando nombre y URL junto con la contestación, si no tienes la respuesta y/o los resultados de la búsqueda no son fiables solo di, "no tengo información confiable para proporcionar una respuesta".
+       ```
+     * **Vista en Open-WebUI:**
+       <p align="center">
+         <img src="screenshots/gemma_web_search.png" alt="Búsqueda Web en tiempo real con Gemma 4 Web" width="95%">
+       </p>
      * Ejemplo en cURL:
        ```bash
        curl -X POST http://localhost:8000/v1/chat/completions \
