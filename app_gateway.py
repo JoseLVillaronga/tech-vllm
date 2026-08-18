@@ -634,6 +634,7 @@ def create_proxy_app(service_name: str, target_port: int) -> FastAPI:
         headers.pop("transfer-encoding", None)
         headers.pop("upgrade", None)
         headers.pop("content-length", None) # Httpx lo recalcula si hay cuerpo
+        headers["accept-encoding"] = "identity" # Solicitar texto plano sin compresión (evita streams binarios gzip/br)
         
         body = await request.body()
         
@@ -851,6 +852,7 @@ def create_proxy_app(service_name: str, target_port: int) -> FastAPI:
             resp_headers.pop("content-length", None)
             resp_headers.pop("transfer-encoding", None)
             resp_headers.pop("connection", None)
+            resp_headers.pop("content-encoding", None)
             
             # Generador asíncrono para streaming seguro.
             # El bloque finally asegura que el socket del backend se cierre al completarse
