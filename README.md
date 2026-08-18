@@ -926,6 +926,12 @@ La suite integra un sistema desacoplado de búsqueda web en internet utilizando 
        Eres un modelo de razonamiento. Debes escribir tu proceso de pensamiento paso a paso envuelto dentro de etiquetas <think>...</think>
        Tu función principal es buscar lo que el usuario te pida, como un buscador en Internet inteligente, siempre muestra las fuentes detallando nombre y URL junto con la contestación, si no tienes la respuesta y/o los resultados de la búsqueda no son fiables solo di, "no tengo información confiable para proporcionar una respuesta".
        ```
+     * **Ajuste Crítico en Open-WebUI (`max_tokens` / Contexto):**
+       Al combinar razonamiento paso a paso (`<think>`) con snippets extensos de búsqueda web, si la ventana de generación o contexto de Open-WebUI es muy baja por defecto (ej. 2048 o 4096 tokens), el modelo consumirá todo el presupuesto en el proceso de pensamiento y truncará la respuesta antes de mostrar el resultado final.
+       * **Recomendación:** En Open-WebUI (Menú **Administración** ➔ **Modelos** ➔ Editar `local/gemma-4-web` ➔ **Parámetros Avanzados**), establecer `max_tokens` en **`65536`** (o al límite soportado).
+       <p align="center">
+         <img src="screenshots/openwebui_gemma_web_config.png" alt="Configuración de max_tokens en Open-WebUI para Gemma 4 Web" width="95%">
+       </p>
      * **Vista en Open-WebUI:**
        <p align="center">
          <img src="screenshots/gemma_web_search.png" alt="Búsqueda Web en tiempo real con Gemma 4 Web" width="95%">
