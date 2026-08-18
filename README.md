@@ -945,6 +945,74 @@ La suite integra un sistema desacoplado de búsqueda web en internet utilizando 
          }'
        ```
 
+  3. **Ejemplo de Function Calling Agéntico con cURL (Modelos Cloud / DeepSeek):**
+     Para interactuar mediante el protocolo nativo de llamadas a funciones con modelos externos en la nube sin interfaces gráficas:
+
+     * **Paso 1: Enviar la consulta con la herramienta declarada:**
+       ```bash
+       curl -s http://127.0.0.1:8000/v1/chat/completions \
+         -H "Authorization: Bearer <TU_API_KEY>" \
+         -H "Content-Type: application/json" \
+         -d '{
+           "model": "deepseek/deepseek-v4-flash",
+           "messages": [
+             {"role": "user", "content": "¿Cuáles son las noticias más recientes sobre IA de hoy?"}
+           ],
+           "tools": [
+             {
+               "type": "function",
+               "function": {
+                 "name": "search_web",
+                 "description": "Busca información en tiempo real en internet",
+                 "parameters": {
+                   "type": "object",
+                   "properties": {
+                     "query": {"type": "string", "description": "La consulta de búsqueda"}
+                   },
+                   "required": ["query"]
+                 }
+               }
+             }
+           ]
+         }' | jq
+       ```
+
+     * **Paso 2: Ejecutar la búsqueda en el Gateway y devolver los resultados:**
+       ```bash
+       # 1. Obtener resultados de búsqueda del Gateway
+       RES_ES=$(curl -s -X POST http://127.0.0.1:8000/api/tools/web-search \
+         -H "Authorization: Bearer <TU_API_KEY>" \
+         -H "Content-Type: application/json" \
+         -d '{"query": "noticias de inteligencia artificial hoy"}' | jq -r '.formatted_context')
+
+       # 2. Enviar los resultados con el 'tool_call_id' correspondiente para la respuesta final
+       curl -s http://127.0.0.1:8000/v1/chat/completions \
+         -H "Authorization: Bearer <TU_API_KEY>" \
+         -H "Content-Type: application/json" \
+         -d "{
+           \"model\": \"deepseek/deepseek-v4-flash\",
+           \"messages\": [
+             {\"role\": \"user\", \"content\": \"¿Cuáles son las noticias más recientes sobre IA de hoy?\"},
+             {
+               \"role\": \"assistant\",
+               \"content\": \"Voy a buscar las noticias más recientes sobre IA de hoy.\",
+               \"tool_calls\": [
+                 {
+                   \"id\": \"call_01\",
+                   \"type\": \"function\",
+                   \"function\": {\"name\": \"search_web\", \"arguments\": \"{\\\"query\\\": \\\"noticias de inteligencia artificial hoy\\\"}\"}
+                 }
+               ]
+             },
+             {
+               \"role\": \"tool\",
+               \"tool_call_id\": \"call_01\",
+               \"content\": $(echo \"$RES_ES\" | jq -R -s '.')
+             }
+           ]
+         }" | jq -r '.choices[0].message.content'
+       ```
+
 * **Plantilla de Herramienta (*Custom Tool*) lista para Open-WebUI:**
   En Open-WebUI, puedes ir a **Workspace** ➔ **Herramientas (Tools)** ➔ **+** y pegar el siguiente código:
 
