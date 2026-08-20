@@ -603,19 +603,49 @@ def create_proxy_app(service_name: str, target_port: int) -> FastAPI:
                     except Exception as le:
                         print(f"⚠️ Gateway: Error obteniendo modelos locales: {le}", file=sys.stderr, flush=True)
                 
-                # 2. Modelos de proveedores en la nube expuestos con prefijo '<provider_slug>/'
-                async with cached_cloud_models_lock:
-                    for pref_id, p_info in cached_cloud_models.items():
-                        prov_id = p_info.get("provider_id", "")
-                        prov_name = p_info.get("provider_name", "")
-                        prov_slug = p_info.get("provider_slug", "")
-                        if is_master or ("*" in key_allowed_providers) or (prov_id in key_allowed_providers) or (prov_name in key_allowed_providers) or (prov_slug in key_allowed_providers):
+                # 2. Modelos de proveedores en la nube expuestos
+                if is_master:
+                    # Master Key ve todos los modelos de proveedores activos en caché
+                    async with cached_cloud_models_lock:
+                        for pref_id, p_info in cached_cloud_models.items():
+                            prov_name = p_info.get("provider_name", "")
                             combined_models.append({
                                 "id": pref_id,
                                 "object": "model",
                                 "created": int(time.time()),
                                 "owned_by": prov_name
                             })
+                elif key_doc:
+                    # Clave secundaria: consultar modelos granulares autorizados en MongoDB
+                    try:
+                        db = get_db()
+                        key_models = list(db.api_key_models.find({"key_id": key_doc["_id"]}))
+                        if key_models:
+                            for km in key_models:
+                                pref_id = km.get("prefixed_id") or f"{km.get('provider_slug')}/{km.get('model_id')}"
+                                prov_name = km.get("provider_name", "cloud")
+                                combined_models.append({
+                                    "id": pref_id,
+                                    "object": "model",
+                                    "created": int(time.time()),
+                                    "owned_by": prov_name
+                                })
+                        else:
+                            # Fallback retrocompatible para claves sin modelos granulares guardados
+                            async with cached_cloud_models_lock:
+                                for pref_id, p_info in cached_cloud_models.items():
+                                    prov_id = p_info.get("provider_id", "")
+                                    prov_name = p_info.get("provider_name", "")
+                                    prov_slug = p_info.get("provider_slug", "")
+                                    if ("*" in key_allowed_providers) or (prov_id in key_allowed_providers) or (prov_name in key_allowed_providers) or (prov_slug in key_allowed_providers):
+                                        combined_models.append({
+                                            "id": pref_id,
+                                            "object": "model",
+                                            "created": int(time.time()),
+                                            "owned_by": prov_name
+                                        })
+                    except Exception as me:
+                        print(f"⚠️ Gateway: Error obteniendo modelos cloud para clave: {me}", file=sys.stderr, flush=True)
                             
                 return Response(
                     content=json.dumps({"object": "list", "data": combined_models}),
@@ -651,6 +681,7 @@ def create_proxy_app(service_name: str, target_port: int) -> FastAPI:
         # Determinar si es una petición a un modelo en la nube o local
         is_cloud_request = False
         cloud_provider = None
+        matched_cloud = False
         
         if service_name == "gemma" and body:
             try:
@@ -676,44 +707,74 @@ def create_proxy_app(service_name: str, target_port: int) -> FastAPI:
                     actual_model = req_model[6:] # Despojar 'local/'
                     data["model"] = actual_model
                 else:
-                    async with cached_cloud_models_lock:
-                        if req_model in cached_cloud_models:
-                            # Caso 2: Modelo en la nube con prefijo de proveedor exacto (ej: 'openrouter/anthropic/claude-3.5-sonnet')
-                            is_cloud_request = True
-                            cloud_provider = cached_cloud_models[req_model]
-                            actual_model = cloud_provider.get("raw_model_id", req_model)
-                            data["model"] = actual_model # Despojar prefijo de proveedor antes de enviar a la nube
-                        elif req_model in cached_cloud_models_by_raw:
-                            # Caso 3: Modelo enviado por nombre nativo (sin prefijo).
-                            # Seleccionar el proveedor candidato que esté autorizado para esta clave API
-                            candidate_providers = cached_cloud_models_by_raw[req_model]
-                            authorized_candidate = None
-                            for cp in candidate_providers:
-                                p_id = cp.get("provider_id", "")
-                                p_name = cp.get("provider_name", "")
-                                p_slug = cp.get("provider_slug", "")
-                                if is_master or ("*" in key_allowed_providers) or (p_id in key_allowed_providers) or (p_name in key_allowed_providers) or (p_slug in key_allowed_providers):
-                                    authorized_candidate = cp
-                                    break
-                            
-                            # Si coincide con local y la clave tiene permiso gemma, o si no hay candidato autorizado en nube
-                            if ("gemma" in allowed_services or is_master) and (req_model in ["gemma-4-reasoning", "gemma-4-web", "google/gemma-4-E4B-it"] or not authorized_candidate):
+                    matched_cloud = False
+                    if not is_master and key_doc:
+                        # 1. Consultar modelos granulares autorizados en MongoDB para esta clave
+                        try:
+                            db = get_db()
+                            matched_km = db.api_key_models.find_one({
+                                "key_id": key_doc["_id"],
+                                "$or": [
+                                    {"prefixed_id": req_model},
+                                    {"model_id": req_model}
+                                ]
+                            })
+                            if matched_km:
+                                p_id = matched_km.get("provider_id")
+                                prov_obj = db.cloud_providers.find_one({"_id": p_id, "is_active": True})
+                                if prov_obj:
+                                    is_cloud_request = True
+                                    cloud_provider = {
+                                        "provider_id": str(prov_obj["_id"]),
+                                        "provider_name": prov_obj.get("name", ""),
+                                        "provider_slug": matched_km.get("provider_slug") or slugify_provider_name(prov_obj.get("name", "")),
+                                        "base_url": prov_obj.get("base_url", ""),
+                                        "api_key": prov_obj.get("api_key", ""),
+                                        "raw_model_id": matched_km.get("model_id", req_model)
+                                    }
+                                    actual_model = matched_km.get("model_id", req_model)
+                                    data["model"] = actual_model
+                                    matched_cloud = True
+                        except Exception as m_err:
+                            print(f"⚠️ Gateway: Error validando modelo en MongoDB: {m_err}", file=sys.stderr, flush=True)
+                    
+                    if not matched_cloud:
+                        async with cached_cloud_models_lock:
+                            if req_model in cached_cloud_models:
+                                # Caso 2: Modelo en la nube con prefijo de proveedor exacto (ej: 'openrouter/anthropic/claude-3.5-sonnet')
+                                is_cloud_request = True
+                                cloud_provider = cached_cloud_models[req_model]
+                                actual_model = cloud_provider.get("raw_model_id", req_model)
+                                data["model"] = actual_model # Despojar prefijo de proveedor antes de enviar a la nube
+                            elif req_model in cached_cloud_models_by_raw:
+                                # Caso 3: Modelo enviado por nombre nativo (sin prefijo).
+                                candidate_providers = cached_cloud_models_by_raw[req_model]
+                                authorized_candidate = None
+                                for cp in candidate_providers:
+                                    p_id = cp.get("provider_id", "")
+                                    p_name = cp.get("provider_name", "")
+                                    p_slug = cp.get("provider_slug", "")
+                                    if is_master or ("*" in key_allowed_providers) or (p_id in key_allowed_providers) or (p_name in key_allowed_providers) or (p_slug in key_allowed_providers):
+                                        authorized_candidate = cp
+                                        break
+                                
+                                if ("gemma" in allowed_services or is_master) and (req_model in ["gemma-4-reasoning", "gemma-4-web", "google/gemma-4-E4B-it"] or not authorized_candidate):
+                                    is_cloud_request = False
+                                    actual_model = req_model
+                                    if req_model == "gemma-4-web":
+                                        data["model"] = os.getenv("MODEL", "google/gemma-4-E4B-it").strip('"').strip("'")
+                                elif authorized_candidate:
+                                    is_cloud_request = True
+                                    cloud_provider = authorized_candidate
+                                    actual_model = req_model
+                                    data["model"] = actual_model
+                                else:
+                                    is_cloud_request = True
+                                    cloud_provider = candidate_providers[0]
+                                    actual_model = req_model
+                            else:
                                 is_cloud_request = False
                                 actual_model = req_model
-                                if req_model == "gemma-4-web":
-                                    data["model"] = os.getenv("MODEL", "google/gemma-4-E4B-it").strip('"').strip("'")
-                            elif authorized_candidate:
-                                is_cloud_request = True
-                                cloud_provider = authorized_candidate
-                                actual_model = req_model
-                                data["model"] = actual_model
-                            else:
-                                is_cloud_request = True
-                                cloud_provider = candidate_providers[0]
-                                actual_model = req_model
-                        else:
-                            is_cloud_request = False
-                            actual_model = req_model
 
                 model_name = actual_model or service_name
                 
@@ -802,7 +863,15 @@ def create_proxy_app(service_name: str, target_port: int) -> FastAPI:
                 provider_name = cloud_provider.get("provider_name", "")
                 provider_slug = cloud_provider.get("provider_slug", "")
                 key_allowed_providers = key_doc.get("allowed_providers", []) if key_doc else []
-                if not is_master and ("*" not in key_allowed_providers) and (provider_id not in key_allowed_providers) and (provider_name not in key_allowed_providers) and (provider_slug not in key_allowed_providers):
+                is_authorized = (
+                    is_master
+                    or ("*" in key_allowed_providers)
+                    or (provider_id in key_allowed_providers)
+                    or (provider_name in key_allowed_providers)
+                    or (provider_slug in key_allowed_providers)
+                    or matched_cloud
+                )
+                if not is_authorized:
                     asyncio.create_task(asyncio.to_thread(save_blocked_request_log, client_ip, service_name, path, f"cloud_provider_denied:{provider_name}"))
                     raise HTTPException(
                         status_code=status.HTTP_403_FORBIDDEN,

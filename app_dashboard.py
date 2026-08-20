@@ -28,6 +28,10 @@ def get_db():
     client = MongoClient(uri, serverSelectionTimeoutMS=2000)
     return client[db_name]
 
+def slugify_provider_name(name: str) -> str:
+    slug = re.sub(r'[^a-zA-Z0-9_\-]', '_', name.strip().lower()).strip('_')
+    return slug or "cloud"
+
 # Helper para re-muestrear audio a 24kHz mono (esperado por F5-TTS)
 def resample_audio_to_24k_mono(input_path, output_path):
     try:
@@ -492,19 +496,52 @@ def api_get_keys():
         result = []
         for k in keys:
             k = check_and_reset_key_quota_dict(k, db)
+            key_id = k["_id"]
+            # Obtener modelos asignados para esta clave
+            key_models = list(db.api_key_models.find({"key_id": key_id}))
+            models_by_provider = {}
+            for km in key_models:
+                p_id = str(km.get("provider_id", ""))
+                if p_id:
+                    if p_id not in models_by_provider:
+                        models_by_provider[p_id] = []
+                    models_by_provider[p_id].append(km.get("model_id"))
+            
             result.append({
-                "id": str(k["_id"]),
+                "id": str(key_id),
                 "name": k.get("name", "Sin nombre"),
                 "description": k.get("description", ""),
                 "key": k.get("key", ""),
                 "services": k.get("services", []),
                 "allowed_providers": k.get("allowed_providers", []),
+                "allowed_models_count": len(key_models),
+                "models_by_provider": models_by_provider,
                 "max_tokens": int(k.get("max_tokens") or 0),
                 "used_tokens": int(k.get("used_tokens") or 0),
                 "quota_reset": k.get("quota_reset", "none"),
                 "last_reset_at": str(k.get("last_reset_at") or ""),
                 "expires_at": k.get("expires_at", ""),
                 "is_active": k.get("is_active", True)
+            })
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/keys/<key_id>/models", methods=["GET"])
+def api_get_key_models(key_id):
+    try:
+        db = get_db()
+        key_models = list(db.api_key_models.find({"key_id": ObjectId(key_id)}))
+        result = []
+        for km in key_models:
+            result.append({
+                "id": str(km["_id"]),
+                "key_id": str(km.get("key_id", "")),
+                "provider_id": str(km.get("provider_id", "")),
+                "provider_name": km.get("provider_name", ""),
+                "provider_slug": km.get("provider_slug", ""),
+                "model_id": km.get("model_id", ""),
+                "prefixed_id": km.get("prefixed_id", "")
             })
         return jsonify(result)
     except Exception as e:
@@ -518,6 +555,7 @@ def api_create_key():
         description = data.get("description", "").strip()
         services = data.get("services", [])
         allowed_providers = data.get("allowed_providers", [])
+        allowed_models = data.get("allowed_models", {})  # Dict { "<provider_id>": ["m1", "m2"] }
         max_tokens = int(data.get("max_tokens") or 0)
         quota_reset = data.get("quota_reset", "none")
         if quota_reset not in ["none", "daily", "monthly"]:
@@ -552,6 +590,32 @@ def api_create_key():
             "is_active": True
         }).inserted_id
         
+        # Persistir modelos granulares seleccionados en db.api_key_models
+        if allowed_models and isinstance(allowed_models, dict):
+            docs_to_insert = []
+            for p_id, m_list in allowed_models.items():
+                if not m_list:
+                    continue
+                try:
+                    p_obj = db.cloud_providers.find_one({"_id": ObjectId(p_id)})
+                    if p_obj:
+                        p_name = p_obj.get("name", "")
+                        p_slug = slugify_provider_name(p_name)
+                        for m_id in m_list:
+                            docs_to_insert.append({
+                                "key_id": key_id,
+                                "provider_id": ObjectId(p_id),
+                                "provider_name": p_name,
+                                "provider_slug": p_slug,
+                                "model_id": m_id,
+                                "prefixed_id": f"{p_slug}/{m_id}",
+                                "created_at": datetime.utcnow()
+                            })
+                except Exception as p_err:
+                    print(f"Error procesando modelos para clave {key_id}: {p_err}", file=sys.stderr, flush=True)
+            if docs_to_insert:
+                db.api_key_models.insert_many(docs_to_insert)
+        
         return jsonify({
             "message": "Clave API creada con éxito",
             "id": str(key_id),
@@ -568,6 +632,7 @@ def api_update_key(key_id):
         description = data.get("description", "").strip()
         services = data.get("services", [])
         allowed_providers = data.get("allowed_providers", [])
+        allowed_models = data.get("allowed_models", None)  # Dict { "<provider_id>": ["m1", "m2"] }
         max_tokens = int(data.get("max_tokens") or 0)
         quota_reset = data.get("quota_reset", "none")
         if quota_reset not in ["none", "daily", "monthly"]:
@@ -603,6 +668,33 @@ def api_update_key(key_id):
         if res.matched_count == 0:
             return jsonify({"error": "Clave API no encontrada"}), 404
             
+        # Actualizar modelos granulares si se enviaron
+        if allowed_models is not None and isinstance(allowed_models, dict):
+            db.api_key_models.delete_many({"key_id": ObjectId(key_id)})
+            docs_to_insert = []
+            for p_id, m_list in allowed_models.items():
+                if not m_list:
+                    continue
+                try:
+                    p_obj = db.cloud_providers.find_one({"_id": ObjectId(p_id)})
+                    if p_obj:
+                        p_name = p_obj.get("name", "")
+                        p_slug = slugify_provider_name(p_name)
+                        for m_id in m_list:
+                            docs_to_insert.append({
+                                "key_id": ObjectId(key_id),
+                                "provider_id": ObjectId(p_id),
+                                "provider_name": p_name,
+                                "provider_slug": p_slug,
+                                "model_id": m_id,
+                                "prefixed_id": f"{p_slug}/{m_id}",
+                                "created_at": datetime.utcnow()
+                            })
+                except Exception as p_err:
+                    print(f"Error actualizando modelos para clave {key_id}: {p_err}", file=sys.stderr, flush=True)
+            if docs_to_insert:
+                db.api_key_models.insert_many(docs_to_insert)
+            
         return jsonify({"message": "Clave API actualizada con éxito"})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -627,6 +719,7 @@ def api_reset_key_quota(key_id):
 def api_delete_key(key_id):
     try:
         db = get_db()
+        db.api_key_models.delete_many({"key_id": ObjectId(key_id)})
         res = db.api_keys.delete_one({"_id": ObjectId(key_id)})
         if res.deleted_count == 0:
             return jsonify({"error": "Clave API no encontrada"}), 404
@@ -1185,10 +1278,57 @@ def api_update_cloud_provider(provider_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route("/api/cloud-providers/<provider_id>/models", methods=["GET"])
+def api_get_cloud_provider_models(provider_id):
+    try:
+        db = get_db()
+        provider = db.cloud_providers.find_one({"_id": ObjectId(provider_id)})
+        if not provider:
+            return jsonify({"error": "Proveedor no encontrado"}), 404
+        
+        base_url = provider.get("base_url", "").rstrip("/")
+        api_key = provider.get("api_key", "")
+        if not base_url or not api_key:
+            return jsonify({"error": "El proveedor no tiene configurada base_url o api_key"}), 400
+        
+        headers = {"Authorization": f"Bearer {api_key}"}
+        models_url = f"{base_url}/models" if not base_url.endswith("/models") else base_url
+        try:
+            resp = requests.get(models_url, headers=headers, timeout=7.0)
+        except Exception as net_err:
+            return jsonify({"error": f"No se pudo conectar con el proveedor: {net_err}"}), 502
+            
+        if resp.status_code != 200:
+            return jsonify({"error": f"El proveedor devolvió código HTTP {resp.status_code}: {resp.text[:200]}"}), 502
+            
+        models_data = resp.json()
+        raw_list = models_data.get("data", [])
+        formatted_models = []
+        slug = slugify_provider_name(provider.get("name", "cloud"))
+        for m in raw_list:
+            m_id = m.get("id")
+            if m_id:
+                formatted_models.append({
+                    "id": m_id,
+                    "prefixed_id": f"{slug}/{m_id}",
+                    "name": m.get("name") or m_id,
+                    "created": m.get("created"),
+                    "owned_by": m.get("owned_by") or provider.get("name", "cloud")
+                })
+        return jsonify({
+            "provider_id": provider_id,
+            "provider_name": provider.get("name", ""),
+            "provider_slug": slug,
+            "models": formatted_models
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route("/api/cloud-providers/<provider_id>", methods=["DELETE"])
 def api_delete_cloud_provider(provider_id):
     try:
         db = get_db()
+        db.api_key_models.delete_many({"provider_id": ObjectId(provider_id)})
         res = db.cloud_providers.delete_one({"_id": ObjectId(provider_id)})
         if res.deleted_count == 0:
             return jsonify({"error": "Proveedor no encontrado"}), 404

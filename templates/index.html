@@ -706,7 +706,7 @@
                             </div>
                             <div>
                                 <label class="block text-xs font-semibold text-slate-300 mb-1">Proveedores en la Nube Autorizados:</label>
-                                <div id="key-cloud-providers-container" class="flex flex-col gap-2 mt-1.5 bg-slate-900/50 border border-slate-800 rounded-xl p-3 max-h-36 overflow-y-auto">
+                                <div id="key-cloud-providers-container" class="flex flex-col gap-2 mt-1.5 bg-slate-900/50 border border-slate-800 rounded-xl p-3 max-h-72 overflow-y-auto">
                                     <span class="text-[10px] text-slate-500">Cargando proveedores...</span>
                                 </div>
                             </div>
@@ -980,14 +980,19 @@
             </div>
 
             <!-- MODAL DE EDICIÓN DE CLAVE -->
-            <div id="edit-key-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm hidden z-50 flex items-center justify-center p-4">
-                <div class="glass-panel max-w-md w-full p-6 rounded-2xl flex flex-col gap-4 shadow-2xl border border-slate-850">
-                    <div class="flex justify-between items-center border-b border-slate-800 pb-2">
-                        <h3 class="text-sm font-bold text-slate-100">Editar Clave API</h3>
-                        <button onclick="closeEditKeyModal()" class="text-slate-400 hover:text-white text-lg">&times;</button>
+            <div id="edit-key-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm hidden z-50 flex items-center justify-center p-4 overflow-y-auto">
+                <div class="glass-panel max-w-lg w-full max-h-[90vh] rounded-2xl flex flex-col shadow-2xl border border-slate-850 overflow-hidden my-auto">
+                    <!-- Header Fijo -->
+                    <div class="flex justify-between items-center border-b border-slate-800 p-4 pb-3 shrink-0">
+                        <h3 class="text-sm font-bold text-slate-100 flex items-center gap-2">
+                            <span>🔑</span> Editar Clave API
+                        </h3>
+                        <button type="button" onclick="closeEditKeyModal()" class="text-slate-400 hover:text-white text-lg p-1">&times;</button>
                     </div>
                     <input type="hidden" id="edit-key-id">
-                    <div class="flex flex-col gap-3">
+                    
+                    <!-- Cuerpo Desplazable (Scrollable) -->
+                    <div class="flex-1 overflow-y-auto p-5 flex flex-col gap-3.5">
                         <div>
                             <label class="block text-xs font-semibold text-slate-300 mb-1">Nombre de la Clave:</label>
                             <input id="edit-key-name" type="text" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500">
@@ -1019,7 +1024,7 @@
                         </div>
                         <div>
                             <label class="block text-xs font-semibold text-slate-300 mb-1">Proveedores en la Nube Autorizados:</label>
-                            <div id="edit-key-cloud-providers-container" class="flex flex-col gap-2 mt-1.5 bg-slate-900/50 border border-slate-800 rounded-xl p-3 max-h-36 overflow-y-auto">
+                            <div id="edit-key-cloud-providers-container" class="flex flex-col gap-2 mt-1.5 bg-slate-900/50 border border-slate-800 rounded-xl p-3 max-h-64 overflow-y-auto">
                                 <span class="text-[10px] text-slate-500">Cargando proveedores...</span>
                             </div>
                         </div>
@@ -1046,10 +1051,12 @@
                                 <option value="false">Desactivada (Suspendida)</option>
                             </select>
                         </div>
-                        <div class="flex gap-3 justify-end mt-2">
-                            <button onclick="closeEditKeyModal()" class="px-4 py-1.5 bg-slate-900 border border-slate-800 hover:bg-slate-800 rounded-lg text-xs font-semibold text-slate-400 transition-all">Cancelar</button>
-                            <button onclick="updateApiKey()" class="px-4 py-1.5 bg-cyan-600 hover:bg-cyan-500 rounded-lg text-xs font-semibold text-white transition-all">Guardar Cambios</button>
-                        </div>
+                    </div>
+                    
+                    <!-- Footer Fijo de Acciones -->
+                    <div class="flex gap-3 justify-end items-center border-t border-slate-800 p-4 bg-slate-950/80 shrink-0">
+                        <button type="button" onclick="closeEditKeyModal()" class="px-4 py-2 bg-slate-900 border border-slate-800 hover:bg-slate-800 rounded-lg text-xs font-semibold text-slate-300 hover:text-white transition-all">Cancelar</button>
+                        <button type="button" onclick="updateApiKey()" class="px-4 py-2 bg-gradient-to-r from-cyan-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 rounded-lg text-xs font-semibold text-white shadow-lg shadow-cyan-900/30 transition-all">Guardar Cambios</button>
                     </div>
                 </div>
             </div>
@@ -1843,6 +1850,97 @@
 
         // --- Gestión de Claves API Específicas (MongoDB) ---
         window.cachedCloudProviders = [];
+        window.cachedProviderModels = {};
+
+        async function getProviderModels(providerId) {
+            if (window.cachedProviderModels[providerId]) {
+                return window.cachedProviderModels[providerId];
+            }
+            try {
+                const res = await fetch(`/api/cloud-providers/${providerId}/models`);
+                const data = await res.json();
+                if (res.ok && data.models) {
+                    window.cachedProviderModels[providerId] = data.models;
+                    return data.models;
+                }
+            } catch (err) {
+                console.error(`Error cargando modelos para proveedor ${providerId}:`, err);
+            }
+            return [];
+        }
+
+        async function handleProviderCheckboxChange(context, providerId, preselectedModels = []) {
+            const cb = document.getElementById(`${context}-prov-cb-${providerId}`);
+            const panel = document.getElementById(`${context}-prov-models-panel-${providerId}`);
+            if (!cb || !panel) return;
+
+            if (cb.checked) {
+                panel.classList.remove('hidden');
+                const listContainer = document.getElementById(`${context}-prov-models-list-${providerId}`);
+                if (listContainer && listContainer.getAttribute('data-loaded') !== 'true') {
+                    listContainer.innerHTML = '<span class="text-[10px] text-indigo-400 animate-pulse">Consultando modelos del proveedor...</span>';
+                    const models = await getProviderModels(providerId);
+                    if (models.length === 0) {
+                        listContainer.innerHTML = '<span class="text-[10px] text-slate-500">No se encontraron modelos disponibles o el proveedor no responde.</span>';
+                    } else {
+                        listContainer.setAttribute('data-loaded', 'true');
+                        listContainer.innerHTML = models.map(m => {
+                            const isChecked = preselectedModels.includes(m.id) || preselectedModels.includes(m.prefixed_id) || preselectedModels.includes('*');
+                            return `
+                                <label data-model-item class="flex items-center gap-2 text-[11px] text-slate-300 hover:text-white cursor-pointer py-0.5 px-1 rounded hover:bg-slate-800/50 transition-all">
+                                    <input type="checkbox" data-context="${context}" data-provider-id="${providerId}" value="${escapeHtml(m.id)}" ${isChecked ? 'checked' : ''} onchange="updateProviderModelCountBadge('${context}', '${providerId}')" class="rounded border-slate-700 text-cyan-500 focus:ring-cyan-500 bg-slate-950">
+                                    <span class="font-mono text-slate-200 truncate" title="${escapeHtml(m.id)}">${escapeHtml(m.id)}</span>
+                                </label>
+                            `;
+                        }).join('');
+                    }
+                    updateProviderModelCountBadge(context, providerId);
+                }
+            } else {
+                panel.classList.add('hidden');
+            }
+        }
+
+        function filterProviderModels(context, providerId, query) {
+            const listContainer = document.getElementById(`${context}-prov-models-list-${providerId}`);
+            if (!listContainer) return;
+            const q = (query || '').toLowerCase().trim();
+            const items = listContainer.querySelectorAll('[data-model-item]');
+            items.forEach(item => {
+                const text = item.textContent.toLowerCase();
+                if (!q || text.includes(q)) {
+                    item.classList.remove('hidden');
+                } else {
+                    item.classList.add('hidden');
+                }
+            });
+        }
+
+        function selectAllProviderModels(context, providerId, selectAll) {
+            const listContainer = document.getElementById(`${context}-prov-models-list-${providerId}`);
+            if (!listContainer) return;
+            const checkboxes = listContainer.querySelectorAll(`input[data-context="${context}"][data-provider-id="${providerId}"]`);
+            checkboxes.forEach(cb => {
+                const item = cb.closest('[data-model-item]');
+                if (!item || !item.classList.contains('hidden')) {
+                    cb.checked = selectAll;
+                }
+            });
+            updateProviderModelCountBadge(context, providerId);
+        }
+
+        function updateProviderModelCountBadge(context, providerId) {
+            const badge = document.getElementById(`${context}-prov-count-${providerId}`);
+            if (!badge) return;
+            const checkedCount = document.querySelectorAll(`input[data-context="${context}"][data-provider-id="${providerId}"]:checked`).length;
+            const totalCount = document.querySelectorAll(`input[data-context="${context}"][data-provider-id="${providerId}"]`).length;
+            badge.textContent = `${checkedCount} / ${totalCount} modelos`;
+            if (checkedCount > 0) {
+                badge.className = "text-[9px] px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 font-semibold border border-indigo-500/30";
+            } else {
+                badge.className = "text-[9px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-semibold";
+            }
+        }
 
         function renderCloudProviderCheckboxes() {
             const createContainer = document.getElementById('key-cloud-providers-container');
@@ -1854,15 +1952,29 @@
             }
 
             createContainer.innerHTML = window.cachedCloudProviders.map(p => `
-                <label class="flex items-center gap-2.5 text-xs text-slate-300 cursor-pointer">
-                    <input type="checkbox" name="key-providers" value="${p.id}" class="rounded border-slate-800 text-indigo-500 focus:ring-indigo-500 bg-slate-950">
-                    <span class="font-medium text-slate-200">☁️ ${escapeHtml(p.name)}</span>
-                    <span class="text-[10px] text-slate-500 truncate">(${escapeHtml(p.base_url)})</span>
-                </label>
+                <div class="flex flex-col gap-1.5 p-2 rounded-lg bg-slate-950/40 border border-slate-800/80">
+                    <label class="flex items-center justify-between gap-2 text-xs text-slate-300 cursor-pointer select-none">
+                        <div class="flex items-center gap-2">
+                            <input id="create-prov-cb-${p.id}" type="checkbox" name="key-providers" value="${p.id}" onchange="handleProviderCheckboxChange('create', '${p.id}')" class="rounded border-slate-800 text-indigo-500 focus:ring-indigo-500 bg-slate-950">
+                            <span class="font-semibold text-slate-200">☁️ ${escapeHtml(p.name)}</span>
+                        </div>
+                        <span id="create-prov-count-${p.id}" class="text-[9px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-semibold">0 modelos</span>
+                    </label>
+                    <div id="create-prov-models-panel-${p.id}" class="hidden flex flex-col gap-1.5 mt-1 pt-1.5 border-t border-slate-800/60 pl-2">
+                        <div class="flex items-center gap-1.5">
+                            <input type="text" placeholder="Filtrar modelos (ej: sonnet, gpt-4)..." oninput="filterProviderModels('create', '${p.id}', this.value)" class="flex-1 bg-slate-900 border border-slate-800 rounded px-2 py-0.5 text-[10px] text-slate-200 focus:outline-none focus:border-indigo-500">
+                            <button type="button" onclick="selectAllProviderModels('create', '${p.id}', true)" class="text-[9px] px-1.5 py-0.5 bg-slate-800 hover:bg-slate-700 text-indigo-300 rounded font-medium">Todos</button>
+                            <button type="button" onclick="selectAllProviderModels('create', '${p.id}', false)" class="text-[9px] px-1.5 py-0.5 bg-slate-800 hover:bg-slate-700 text-slate-400 rounded font-medium">Ninguno</button>
+                        </div>
+                        <div id="create-prov-models-list-${p.id}" class="flex flex-col gap-0.5 max-h-32 overflow-y-auto pr-1">
+                            <span class="text-[10px] text-slate-500">Cargando modelos...</span>
+                        </div>
+                    </div>
+                </div>
             `).join('');
         }
 
-        function renderEditCloudProviderCheckboxes(allowedProviders) {
+        async function renderEditCloudProviderCheckboxes(allowedProviders, keyModelsByProvider = {}) {
             const editContainer = document.getElementById('edit-key-cloud-providers-container');
             if (!editContainer) return;
 
@@ -1874,13 +1986,36 @@
             editContainer.innerHTML = window.cachedCloudProviders.map(p => {
                 const isChecked = (allowedProviders || []).includes(p.id) || (allowedProviders || []).includes(p.name) || (allowedProviders || []).includes('*');
                 return `
-                    <label class="flex items-center gap-2.5 text-xs text-slate-300 cursor-pointer">
-                        <input type="checkbox" name="edit-key-providers" value="${p.id}" ${isChecked ? 'checked' : ''} class="rounded border-slate-800 text-indigo-500 focus:ring-indigo-500 bg-slate-950">
-                        <span class="font-medium text-slate-200">☁️ ${escapeHtml(p.name)}</span>
-                        <span class="text-[10px] text-slate-500 truncate">(${escapeHtml(p.base_url)})</span>
-                    </label>
+                    <div class="flex flex-col gap-1.5 p-2 rounded-lg bg-slate-950/40 border border-slate-800/80">
+                        <label class="flex items-center justify-between gap-2 text-xs text-slate-300 cursor-pointer select-none">
+                            <div class="flex items-center gap-2">
+                                <input id="edit-prov-cb-${p.id}" type="checkbox" name="edit-key-providers" value="${p.id}" ${isChecked ? 'checked' : ''} onchange="handleProviderCheckboxChange('edit', '${p.id}')" class="rounded border-slate-800 text-indigo-500 focus:ring-indigo-500 bg-slate-950">
+                                <span class="font-semibold text-slate-200">☁️ ${escapeHtml(p.name)}</span>
+                            </div>
+                            <span id="edit-prov-count-${p.id}" class="text-[9px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-semibold">0 modelos</span>
+                        </label>
+                        <div id="edit-prov-models-panel-${p.id}" class="${isChecked ? '' : 'hidden'} flex flex-col gap-1.5 mt-1 pt-1.5 border-t border-slate-800/60 pl-2">
+                            <div class="flex items-center gap-1.5">
+                                <input type="text" placeholder="Filtrar modelos (ej: sonnet, gpt-4)..." oninput="filterProviderModels('edit', '${p.id}', this.value)" class="flex-1 bg-slate-900 border border-slate-800 rounded px-2 py-0.5 text-[10px] text-slate-200 focus:outline-none focus:border-indigo-500">
+                                <button type="button" onclick="selectAllProviderModels('edit', '${p.id}', true)" class="text-[9px] px-1.5 py-0.5 bg-slate-800 hover:bg-slate-700 text-indigo-300 rounded font-medium">Todos</button>
+                                <button type="button" onclick="selectAllProviderModels('edit', '${p.id}', false)" class="text-[9px] px-1.5 py-0.5 bg-slate-800 hover:bg-slate-700 text-slate-400 rounded font-medium">Ninguno</button>
+                            </div>
+                            <div id="edit-prov-models-list-${p.id}" class="flex flex-col gap-0.5 max-h-32 overflow-y-auto pr-1">
+                                <span class="text-[10px] text-slate-500">Cargando modelos...</span>
+                            </div>
+                        </div>
+                    </div>
                 `;
             }).join('');
+
+            // Para los proveedores ya marcados, cargar sus modelos e inicializar la selección
+            for (const p of window.cachedCloudProviders) {
+                const isChecked = (allowedProviders || []).includes(p.id) || (allowedProviders || []).includes(p.name) || (allowedProviders || []).includes('*');
+                if (isChecked) {
+                    const preselected = keyModelsByProvider[p.id] || [];
+                    await handleProviderCheckboxChange('edit', p.id, preselected);
+                }
+            }
         }
 
         async function loadApiKeys(isSilent = false) {
@@ -1995,7 +2130,9 @@
                     (k.allowed_providers || []).forEach(pId => {
                         const prov = (window.cachedCloudProviders || []).find(p => p.id === pId || p.name === pId);
                         const pName = prov ? prov.name : (pId === '*' ? 'Todos los Proveedores' : pId);
-                        providersHtml += `<span class="px-2 py-0.5 rounded text-[9px] font-bold bg-indigo-500/20 text-indigo-300 uppercase text-center flex items-center gap-1">☁️ ${escapeHtml(pName)}</span>`;
+                        const modelCount = (k.models_by_provider && k.models_by_provider[pId]) ? k.models_by_provider[pId].length : 0;
+                        const countBadge = modelCount > 0 ? `<span class="bg-indigo-900/80 text-indigo-200 text-[8px] px-1.5 py-0.2 rounded-full font-mono font-normal">(${modelCount} mod)</span>` : '';
+                        providersHtml += `<span class="px-2 py-0.5 rounded text-[9px] font-bold bg-indigo-500/20 text-indigo-300 uppercase text-center flex items-center gap-1">☁️ ${escapeHtml(pName)} ${countBadge}</span>`;
                     });
 
                     // Barra de progreso de cupo de tokens
@@ -2098,8 +2235,12 @@
             });
 
             const allowed_providers = [];
+            const allowed_models = {};
             document.querySelectorAll('input[name="key-providers"]:checked').forEach(cb => {
-                allowed_providers.push(cb.value);
+                const pId = cb.value;
+                allowed_providers.push(pId);
+                const modelCbs = document.querySelectorAll(`input[data-context="create"][data-provider-id="${pId}"]:checked`);
+                allowed_models[pId] = Array.from(modelCbs).map(mCb => mCb.value);
             });
 
             if (!name) {
@@ -2121,6 +2262,7 @@
                         description: desc,
                         services: services,
                         allowed_providers: allowed_providers,
+                        allowed_models: allowed_models,
                         max_tokens: maxTokens,
                         quota_reset: quotaReset,
                         expires_at: expiry
@@ -2136,6 +2278,7 @@
                     document.getElementById('key-expiry').value = '';
                     document.querySelectorAll('input[name="key-services"]').forEach(cb => cb.checked = false);
                     document.querySelectorAll('input[name="key-providers"]').forEach(cb => cb.checked = false);
+                    renderCloudProviderCheckboxes();
                     
                     loadApiKeys();
                 } else {
@@ -2181,7 +2324,7 @@
             }
         }
 
-        function openEditKeyModal(id, name, desc, servicesJson, providersJson, maxTokens, quotaReset, expiry, isActive) {
+        async function openEditKeyModal(id, name, desc, servicesJson, providersJson, maxTokens, quotaReset, expiry, isActive) {
             const services = typeof servicesJson === 'string' ? JSON.parse(servicesJson) : (servicesJson || []);
             const providers = typeof providersJson === 'string' ? JSON.parse(providersJson) : (providersJson || []);
             
@@ -2198,7 +2341,23 @@
             document.getElementById('edit-key-service-tts').checked = services.includes('tts');
             document.getElementById('edit-key-service-diarization').checked = services.includes('diarization');
             
-            renderEditCloudProviderCheckboxes(providers);
+            // Consultar modelos existentes asignados a esta clave API
+            let keyModelsByProv = {};
+            try {
+                const kmRes = await fetch(`/api/keys/${id}/models`);
+                if (kmRes.ok) {
+                    const kmList = await kmRes.json();
+                    kmList.forEach(km => {
+                        const pId = km.provider_id;
+                        if (!keyModelsByProv[pId]) keyModelsByProv[pId] = [];
+                        keyModelsByProv[pId].push(km.model_id);
+                    });
+                }
+            } catch(e) {
+                console.error("Error obteniendo modelos de la clave:", e);
+            }
+            
+            await renderEditCloudProviderCheckboxes(providers, keyModelsByProv);
             
             document.getElementById('edit-key-modal').classList.remove('hidden');
         }
@@ -2223,8 +2382,12 @@
             if (document.getElementById('edit-key-service-diarization').checked) services.push('diarization');
 
             const allowed_providers = [];
+            const allowed_models = {};
             document.querySelectorAll('input[name="edit-key-providers"]:checked').forEach(cb => {
-                allowed_providers.push(cb.value);
+                const pId = cb.value;
+                allowed_providers.push(pId);
+                const modelCbs = document.querySelectorAll(`input[data-context="edit"][data-provider-id="${pId}"]:checked`);
+                allowed_models[pId] = Array.from(modelCbs).map(mCb => mCb.value);
             });
 
             if (!name) {
@@ -2246,6 +2409,7 @@
                         description: desc,
                         services: services,
                         allowed_providers: allowed_providers,
+                        allowed_models: allowed_models,
                         max_tokens: maxTokens,
                         quota_reset: quotaReset,
                         expires_at: expiry,
