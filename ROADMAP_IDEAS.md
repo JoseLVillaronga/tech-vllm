@@ -1,0 +1,277 @@
+# Roadmap e Ideas Futuras de Arquitectura
+
+Este documento recopila las propuestas de diseño técnico, análisis de viabilidad, optimizaciones de memoria VRAM y arquitectura de servicios a implementar en fases posteriores, manteniendo el `README.md` principal limpio y enfocado en la operativa actual.
+
+---
+
+## 1. Integración de Generación de Imágenes: FLUX.2 [klein] 4B
+
+### 1.1. Contexto del Modelo
+* **Origen:** Desarrollado por Black Forest Labs (BFL).
+* **Arquitectura:** Diffusion Transformer (DiT) de 4 mil millones de parámetros (4B) con destilación en 4 pasos (*step-distilled*), diseñado para inferencia en menos de un segundo (*sub-second*).
+* **Capacidades:** Generación texto-a-imagen (T2I) y edición multi-referencia de imágenes en un flujo unificado.
+* **Licencia:** Apache 2.0 (abierto para uso comercial).
+
+### 1.2. Análisis de Consumo de VRAM
+
+| Modo / Precisión | Consumo Estimado | Comportamiento |
+| :--- | :--- | :--- |
+| **BF16 / FP16 (Nativo)** | **~12 GB – 13 GB** | DiT (4B = 8 GB) + Text Encoders + VAE + búferes de activación (1024×1024) 100% residentes en GPU. |
+| **INT8 / FP8 (Cuantizado)** | **~7 GB – 8 GB** | DiT y/o Text Encoder cuantizados. Máxima eficiencia con mínima degradación de calidad visual. |
+| **Sequential CPU Offload** | **~4 GB – 6 GB** | Intercambio de modelos (Text Encoder $\rightarrow$ RAM, DiT $\rightarrow$ GPU, VAE $\rightarrow$ GPU). Introduce latencia de transferencia PCIe. |
+
+### 1.3. Compatibilidad de Hardware con NVIDIA GeForce RTX 3090 (24 GB)
+* **Arquitectura Ampere (Compute Capability 8.6):**
+  * **INT8:** Soporte nativo a nivel de silicio mediante Tensor Cores y DP4A. Extremadamente rápido y reduce la huella de memoria al 50%.
+  * **FP8:** No dispone de Tensor Cores nativos de FP8 (introducidos en Ada Lovelace / serie 4000), pero sí soporta **almacenamiento de pesos en FP8** con decuantización al vuelo hacia FP16/BF16, logrando el mismo ahorro de VRAM.
+* **Veredicto:** La RTX 3090 maneja FLUX.2 Klein 4B con total fluidez tanto en BF16 como en INT8/FP8.
+
+---
+
+## 2. Estrategia de Partición Dinámica de VRAM (Presupuesto de 24 GB)
+
+Para ejecutar de forma local y simultánea **LLM + STT + TTS + Diarización + Generación de Imágenes**, el consumo total en caliente excedería los 24 GB si todos los modelos pesados residieran en GPU a la vez.
+
+### 2.1. Política de Descarga Bajo Demanda
+Cuando se solicite una tarea de generación de imágenes:
+1. Se pausan/descargan temporalmente de GPU los servicios de:
+   * **STT (Whisper Large / Medium en GPU):** Libera ~2 – 3 GB.
+   * **TTS (F5-TTS en GPU):** Libera ~2 – 3 GB.
+   * **Diarización (PyAnnote en GPU):** Libera ~1.5 – 2 GB.
+2. **Espacio resultante en VRAM:**
+   * **LLM (vLLM en INT4 / INT8 / AWQ / BF16):** ~6 GB – 9 GB.
+   * **FLUX.2 Klein 4B (vLLM-Omni / INT8):** ~7 GB – 8 GB.
+   * **Margen de Activaciones y KV Cache:** ~7 GB – 11 GB libres.
+   * **Total:** Ajustado dentro del límite de 24 GB sin riesgo de *Out-Of-Memory* (OOM).
+
+---
+
+## 3. Arquitectura de Alta Disponibilidad: Fallbacks en Caliente y Failover Transparente
+
+Para evitar que el asistente quede "sordo" o "mudo" mientras la GPU está dedicada al LLM y a la generación de imágenes, se implementará un esquema de **Hot-Standby / Circuit Breaker** en el Gateway.
+
+```
++-------------------------------------------------------------+
+|               Cliente / Frontend / Aplicaciones             |
++-------------------------------------------------------------+
+               | (:8001 STT)                 | (:8002 TTS)
+               v                             v
++-------------------------------------------------------------+
+|                 Gateway Proxy (app_gateway.py)              |
++-------------------------------------------------------------+
+     |                       |            |                  |
+ (Principal)            (Fallback)   (Principal)        (Fallback)
+     v                       v            v                  v
++----------+           +----------+ +----------+       +----------+
+| Whisper  |           | STT CPU  | | F5-TTS   |       | TTS CPU  |
+| GPU      |           | (0 VRAM) | | GPU      |       | (0 VRAM) |
+| (:18001) |           | (:18011) | | (:18002) |       | (:18012) |
++----------+           +----------+ +----------+       +----------+
+```
+
+### 3.1. Mapa de Puertos Propuesto
+
+#### Puertos Públicos (Expuestos por el Gateway)
+* **`8000`**: LLM (Gemma / vLLM / OpenAI-compatible API)
+* **`8001`**: STT (Whisper API)
+* **`8002`**: TTS (F5-TTS / OpenAI Audio Speech API)
+* **`8003`**: Diarización (PyAnnote Audio)
+* **`8004`**: Generación de Imágenes (FLUX.2 Klein / OpenAI Images API)
+
+#### Puertos Backend Principales (GPU - Heavy VRAM)
+* **`18000`**: vLLM LLM Backend
+* **`18001`**: Faster-Whisper GPU Backend
+* **`18002`**: F5-TTS GPU Backend
+* **`18003`**: Diarization GPU Backend
+* **`18004`**: vLLM-Omni FLUX.2 Klein GPU Backend
+
+#### Puertos Backend Fallback (CPU / 0 VRAM - Hot Standby Permanente)
+* **`18011`**: STT Fallback (ej. `faster-whisper` con `device="cpu"` y `compute_type="int8"` / Vosk).
+* **`18012`**: TTS Fallback (ej. `edge-tts` / `gTTS` o `Piper-TTS` / `Kokoro-ONNX` en CPU).
+
+### 3.2. Mecanismo de Failover en `app_gateway.py`
+1. **Health Check pasivo / activo:** El Gateway monitorea la disponibilidad de los puertos `18001` y `18002` mediante ping HTTP periódico o detección de `ConnectionRefused` / timeout.
+2. **Enrutamiento transparente:**
+   * Si el backend principal (`18001`/`18002`) responde $\rightarrow$ Reenvía a GPU (máxima fidelidad y clonación de voz).
+   * Si el backend principal no responde (servicio apagado por orquestador) $\rightarrow$ Reenvía de inmediato a los puertos de fallback (`18011`/`18012`).
+3. **Ventajas clave:**
+   * **Cero cambios en el frontend:** Clientes como `live_subtitles.py`, aplicaciones web o agentes continúan apuntando a `8001` y `8002`.
+   * **Degradación elegante (*Graceful Degradation*):** El sistema sigue transcribiendo y hablando fluidamente durante la generación de imágenes pesadas sin consumir un solo megabyte extra de VRAM.
+
+---
+
+## 4. Plan de Implementación por Fases (Para Futuras Sesiones)
+
+1. **Fase 1 - Microservicios de Fallback:**
+   * Crear `app_fallback_stt.py` (puerto `18011`) con `faster-whisper` CPU INT8.
+   * Crear `app_fallback_tts.py` (puerto `18012`) con `edge-tts` / `Kokoro-ONNX` / `gTTS`.
+2. **Fase 2 - Failover Dinámico en `app_gateway.py`:**
+   * Añadir lógica de reintento/fallback hacia los puertos `18011` y `18012`.
+3. **Fase 3 - Backend de Imagen con `vllm-omni`:**
+   * Configurar e integrar FLUX.2 Klein 4B en el puerto `18004` expuesto en el proxy `8004`.
+4. **Fase 4 - Orquestación en Dashboard:**
+   * Añadir control en `app_dashboard.py` para activar el "Modo Imagen" (conmutación automática de servicios).
+
+---
+
+## 5. Embeddings Semánticos y RAG: Qwen3-Embedding-0.6B
+
+### 5.1. Características del Modelo
+* **Parámetros:** ~600 millones (0.6B).
+* **Ventana de Contexto:** Soporta hasta **32.768 tokens (32k)**.
+* **Propósito:** Generación de vectores de incrustación (embeddings) para búsqueda semántica, memoria a largo plazo vectorial (RAG) y clasificación de intenciones.
+* **Relación Calidad/Tamaño:** Es considerado uno de los modelos más eficientes del estado del arte, ofreciendo rendimiento competitivo con modelos mucho más pesados con un consumo insignificante.
+
+### 5.2. Consumo de VRAM y Recursos
+
+| Formato / Precisión | Peso en Disco | VRAM en Inferencia (GPU) | RAM (en CPU) |
+| :--- | :--- | :--- | :--- |
+| **FP16 / BF16 (Nativo)** | ~1.2 GB | **~1.5 GB – 2.0 GB** | ~1.5 GB |
+| **INT8 / FP8** | ~600 MB | **~800 MB – 1.0 GB** | ~800 MB |
+| **INT4 / GGUF (Q4_K_M)** | ~350 MB – 400 MB | **~500 MB – 700 MB** | ~500 MB |
+
+> **Nota sobre el contexto:** Con secuencias estándar (512 a 2.048 tokens), el consumo en VRAM es inferior a 1.5 GB. Si se explotan los 32k tokens con batches grandes de documentos, el búfer de atención puede requerir 1–2 GB adicionales.
+
+### 5.3. Estrategias de Despliegue en la Arquitectura
+
+1. **Opción A: Residente en GPU (RTX 3090):**
+   * Al consumir apenas **~1.5 GB en FP16** (o **< 1 GB en INT8**), puede convivir permanentemente junto al LLM principal en vLLM sin comprometer la capacidad de la GPU.
+2. **Opción B: Despliegue en CPU (0 VRAM):**
+   * Debido a su tamaño ultracompacto (0.6B), puede ejecutarse en CPU mediante `llama.cpp`, `fastembed` (ONNX) o `sentence-transformers` con tiempos de respuesta de milisegundos y **0 consumo de VRAM**.
+3. **Casos de Uso en el Ecosistema:**
+   * **Memoria y RAG Local:** Indexar transcripciones de Whisper, historial de conversaciones y documentos para inyectar contexto relevante al LLM.
+   * **Enrutamiento Semántico en el Gateway:** Analizar el texto del usuario para decidir si la petición requiere código, generación de imagen, búsqueda o respuesta conversacional.
+
+### 5.4. Análisis Específico de Residencia en RAM (Host con 64 GB)
+* **Memoria Disponible en el Sistema:** ~35 GB – 40 GB libres (de 64 GB totales).
+* **Consumo de la Instancia en RAM (Proceso + Pesos + Búferes):**
+  * **Modo ONNX / INT8 (FastEmbed / Optimum):** $\approx \mathbf{800\text{ MB} - 1.2\text{ GB}}$ de RAM.
+  * **Modo FP16 (PyTorch / Sentence-Transformers):** $\approx \mathbf{1.5\text{ GB} - 1.8\text{ GB}}$ de RAM.
+  * **Modo GGUF Q4 (llama.cpp en CPU):** $\approx \mathbf{500\text{ MB} - 700\text{ MB}}$ de RAM.
+* **Impacto en el Sistema:** Representa menos del **3%** de la memoria RAM disponible.
+* **Latencia de Inferencia en CPU:** Al no ser un modelo generativo autorregresivo (solo realiza un *forward pass* directo sobre el texto), la generación del vector de embedding toma entre **10 ms y 35 ms** por consulta en CPU multinúcleo moderna.
+* **Ventaja Estratégica:** Mantiene el 100% de los 24 GB de la GPU RTX 3090 completamente limpios para el LLM y FLUX.2 Klein.
+
+### 5.5. Sinergia con Teccam PDF (`teccam_pdf`) y Rendimiento en Ryzen 5 (12 Hilos)
+
+* **Integración con Teccam PDF:**
+  * `teccam_pdf` extrae documentos PDF y páginas web, los normaliza a Markdown y los almacena en MongoDB junto con sus imágenes.
+  * Con **Qwen3-Embedding-0.6B** en RAM, cada documento de `teccam_pdf` puede ser troceado (*chunking*) y vectorizado automáticamente para permitir **RAG conversacional y búsqueda semántica** desde el LLM sobre toda la biblioteca documental.
+
+* **Rendimiento en AMD Ryzen 5 (6 núcleos / 12 hilos):**
+  1. **Consulta en tiempo real (Chat / Búsqueda en línea):**
+     * Vectorizar una pregunta de usuario (~20–50 tokens) toma **entre 12 ms y 25 ms** en 12 hilos de CPU. Para el usuario es una latencia imperceptible (tiempo real).
+  2. **Ingesta y vectorización por lotes (Documentos de Teccam PDF):**
+     * Un PDF técnico de 100 páginas (~250 chunks de texto) se vectoriza en **1.5 a 3.5 segundos** en segundo plano en CPU sin bloquear la interfaz ni consumir VRAM.
+  3. **Nota sobre precisión en CPU (FP16 vs INT8/ONNX):**
+     * Las CPUs Ryzen con soporte AVX2 / AVX-512 ejecutan de forma óptima vectores enteros (`INT8` / `AVX2 VNNI` vía ONNX Runtime / `fastembed`), duplicando la velocidad respecto a coma flotante pura (`FP32`), manteniendo prácticamente un 99.9% de similitud semántica.
+
+### 5.6. Indexación Diferencial Programada y Base Vectorial Embebida con LanceDB
+
+* **Estrategia de Indexación por Lotes (Cron / Systemd Timer Diario):**
+  * Un script o servicio en segundo plano se ejecuta periódicamente (ej. una vez al día o ante eventos) recorriendo la colección de MongoDB en `teccam_pdf`.
+  * **Sincronización diferencial:** Consulta únicamente documentos nuevos o modificados (marcando una bandera `vector_indexed: true` o comparando `updated_at`).
+  * Trocea los textos en Markdown y genera los embeddings con **Qwen3-Embedding-0.6B** en CPU, persistiendo los vectores en la base vectorial.
+
+* **¿Por qué LanceDB como Base de Datos Vectorial?**
+  * **Embebida y Serverless:** Se ejecuta directamente en el proceso de Python (`lancedb`) sin requerir contenedores ni servidores externos pesados.
+  * **Basada en Apache Arrow (Zero-Copy):** Diseñada para almacenamiento columnar en disco NVMe con mapeo en memoria (*memory-mapping*), consumiendo muy poca RAM y **0 MB de VRAM**.
+  * **Búsqueda Híbrida Ultrarrápida:** Permite combinar búsqueda por palabras clave exactas (BM25 / Full-Text Search) con búsqueda semántica vectorial (KNN / ANN con distancias Coseno/L2).
+  * **Latencia de Búsqueda:** La búsqueda vectorial sobre miles de fragmentos toma **menos de 2 milisegundos (< 2 ms)** en CPU.
+
+* **Flujo de Consulta en Tiempo Real resultante:**
+  1. El usuario pregunta al Asistente/LLM (o en `teccam_pdf`).
+  2. Se vectoriza únicamente la pregunta con Qwen3-Embedding (~15 ms en CPU).
+  3. LanceDB busca los chunks más relevantes de la biblioteca (< 2 ms).
+  4. Se inyecta el contexto recuperado en el prompt del LLM en vLLM.
+  5. **Tiempo total de recuperación RAG:** **< 20 ms**, dejando el 100% de la GPU dedicada a la respuesta del LLM.
+
+### 5.7. Arquitectura de Conocimiento Desacoplada: Teccam PDF como "Single Source of Truth" (SSOT) y Filtrado por Metadatos en LanceDB
+
+```
++-----------------------------------------------------------------------------+
+|                     Teccam PDF + MongoDB (Fuente de Verdad / SSOT)           |
+|  - Almacenamiento maestro de documentos: título, autor, categoría, texto   |
++-----------------------------------------------------------------------------+
+                                       |
+                                       | (Sync Diario / Desacoplado)
+                                       v
++-----------------------------------------------------------------------------+
+|               LanceDB (Índice Vectorial Derivado con Metadatos)             |
+|  Vector | Texto (Chunk) | Doc_ID | Título | Autor | Categoría (Filtro SQL)  |
++-----------------------------------------------------------------------------+
+                                       ^
+                                       | (Consulta con Filtro: where("categoria = '...'"))
++-----------------------------------------------------------------------------+
+|               Gateway (:8000 / :8001 / API) / RAG Context Manager           |
+|  - Selección de dominio: "derecho argentino", "ciencia ficción", "técnico"  |
++-----------------------------------------------------------------------------+
+```
+
+* **Principio de Diseño:**
+  * **MongoDB en `teccam_pdf`:** Actúa como la **fuente de verdad (*Single Source of Truth*)**. Es el repositorio transaccional donde se crean, leen, editan y eliminan documentos completos con sus imágenes.
+  * **LanceDB:** Actúa como una **vista materializada vectorial desacoplada**, optimizada exclusivamente para búsqueda rápida por similitud.
+
+* **Filtrado por Metadatos (*Metadata Filtering* en LanceDB):**
+  * Cada vector almacena los campos estructurados de MongoDB: `doc_id`, `titulo`, `autor`, `categoria` y fecha.
+  * **Cero Contaminación Semántica:** Permite consultas con cláusulas SQL directas en LanceDB:
+    ```python
+    tabla.search(vector_consulta).where("categoria = 'derecho argentino'").limit(3)
+    ```
+  * **Aislamiento de Dominios:** Evita que términos legales se mezclen o confundan con literatura, ciencia ficción o manuales de código.
+
+* **Control de Dominio en el Gateway:**
+  * **Manual:** El usuario puede seleccionar en la interfaz qué base de conocimiento activar (ej. selector de categoría: *"Solo Derecho Argentino"* o *"Todos"*).
+  * **Automático:** El Gateway puede usar Qwen3-Embedding para clasificar la intención del usuario y filtrar automáticamente por la categoría adecuada.
+
+---
+
+## 6. Dictamen Técnico y Priorización de Ingeniería (Evaluación Crítica)
+
+> **Nota de autoría y contexto colegiado:**  
+> Sección redactada por el asistente de IA (**Antigravity**) a solicitud expresa del desarrollador, en el marco de una sesión de revisión crítica de arquitectura "de igual a igual" (Agosto 2026). El objetivo es despojar el diseño de ilusiones de *over-engineering* y establecer un orden de ejecución pragmático, medible y de alta estabilidad.
+
+### 6.1. Identificación de Riesgos y Cuellos de Botella Críticos
+
+1. **La trampa del *Swapping* dinámico de VRAM para FLUX.2:**
+   * Cargar y descargar pesos de 8 GB a través del bus PCIe no solo consume entre 3 y 8 segundos de latencia fría (*cold start*), sino que produce fragmentación de memoria en CUDA y bloqueos perceptibles en el flujo conversacional.
+   * **Conclusión:** La generación de imágenes mediante orquestación dinámica es un módulo complementario de alto consumo, no el núcleo del sistema diario.
+
+2. **El riesgo del *Chunking* ingenuo en el RAG sobre Teccam PDF:**
+   * La división ingenua por tamaño fijo (ej. 500 tokens) destruye el contexto de artículos legales, tablas o fragmentos de código, degradando la calidad de los embeddings y provocando alucinaciones en el LLM.
+   * **Solución requerida:** Implementar *Semantic / Heading-based Chunking* aprovechando las cabeceras (`#`, `##`) y la estructura nativa en Markdown que ya genera `teccam_pdf`.
+
+### 6.2. Matriz de Prioridades de Desarrollo Recomendada
+
+```
++-------------------------------------------------------------------------------+
+|                             ORDEN DE IMPLEMENTACIÓN                           |
++-------------------------------------------------------------------------------+
+|  1. RESILIENCIA Y FAILOVER  -->  2. BASE DE CONOCIMIENTO  -->  3. IMÁGENES    |
+|     (Fallbacks en CPU /           (RAG LanceDB + MongoDB /         (FLUX.2    |
+|      Circuit Breakers)             Ryzen 5 + 40GB RAM)              vLLM-Omni)|
+|     * Dificultad: Baja            * Dificultad: Media              * Dif: Alta|
+|     * Impacto: Estabilidad        * Impacto: Inteligencia real     * Imp: Lujo|
++-------------------------------------------------------------------------------+
+```
+
+#### 🥇 Fase 1: Resiliencia (Fallbacks en CPU y Failover en Gateway)
+* **Objetivo:** Blindar el sistema contra caídas.
+* **Acciones:**
+  * Crear microservicios de fallback en CPU (FastAPI con `faster-whisper` INT8 y `edge-tts`/`kokoro-onnx`).
+  * Integrar conmutación automática (*Circuit Breaker*) en `app_gateway.py`.
+* **Resultado:** El asistente nunca se queda mudo ni sordo; base sólida para cualquier experimento posterior.
+
+#### 🥈 Fase 2: Conocimiento Real (Puente Teccam PDF $\rightarrow$ LanceDB $\rightarrow$ LLM)
+* **Objetivo:** Explotar los 40 GB de RAM libres y los 12 hilos del Ryzen 5 para dotar al LLM de memoria documental privada.
+* **Acciones:**
+  * Script de sincronización diferencial contra MongoDB (`teccam_pdf`).
+  * *Chunking* semántico por estructura Markdown.
+  * Ingesta vectorial en LanceDB mediante Qwen3-Embedding-0.6B en CPU.
+  * Inyección contextual en el Gateway / LLM.
+* **Resultado:** Búsqueda y citas precisas con latencias menores a 20 ms con 0 MB de VRAM ocupados.
+
+#### 🥉 Fase 3: Multimodalidad Avanzada (FLUX.2 Klein 4B con vLLM-Omni)
+* **Objetivo:** Incorporar generación y edición de imagen bajo demanda.
+* **Acciones:** Integrar el servicio en puerto backend 18004 / proxy 8004 y orquestación desde el Dashboard.
+* **Justificación de su orden:** Al estar ya operativas las Fases 1 y 2, el apagado/encendido de servicios GPU o el consumo de VRAM no romperá jamás la estabilidad del asistente ni la base de conocimiento.
