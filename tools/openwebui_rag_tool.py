@@ -23,7 +23,7 @@ class Tools:
             description="URL del endpoint de búsqueda RAG en el Gateway de la suite vLLM."
         )
         API_KEY: str = Field(
-            default="token-e68f0c0d4d4f4d04d70399323d411290b2bf938a81f26685602140c4f8617939",
+            default="TU_CLAVE_API_VLLM_AQUI",
             description="Clave API autorizada para consultar el servicio RAG."
         )
         DEFAULT_TOP_K: int = Field(

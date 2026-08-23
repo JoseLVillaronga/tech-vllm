@@ -507,7 +507,28 @@ El API Gateway expone automáticamente el modelo virtual **`local/gemma-4-rag`**
   3. Inyecta el contexto enriquecido con citas y fuentes en el prompt de Gemma 4.
   4. Gemma 4 responde de forma fundamentada y rigurosa citando los artículos y libros.
 
+#### Ejemplo con `curl` utilizando el modelo virtual `local/gemma-4-rag`:
+
+```bash
+curl -X POST http://localhost:8000/v1/chat/completions \
+  -H "Authorization: Bearer TU_CLAVE_API_VLLM" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "local/gemma-4-rag",
+    "messages": [
+      {"role": "user", "content": "¿Qué dice el procedimiento de Teccam sobre el tiempo máximo en los puestos?"}
+    ],
+    "temperature": 0.1
+  }'
+```
+
+#### Capturas de Verificación en Open-WebUI:
+
+* **Consulta Jurídica (Constitución Nacional Argentina):**
 ![Respuesta RAG en Open-WebUI con local/gemma-4-rag](screenshots/openwebui_gemma_rag.png)
+
+* **Consulta de Manual Interno (Procedimiento General de Soporte en Puestos Teccam):**
+![Respuesta RAG en Open-WebUI para Procedimientos Teccam](screenshots/openwebui_gemma_rag_teccam.png)
 
 ### 5. Integración como Herramienta Nativa en Open-WebUI (*Function Calling*)
 
@@ -515,17 +536,18 @@ Si preferís que Gemma 4 decida autónomamente cuándo invocar el RAG dentro de 
 
 1. Ve a **Workspace > Tools** (Área de Trabajo > Herramientas) en Open-WebUI y haz clic en **"+" (Crear Herramienta)**.
 2. Copia y pega el código de [`tools/openwebui_rag_tool.py`](tools/openwebui_rag_tool.py).
-3. Guarda la herramienta con el nombre **`Búsqueda RAG Teccam (LanceDB)`**.
-4. Ve a **Workspace > Models**, edita tu modelo `google/gemma-4-E4B-it` y activa el interruptor de la herramienta.
+3. Configura tu clave API en las *Valves* o reemplaza `TU_CLAVE_API_VLLM_AQUI`.
+4. Guarda la herramienta con el nombre **`Búsqueda RAG Teccam (LanceDB)`**.
+5. Ve a **Workspace > Models**, edita tu modelo `google/gemma-4-E4B-it` y activa el interruptor de la herramienta.
 
-### 6. Ejemplo de Consulta Directa vía API (`/v1/rag/search`)
+### 6. Ejemplo de Consulta Directa de Búsqueda Vectorial (`/v1/rag/search`)
 
 ```bash
 curl -X POST http://localhost:8000/v1/rag/search \
-  -H "Authorization: Bearer tu_clave_api_aqui" \
+  -H "Authorization: Bearer TU_CLAVE_API_VLLM" \
   -H "Content-Type: application/json" \
   -d '{
-    "query": "Cuáles son los objetivos del procedimiento de soporte en puestos de trabajo de Teccam",
+    "query": "tiempo maximo de accion de soporte en puesto",
     "temas": ["Procedimientos Teccam"],
     "top_k": 3
   }'
