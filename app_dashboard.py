@@ -1549,6 +1549,91 @@ def api_test_diarize():
     except Exception as e:
         return jsonify({"error": f"No se pudo conectar al servicio de Diarización (puerto {BACKEND_PORTS['diarization']}): {str(e)}"}), 502
 
+# ==============================================================================
+# Endpoints de Base de Conocimiento RAG & LanceDB (Teccam PDF)
+# ==============================================================================
+
+@app.route("/api/rag/stats", methods=["GET"])
+def api_rag_stats():
+    """Obtiene métricas y estado actual de la base de conocimiento LanceDB."""
+    try:
+        from rag_engine import get_rag_stats
+        stats = get_rag_stats()
+        
+        # Obtener último log de sincronización desde MongoDB
+        try:
+            db = get_db()
+            log_entry = db.rag_sync_logs.find_one(sort=[("timestamp", -1)])
+            if log_entry:
+                ts = log_entry.get("timestamp")
+                stats["last_sync"] = {
+                    "timestamp": ts.isoformat() if hasattr(ts, "isoformat") else str(ts),
+                    "status": log_entry.get("status", "success"),
+                    "duration_sec": log_entry.get("duration_sec", 0),
+                    "docs_synced_count": log_entry.get("docs_synced_count", 0),
+                    "total_chunks": log_entry.get("total_chunks_in_db", 0)
+                }
+            else:
+                stats["last_sync"] = None
+        except Exception:
+            stats["last_sync"] = None
+            
+        return jsonify(stats)
+    except Exception as e:
+        return jsonify({"error": f"Error obteniendo estadísticas RAG: {str(e)}"}), 500
+
+@app.route("/api/rag/sync", methods=["POST"])
+def api_rag_sync():
+    """Dispara una sincronización diferencial de Teccam PDF -> LanceDB en segundo plano."""
+    try:
+        import threading
+        from app_rag_sync import sync_knowledge_base
+        
+        force = request.json.get("force", False) if request.is_json else False
+        
+        def run_sync():
+            try:
+                sync_knowledge_base(force=force)
+            except Exception as se:
+                print(f"❌ Error en background sync: {se}", file=sys.stderr)
+                
+        thread = threading.Thread(target=run_sync, daemon=True)
+        thread.start()
+        
+        return jsonify({
+            "status": "started",
+            "message": "Sincronización de base de conocimiento iniciada en segundo plano."
+        })
+    except Exception as e:
+        return jsonify({"error": f"Error al iniciar sincronización: {str(e)}"}), 500
+
+@app.route("/api/rag/search", methods=["POST"])
+def api_rag_search():
+    """Ejecuta una búsqueda de prueba en la base vectorial LanceDB."""
+    try:
+        from rag_engine import search_knowledge_base
+        data = request.get_json() or {}
+        query = data.get("query", "").strip()
+        tema = data.get("tema") or None
+        top_k = int(data.get("top_k", 5))
+        
+        if not query:
+            return jsonify({"error": "La consulta 'query' no puede estar vacía"}), 400
+            
+        t0 = time.time()
+        results = search_knowledge_base(query=query, tema=tema, top_k=top_k)
+        dur_ms = round((time.time() - t0) * 1000, 2)
+        
+        return jsonify({
+            "query": query,
+            "tema": tema,
+            "results_count": len(results),
+            "latency_ms": dur_ms,
+            "results": results
+        })
+    except Exception as e:
+        return jsonify({"error": f"Error ejecutando búsqueda RAG: {str(e)}"}), 500
+
 if __name__ == "__main__":
     init_db_telemetry()
     start_telemetry_collector()

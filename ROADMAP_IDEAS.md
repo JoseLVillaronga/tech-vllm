@@ -107,10 +107,11 @@ Para evitar que el asistente quede "sordo" o "mudo" mientras la GPU está dedica
    * `app_fallback_tts.py` (puerto `18012` / `vllm-fallback-tts.service`) con `edge-tts` en CPU (0 MB VRAM).
    * Lógica de reintento/failover automático transparente implementada en `app_gateway.py` (`:8001` y `:8002`).
    * Integración de monitoreo y controles en `app_dashboard.py` y Web GUI (`:8004`).
-2. **⏳ Fase 2 - Conocimiento y RAG Desacoplado (Teccam PDF + Docling Chunking + LanceDB + Qwen3-Embedding):**
-   * Sincronizador diferencial 2 veces al día contra la API de `teccam_pdf` (`:5022`).
-   * Chunking semántico vía `docling-serve` (`:5020`).
-   * Ingesta vectorial en LanceDB en CPU (0 MB VRAM).
+2. **✅ Fase 2 - Conocimiento y RAG Desacoplado (COMPLETADA Y OPERATIVA):**
+   * Sincronizador diferencial (`app_rag_sync.py` / `vllm-rag-sync.timer`) 2 veces al día contra la API de `teccam_pdf` (`:5022`).
+   * Chunking jerárquico enriquecido con metadatos contextuales (sección, capítulo, libro, autor) respetando tablas.
+   * Motor de búsqueda híbrida vectorial 1024D + BM25 en disco con **LanceDB** (`rag_engine.py`).
+   * Endpoint de búsqueda `/v1/rag/search` en el Gateway (`:8000`) y pestaña interactiva con métricas y playground en el Dashboard Web (`:8004`).
 3. **⏳ Fase 3 - Backend de Imagen con `vllm-omni` (FLUX.2 Klein 4B):**
    * Configurar e integrar FLUX.2 Klein 4B en el puerto `18004` expuesto en el proxy `8004`.
 4. **⏳ Fase 4 - Orquestación en Dashboard:**

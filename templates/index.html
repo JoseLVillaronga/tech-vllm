@@ -111,6 +111,12 @@
                 </svg>
                 Voces Clonadas
             </button>
+            <button onclick="showTab('tab-rag')" id="btn-rag" class="tab-btn w-full flex items-center gap-3 px-4 py-3 rounded-xl border border-transparent text-slate-300 hover:bg-slate-800/50 hover:text-white transition-all font-medium">
+                <svg class="h-5 w-5 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                </svg>
+                Base RAG (LanceDB)
+            </button>
             <button onclick="showTab('tab-keys')" id="btn-keys" class="tab-btn w-full flex items-center gap-3 px-4 py-3 rounded-xl border border-transparent text-slate-300 hover:bg-slate-800/50 hover:text-white transition-all font-medium">
                 <svg class="h-5 w-5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
@@ -1278,6 +1284,116 @@
                     </div>
                 </div>
             </div>
+
+            <!-- TAB 7: BASE DE CONOCIMIENTO RAG & LANCEDB -->
+            <div id="tab-rag" class="tab-content hidden flex flex-col gap-6">
+                <!-- Header y Acción Principal -->
+                <div class="glass-panel p-6 rounded-2xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                    <div>
+                        <h2 class="text-xl font-bold text-slate-100 flex items-center gap-2">
+                            <svg class="h-6 w-6 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                            </svg>
+                            Base de Conocimiento RAG & Base Vectorial LanceDB
+                        </h2>
+                        <p class="text-xs text-slate-400 mt-1">
+                            Sincronizador diferencial conectado a Teccam PDF (<span class="font-mono text-purple-300">http://192.168.1.33:5022</span>) con chunking jerárquico y vectores 1024D (Qwen3).
+                        </p>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <button onclick="triggerRagSync(false)" id="btn-sync-rag" class="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white rounded-xl text-sm font-semibold shadow-lg shadow-purple-900/30 transition-all">
+                            <svg id="icon-sync-rag" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                            </svg>
+                            <span id="text-sync-rag">Sincronizar Base RAG Ahora</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Métricas Clave RAG -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div class="bg-slate-900/60 border border-slate-800/80 p-5 rounded-2xl flex flex-col justify-between">
+                        <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Libros Indexados</div>
+                        <div class="text-3xl font-extrabold text-slate-100 font-mono" id="rag-stat-docs">-</div>
+                        <div class="text-xs text-emerald-400 mt-2 flex items-center gap-1">
+                            <span class="inline-block w-2 h-2 rounded-full bg-emerald-400"></span> Conectado a Teccam PDF
+                        </div>
+                    </div>
+                    <div class="bg-slate-900/60 border border-slate-800/80 p-5 rounded-2xl flex flex-col justify-between">
+                        <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Vectores en LanceDB</div>
+                        <div class="text-3xl font-extrabold text-purple-300 font-mono" id="rag-stat-chunks">-</div>
+                        <div class="text-xs text-slate-400 mt-2">Dimensión 1024D (Qwen3)</div>
+                    </div>
+                    <div class="bg-slate-900/60 border border-slate-800/80 p-5 rounded-2xl flex flex-col justify-between">
+                        <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Temas / Dominios</div>
+                        <div class="text-3xl font-extrabold text-indigo-300 font-mono" id="rag-stat-topics">-</div>
+                        <div class="text-xs text-slate-400 mt-2">Derecho, Estrategia, etc.</div>
+                    </div>
+                    <div class="bg-slate-900/60 border border-slate-800/80 p-5 rounded-2xl flex flex-col justify-between">
+                        <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Última Sincronización</div>
+                        <div class="text-sm font-bold text-slate-200 font-mono" id="rag-stat-last-sync">-</div>
+                        <div class="text-xs text-purple-400 mt-2 font-mono" id="rag-stat-last-duration">-</div>
+                    </div>
+                </div>
+
+                <!-- Playground de Búsqueda Vectorial Híbrida -->
+                <div class="glass-panel p-6 rounded-2xl flex flex-col gap-4">
+                    <div class="flex items-center justify-between border-b border-slate-800/60 pb-3">
+                        <h3 class="text-md font-bold text-slate-100 flex items-center gap-2">
+                            <span>🔍</span> Probar Consulta Semántica en LanceDB
+                        </h3>
+                        <span class="text-xs text-purple-300 font-mono bg-purple-950/60 border border-purple-800/50 px-2.5 py-1 rounded-lg">Búsqueda Híbrida (Vector + BM25)</span>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-12 gap-3">
+                        <div class="md:col-span-8">
+                            <input type="text" id="rag-query-input" placeholder="Ej: ¿Cuáles son las funciones del responsable de soporte técnico en Teccam?" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-purple-500 font-medium" onkeydown="if(event.key === 'Enter') searchRagPlayground()">
+                        </div>
+                        <div class="md:col-span-2">
+                            <select id="rag-tema-select" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-300 focus:outline-none focus:border-purple-500 font-medium">
+                                <option value="">Todos los temas</option>
+                            </select>
+                        </div>
+                        <div class="md:col-span-2">
+                            <button onclick="searchRagPlayground()" id="btn-search-rag" class="w-full py-2.5 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-sm font-semibold transition-all shadow-md shadow-purple-950">
+                                Buscar
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="rag-results-container" class="hidden flex flex-col gap-3 mt-2">
+                        <div class="flex items-center justify-between text-xs text-slate-400 px-1">
+                            <span id="rag-results-header">Resultados:</span>
+                            <span id="rag-latency-header" class="font-mono text-purple-400"></span>
+                        </div>
+                        <div id="rag-results-list" class="flex flex-col gap-3"></div>
+                    </div>
+                </div>
+
+                <!-- Tabla de Documentos Sincronizados -->
+                <div class="glass-panel p-6 rounded-2xl flex flex-col gap-4">
+                    <h3 class="text-md font-bold text-slate-100 flex items-center gap-2 border-b border-slate-800/60 pb-3">
+                        <span>📚</span> Libros y Documentos Indexados en LanceDB
+                    </h3>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-sm text-slate-300">
+                            <thead class="text-xs uppercase tracking-wider text-slate-400 bg-slate-900/60 border-b border-slate-800">
+                                <tr>
+                                    <th class="px-4 py-3">Título del Documento</th>
+                                    <th class="px-4 py-3">Tema / Dominio</th>
+                                    <th class="px-4 py-3 text-center">Fragmentos (1024D)</th>
+                                    <th class="px-4 py-3 text-right">Estado</th>
+                                </tr>
+                            </thead>
+                            <tbody id="rag-docs-table-body" class="divide-y divide-slate-800/50">
+                                <tr>
+                                    <td colspan="4" class="px-4 py-6 text-center text-slate-500">Cargando base de conocimiento...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
         </main>
     </div>
 
@@ -1380,6 +1496,9 @@
             }
             if (tabId === 'tab-metrics') {
                 loadMetrics();
+            }
+            if (tabId === 'tab-rag') {
+                loadRagStats();
             }
         }
 
@@ -1633,6 +1752,189 @@
                 output.innerText = JSON.stringify(data, null, 2);
             } catch (err) {
                 output.innerText = `Error: ${err.message}`;
+            }
+        }
+
+        // ==============================================================================
+        // Funciones de Base de Conocimiento RAG & LanceDB (Teccam PDF)
+        // ==============================================================================
+        async function loadRagStats() {
+            try {
+                const res = await fetch('/api/rag/stats');
+                const data = await res.json();
+                
+                const docsEl = document.getElementById('rag-stat-docs');
+                const chunksEl = document.getElementById('rag-stat-chunks');
+                const topicsEl = document.getElementById('rag-stat-topics');
+                
+                if (docsEl) docsEl.innerText = data.total_documents || 0;
+                if (chunksEl) chunksEl.innerText = (data.total_chunks || 0).toLocaleString();
+                if (topicsEl) topicsEl.innerText = (data.topics ? data.topics.length : 0);
+                
+                const lastSyncEl = document.getElementById('rag-stat-last-sync');
+                const lastDurEl = document.getElementById('rag-stat-last-duration');
+                
+                if (data.last_sync && data.last_sync.timestamp) {
+                    const d = new Date(data.last_sync.timestamp);
+                    if (lastSyncEl) lastSyncEl.innerText = d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+                    if (lastDurEl) lastDurEl.innerText = `Duración: ${data.last_sync.duration_sec}s (${data.last_sync.status})`;
+                } else {
+                    if (lastSyncEl) lastSyncEl.innerText = 'LanceDB Activo';
+                    if (lastDurEl) lastDurEl.innerText = 'Sincronizado';
+                }
+                
+                // Actualizar dropdown de temas
+                const temaSelect = document.getElementById('rag-tema-select');
+                if (temaSelect && data.topics) {
+                    const currentVal = temaSelect.value;
+                    temaSelect.innerHTML = '<option value="">Todos los temas</option>';
+                    data.topics.forEach(t => {
+                        const opt = document.createElement('option');
+                        opt.value = t.name;
+                        opt.innerText = `${t.name} (${t.chunks_count})`;
+                        temaSelect.appendChild(opt);
+                    });
+                    temaSelect.value = currentVal;
+                }
+                
+                // Actualizar tabla de documentos
+                const tbody = document.getElementById('rag-docs-table-body');
+                if (tbody) {
+                    if (!data.documents || data.documents.length === 0) {
+                        tbody.innerHTML = '<tr><td colspan="4" class="px-4 py-6 text-center text-slate-500">No hay documentos indexados. Haz clic en "Sincronizar Base RAG Ahora".</td></tr>';
+                    } else {
+                        tbody.innerHTML = data.documents.map(doc => `
+                            <tr class="hover:bg-slate-900/40 transition-all">
+                                <td class="px-4 py-3 font-medium text-slate-200">${escapeHtml(doc.title)}</td>
+                                <td class="px-4 py-3">
+                                    <span class="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-purple-500/10 text-purple-400 border border-purple-500/20">
+                                        ${escapeHtml(doc.topic)}
+                                    </span>
+                                </td>
+                                <td class="px-4 py-3 text-center font-mono font-bold text-slate-300">${doc.chunks_count}</td>
+                                <td class="px-4 py-3 text-right">
+                                    <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                        <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> Indexado
+                                    </span>
+                                </td>
+                            </tr>
+                        `).join('');
+                    }
+                }
+            } catch (err) {
+                console.error("Error cargando estadísticas RAG:", err);
+            }
+        }
+
+        async function triggerRagSync(force = false) {
+            const btn = document.getElementById('btn-sync-rag');
+            const icon = document.getElementById('icon-sync-rag');
+            const text = document.getElementById('text-sync-rag');
+            
+            btn.disabled = true;
+            if (icon) icon.classList.add('animate-spin');
+            if (text) text.innerText = "Sincronizando con Teccam PDF...";
+            
+            try {
+                const res = await fetch('/api/rag/sync', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ force: force })
+                });
+                const data = await res.json();
+                
+                // Polling cada 2 segundos hasta que termine
+                let attempts = 0;
+                const interval = setInterval(async () => {
+                    attempts++;
+                    await loadRagStats();
+                    if (attempts >= 10) {
+                        clearInterval(interval);
+                        btn.disabled = false;
+                        if (icon) icon.classList.remove('animate-spin');
+                        if (text) text.innerText = "Sincronizar Base RAG Ahora";
+                    }
+                }, 2500);
+                
+            } catch (err) {
+                alert("Error al iniciar sincronización: " + err.message);
+                btn.disabled = false;
+                if (icon) icon.classList.remove('animate-spin');
+                if (text) text.innerText = "Sincronizar Base RAG Ahora";
+            }
+        }
+
+        async function searchRagPlayground() {
+            const input = document.getElementById('rag-query-input');
+            const temaSelect = document.getElementById('rag-tema-select');
+            const btn = document.getElementById('btn-search-rag');
+            const container = document.getElementById('rag-results-container');
+            const resultsList = document.getElementById('rag-results-list');
+            const latencyHeader = document.getElementById('rag-latency-header');
+            
+            const query = input.value.trim();
+            if (!query) {
+                alert("Por favor escribe una consulta o pregunta.");
+                return;
+            }
+            
+            btn.disabled = true;
+            btn.innerText = "Buscando...";
+            container.classList.remove('hidden');
+            resultsList.innerHTML = '<div class="p-4 text-center text-xs text-slate-500 animate-pulse font-mono">Buscando vectores más cercanos en LanceDB...</div>';
+            
+            try {
+                const res = await fetch('/api/rag/search', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        query: query,
+                        tema: temaSelect.value || null,
+                        top_k: 4
+                    })
+                });
+                const data = await res.json();
+                
+                if (latencyHeader) latencyHeader.innerText = `Latencia LanceDB: ${data.latency_ms} ms`;
+                
+                if (!data.results || data.results.length === 0) {
+                    resultsList.innerHTML = '<div class="p-4 bg-slate-900/60 rounded-xl text-center text-xs text-slate-400">No se encontraron fragmentos relevantes para esta consulta.</div>';
+                } else {
+                    resultsList.innerHTML = data.results.map((r, idx) => {
+                        const simPct = Math.round(r.similarity * 100);
+                        let badgeColor = "bg-emerald-500/10 text-emerald-400 border-emerald-500/30";
+                        if (simPct < 75) badgeColor = "bg-amber-500/10 text-amber-400 border-amber-500/30";
+                        
+                        return `
+                            <div class="bg-slate-900/80 border border-slate-800 rounded-xl p-4 flex flex-col gap-2 hover:border-purple-500/40 transition-all">
+                                <div class="flex items-center justify-between gap-2 flex-wrap">
+                                    <div class="flex items-center gap-2">
+                                        <span class="text-xs font-mono font-bold text-purple-400">#${idx + 1}</span>
+                                        <span class="text-xs font-bold text-slate-200">${escapeHtml(r.doc_title)}</span>
+                                        <span class="text-xs font-mono px-2 py-0.5 rounded-full bg-slate-800 text-slate-400">${escapeHtml(r.doc_topic)}</span>
+                                    </div>
+                                    <span class="px-2.5 py-0.5 rounded-full text-xs font-mono font-bold border ${badgeColor}">
+                                        ${simPct}% Coincidencia
+                                    </span>
+                                </div>
+                                <div class="text-xs font-mono text-purple-300/80 flex items-center gap-1">
+                                    <svg class="h-3.5 w-3.5 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
+                                    </svg>
+                                    ${escapeHtml(r.section_path || 'Sección Principal')}
+                                </div>
+                                <div class="text-xs text-slate-300 font-sans whitespace-pre-wrap bg-slate-950/60 p-3 rounded-lg border border-slate-800/60 mt-1 max-h-40 overflow-y-auto leading-relaxed">
+                                    ${escapeHtml(r.content)}
+                                </div>
+                            </div>
+                        `;
+                    }).join('');
+                }
+            } catch (err) {
+                resultsList.innerHTML = `<div class="p-4 bg-rose-950/20 border border-rose-800/40 rounded-xl text-center text-xs text-rose-300">Error: ${escapeHtml(err.message)}</div>`;
+            } finally {
+                btn.disabled = false;
+                btn.innerText = "Buscar";
             }
         }
 

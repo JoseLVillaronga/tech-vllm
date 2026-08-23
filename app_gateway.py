@@ -1,12 +1,13 @@
 import os
 import sys
 import re
+import time
 import asyncio
 from typing import Optional
 import uvicorn
 import ipaddress
 from fastapi import FastAPI, Request, Response, HTTPException, status, BackgroundTasks
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 import httpx
 from pymongo import MongoClient
@@ -569,7 +570,6 @@ def create_proxy_app(service_name: str, target_port: int, fallback_port: Optiona
         if current_service == "gemma" and path.strip("/") == "v1/models" and request.method == "GET":
             try:
                 import json
-                import time
                 
                 is_master = (token == MASTER_KEY)
                 allowed_services = key_doc.get("services", []) if key_doc else []
@@ -713,6 +713,37 @@ def create_proxy_app(service_name: str, target_port: int, fallback_port: Optiona
             current_target_port = embeddings_backend_port
             current_service = "embeddings"
             model_name = "Qwen/Qwen3-Embedding-0.6B"
+
+        # Interceptar /v1/rag/search o /api/tools/rag-search para búsqueda directa en LanceDB
+        if path.strip("/") in ["v1/rag/search", "rag/search", "api/tools/rag-search"] and request.method == "POST":
+            try:
+                import json
+                from rag_engine import search_knowledge_base, format_rag_context_for_llm
+                body_data = json.loads(body) if body else {}
+                query = body_data.get("query", "").strip()
+                tema = body_data.get("tema") or None
+                top_k = int(body_data.get("top_k", 5))
+                
+                if not query:
+                    raise HTTPException(status_code=400, detail="El parámetro 'query' no puede estar vacío.")
+                    
+                t_rag_0 = time.time()
+                results = search_knowledge_base(query=query, tema=tema, top_k=top_k)
+                dur_rag_ms = round((time.time() - t_rag_0) * 1000, 2)
+                context_str = format_rag_context_for_llm(results)
+                
+                return JSONResponse(content={
+                    "query": query,
+                    "tema": tema,
+                    "results_count": len(results),
+                    "latency_ms": dur_rag_ms,
+                    "context": context_str,
+                    "results": results
+                })
+            except HTTPException:
+                raise
+            except Exception as re:
+                raise HTTPException(status_code=500, detail=f"Error en búsqueda RAG: {str(re)}")
 
         # Determinar si es una petición a un modelo en la nube o local
         is_cloud_request = False

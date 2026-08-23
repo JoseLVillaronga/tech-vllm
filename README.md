@@ -457,6 +457,60 @@ El Dashboard incluye una copia local de la biblioteca Tailwind CSS en `static/js
 
 ---
 
+## 📚 Base de Conocimiento RAG Desacoplada: LanceDB + Teccam PDF (`:5022`)
+
+Para brindar respuestas precisas y fundamentadas a **Gemma 4**, Open-WebUI o cualquier cliente de la suite sin alucinaciones, el sistema implementa un **RAG híbrido desacoplado** que conecta la biblioteca documental de **[Teccam PDF](https://github.com/JoseLVillaronga/teccam_pdf)** (`http://192.168.1.33:5022`), nuestro motor de **Qwen3-Embedding** (`:18005`) y la base de datos vectorial embebida en disco **LanceDB**.
+
+### 1. ¿Cómo Funciona la Arquitectura?
+
+```mermaid
+graph TD
+    subgraph "1. Sincronización Diferencial Asíncrona (Segundo Plano)"
+        TPDF["Teccam PDF API (:5022)<br>/api/v1/rag/documentos"] --> Sync["app_rag_sync.py<br>(Temporizador 2x al día o manual)"]
+        Sync --> Chunker["Chunking Jerárquico Markdown<br>(Títulos H1/H2/H3 + Tablas intactas)"]
+        Chunker --> Embed["Qwen3-Embedding (:18005)<br>Vectores 1024D"]
+        Embed --> LDB[("LanceDB Local en Disco<br>data/lancedb/teccam_kb<br>Vectorial + FTS BM25")]
+    end
+
+    subgraph "2. Consulta en Tiempo Real (~25ms)"
+        User["Usuario / LLM / Open-WebUI"] --> Gate["Gateway Proxy (:8000)<br>/v1/rag/search"]
+        Gate --> Search["Búsqueda Híbrida en LanceDB<br>(Similitud Coseno + Palabras Clave)"]
+        Search --> Context["Fragmentos Enriquecidos con Citas<br>y Metadatos Estructurados"]
+        Context --> Gemma["Gemma 4 LLM<br>Respuesta Precisa y Verificable"]
+    end
+```
+
+### 2. Ventajas del RAG Desacoplado frente al RAG tradicional
+
+* **Cero Retraso en Tiempo de Chat:** La vectorización de documentos pesados ocurre en segundo plano de forma asíncrona. Durante una consulta, sólo se vectoriza la pregunta del usuario (**~15-20 ms en CPU**), logrando una recuperación total en **menos de 30 milisegundos**.
+* **Chunking Jerárquico Enriquecido (*Contextual Retrieval*):** Cada fragmento preserva su ruta de encabezados (`DOCUMENTO > CAPÍTULO > SECCIÓN`), evitando la pérdida de contexto que sufren los troceadores ciegos por caracteres.
+* **Indexación Híbrida (Vectorial 1024D + BM25):** Permite encontrar tanto conceptos semánticos abstractos como términos técnicos, números de artículo o leyes específicas con exactitud matemática.
+* **Sincronización Diferencial Automática:** Compara las marcas de tiempo e IDs de Teccam PDF para sincronizar únicamente documentos nuevos o editados, purgando automáticamente los obsoletos.
+
+### 3. Instalación del Temporizador Systemd
+
+```bash
+./install_rag_sync_service.sh
+```
+
+* **Ver temporizadores activos:** `sudo systemctl list-timers | grep vllm-rag-sync`
+* **Ejecutar sincronización manual por terminal:** `/home/jose/vllm/venv/bin/python app_rag_sync.py`
+* **Ver historial de ejecuciones:** Disponible en el Dashboard (`:8004`) o vía MongoDB en `vllm.rag_sync_logs`.
+
+### 4. Ejemplo de Consulta vía API (`/v1/rag/search`)
+
+```bash
+curl -X POST http://localhost:8000/v1/rag/search \
+  -H "Authorization: Bearer tu_clave_api_aqui" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "Cuáles son los objetivos del procedimiento de soporte en puestos de trabajo de Teccam",
+    "top_k": 3
+  }'
+```
+
+---
+
 ## 📄 Procesamiento de Documentos y OCR: Docling Serve
 
 `docling-serve` es un motor de análisis y extracción de documentos (PDFs, tablas complejas, layout y OCR) de alto rendimiento, optimizado para GPU (~800MB VRAM) y expuesto en el puerto **`5020`**.

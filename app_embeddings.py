@@ -139,12 +139,12 @@ async def create_embeddings(request: EmbeddingRequest, auth: bool = Depends(veri
         for i in range(0, len(texts), BATCH_SIZE):
             batch_texts = texts[i : i + BATCH_SIZE]
             
-            # Tokenización con padding dinámico y truncamiento a 8192 tokens max
+            # Tokenización con padding dinámico y truncamiento seguro a 2048 tokens max
             inputs = tokenizer(
                 batch_texts,
                 padding=True,
                 truncation=True,
-                max_length=8192,
+                max_length=2048,
                 return_tensors="pt"
             ).to(DEVICE)
             
@@ -169,6 +169,11 @@ async def create_embeddings(request: EmbeddingRequest, auth: bool = Depends(veri
                     normalized_embeddings = F.normalize(normalized_embeddings, p=2, dim=1)
 
             all_embeddings.extend(normalized_embeddings.cpu().tolist())
+            
+            # Limpieza inmediata de tensores intermedios
+            del inputs, outputs, last_hidden_state, attention_mask, sum_embeddings, sum_mask, pooled_embeddings, normalized_embeddings
+            if DEVICE.type == "cuda":
+                torch.cuda.empty_cache()
 
         if DEVICE.type == "cuda":
             torch.cuda.synchronize()
