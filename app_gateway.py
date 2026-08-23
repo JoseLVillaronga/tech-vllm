@@ -1099,6 +1099,7 @@ async def run_servers():
     whisper_port = int(os.getenv("WHISPER_BACKEND_PORT", "18001"))
     tts_port = int(os.getenv("TTS_BACKEND_PORT", "18002"))
     diarization_port = int(os.getenv("DIARIZATION_BACKEND_PORT", "18003"))
+    embeddings_port = int(os.getenv("EMBEDDINGS_BACKEND_PORT", "18005"))
     
     whisper_fallback_port = int(os.getenv("STT_FALLBACK_PORT", "18011"))
     tts_fallback_port = int(os.getenv("TTS_FALLBACK_PORT", "18012"))
@@ -1107,17 +1108,20 @@ async def run_servers():
     whisper_app = create_proxy_app("whisper", whisper_port, fallback_port=whisper_fallback_port)
     tts_app = create_proxy_app("tts", tts_port, fallback_port=tts_fallback_port)
     diarization_app = create_proxy_app("diarization", diarization_port)
+    embeddings_app = create_proxy_app("embeddings", embeddings_port)
     
     # Configurar uvicorn para cada puerto público
     config_gemma = uvicorn.Config(gemma_app, host="0.0.0.0", port=8000, log_level="warning")
     config_whisper = uvicorn.Config(whisper_app, host="0.0.0.0", port=8001, log_level="warning")
     config_tts = uvicorn.Config(tts_app, host="0.0.0.0", port=8002, log_level="warning")
     config_diarization = uvicorn.Config(diarization_app, host="0.0.0.0", port=8003, log_level="warning")
+    config_embeddings = uvicorn.Config(embeddings_app, host="0.0.0.0", port=8005, log_level="warning")
     
     server_gemma = uvicorn.Server(config_gemma)
     server_whisper = uvicorn.Server(config_whisper)
     server_tts = uvicorn.Server(config_tts)
     server_diarization = uvicorn.Server(config_diarization)
+    server_embeddings = uvicorn.Server(config_embeddings)
     
     print("=" * 60)
     print("🛡️ Iniciando Gateway de Autenticación y Proxy...")
@@ -1125,6 +1129,7 @@ async def run_servers():
     print(f"🟢 Whisper Proxy:     8001 -> {whisper_port} (Fallback CPU: {whisper_fallback_port})")
     print(f"🟢 F5-TTS Proxy:       8002 -> {tts_port} (Fallback CPU: {tts_fallback_port})")
     print(f"🟢 Diarización Proxy: 8003 -> {diarization_port}")
+    print(f"🟢 Embeddings Proxy:  8005 -> {embeddings_port}")
     print("=" * 60)
     
     try:
@@ -1134,7 +1139,8 @@ async def run_servers():
             server_gemma.serve(),
             server_whisper.serve(),
             server_tts.serve(),
-            server_diarization.serve()
+            server_diarization.serve(),
+            server_embeddings.serve()
         )
     finally:
         await close_http_client()

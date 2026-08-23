@@ -225,7 +225,7 @@
                         <span class="h-2 w-2 rounded-full bg-indigo-500 animate-ping"></span>
                         Estado de Servicios Systemd
                     </h2>
-                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                         <!-- Service Card: Gemma -->
                         <div class="bg-slate-900/60 border border-slate-800/80 p-5 rounded-xl flex flex-col justify-between">
                             <div>
@@ -322,6 +322,22 @@
                             </div>
                         </div>
 
+                        <!-- Service Card: Qwen3 Embeddings -->
+                        <div class="bg-slate-900/60 border border-slate-800/80 p-5 rounded-xl flex flex-col justify-between">
+                            <div>
+                                <div class="flex justify-between items-center mb-2">
+                                    <span class="font-bold text-slate-200">Qwen3 Embeddings</span>
+                                    <span id="status-embeddings" class="px-2 py-0.5 rounded text-xs font-mono font-bold uppercase bg-slate-800 text-slate-400">Cargando...</span>
+                                </div>
+                                <p class="text-xs text-slate-400">Puerto 8005 (18005) | RAM (0 VRAM)</p>
+                            </div>
+                            <div class="flex gap-2 mt-4 pt-4 border-t border-slate-800/50">
+                                <button onclick="controlService('embeddings', 'start')" class="flex-1 py-1.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600 text-emerald-300 hover:text-white text-xs font-medium transition-all">Start</button>
+                                <button onclick="controlService('embeddings', 'stop')" class="flex-1 py-1.5 rounded-lg bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white text-xs font-medium transition-all">Stop</button>
+                                <button onclick="controlService('embeddings', 'restart')" class="flex-1 py-1.5 rounded-lg bg-indigo-600/20 hover:bg-indigo-600 text-indigo-300 hover:text-white text-xs font-medium transition-all">Restart</button>
+                            </div>
+                        </div>
+
                         <!-- Service Card: Docling -->
                         <div class="bg-slate-900/60 border border-slate-800/80 p-5 rounded-xl flex flex-col justify-between">
                             <div>
@@ -345,7 +361,7 @@
                                     <span class="font-bold text-slate-200">API Gateway</span>
                                     <span id="status-gateway" class="px-2 py-0.5 rounded text-xs font-mono font-bold uppercase bg-slate-800 text-slate-400">Cargando...</span>
                                 </div>
-                                <p class="text-xs text-slate-400">Puertos 8000-8003 | Proxy & Auth</p>
+                                <p class="text-xs text-slate-400">Puertos 8000-8005 | Proxy & Auth</p>
                             </div>
                             <div class="flex gap-2 mt-4 pt-4 border-t border-slate-800/50">
                                 <button onclick="controlService('gateway', 'start')" class="flex-1 py-1.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600 text-emerald-300 hover:text-white text-xs font-medium transition-all">Start</button>
@@ -1388,6 +1404,7 @@
                 updateServiceBadge('status-tts', data.services?.tts?.status || 'inactive');
                 updateServiceBadge('status-fallback_tts', data.services?.fallback_tts?.status || 'inactive');
                 updateServiceBadge('status-diarization', data.services?.diarization?.status || 'inactive');
+                updateServiceBadge('status-embeddings', data.services?.embeddings?.status || 'inactive');
                 updateServiceBadge('status-docling', data.services?.docling?.status || 'inactive');
                 updateServiceBadge('status-gateway', data.services?.gateway?.status || 'inactive');
                 

@@ -138,13 +138,12 @@ Para evitar que el asistente quede "sordo" o "mudo" mientras la GPU está dedica
 
 ### 5.3. Estrategias de Despliegue en la Arquitectura
 
-1. **Opción A: Residente en GPU (RTX 3090):**
-   * Al consumir apenas **~1.5 GB en FP16** (o **< 1 GB en INT8**), puede convivir permanentemente junto al LLM principal en vLLM sin comprometer la capacidad de la GPU.
-2. **Opción B: Despliegue en CPU (0 VRAM):**
-   * Debido a su tamaño ultracompacto (0.6B), puede ejecutarse en CPU mediante `llama.cpp`, `fastembed` (ONNX) o `sentence-transformers` con tiempos de respuesta de milisegundos y **0 consumo de VRAM**.
-3. **Casos de Uso en el Ecosistema:**
-   * **Memoria y RAG Local:** Indexar transcripciones de Whisper, historial de conversaciones y documentos para inyectar contexto relevante al LLM.
-   * **Enrutamiento Semántico en el Gateway:** Analizar el texto del usuario para decidir si la petición requiere código, generación de imagen, búsqueda o respuesta conversacional.
+1. **Despliegue Seleccionado y Operativo: Residente en RAM / CPU (`app_embeddings.py` - `:8005` -> `:18005`):**
+   * El modelo `Qwen/Qwen3-Embedding-0.6B` se encuentra cargado y en ejecución permanente en la RAM del sistema (~1.2 GB) a través del servicio `vllm-embeddings.service`, logrando **0 MB de VRAM ocupados** y tiempos de respuesta de milisegundos con cero retraso de carga en frío (*Zero Cold-Start*).
+2. **Casos de Uso en el Ecosistema:**
+   * **Memoria y RAG Local:** Indexar transcripciones de Whisper, historial de conversaciones y biblioteca documental de Teccam PDF.
+   * **Búsqueda Vectorial:** Alimentar la base de datos vectorial embebida LanceDB.
+   * **Enrutamiento Semántico en el Gateway:** Analizar el texto del usuario para decidir si la petición requiere código, búsqueda documental, generación de imagen o respuesta conversacional.
 
 ### 5.4. Análisis Específico de Residencia en RAM (Host con 64 GB)
 * **Memoria Disponible en el Sistema:** ~35 GB – 40 GB libres (de 64 GB totales).

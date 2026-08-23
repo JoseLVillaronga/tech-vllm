@@ -68,6 +68,7 @@ SERVICES = {
     "tts": "vllm-tts",
     "fallback_tts": "vllm-fallback-tts",
     "diarization": "vllm-diarization",
+    "embeddings": "vllm-embeddings",
     "gateway": "vllm-gateway",
     "docling": "docling"
 }
@@ -80,7 +81,8 @@ SERVICE_PORTS = {
     "tts": 8002,
     "fallback_tts": 18012,
     "diarization": 8003,
-    "gateway": "8000-8003",
+    "embeddings": 8005,
+    "gateway": "8000-8005",
     "docling": 5020
 }
 
@@ -91,7 +93,8 @@ BACKEND_PORTS = {
     "fallback_stt": int(os.getenv("STT_FALLBACK_PORT", "18011")),
     "tts": int(os.getenv("TTS_BACKEND_PORT", "18002")),
     "fallback_tts": int(os.getenv("TTS_FALLBACK_PORT", "18012")),
-    "diarization": int(os.getenv("DIARIZATION_BACKEND_PORT", "18003"))
+    "diarization": int(os.getenv("DIARIZATION_BACKEND_PORT", "18003")),
+    "embeddings": int(os.getenv("EMBEDDINGS_BACKEND_PORT", "18005"))
 }
 
 def get_gpu_info():

@@ -38,12 +38,12 @@ Para permitir que los 4 servicios de Inteligencia Artificial corran en caliente 
 
 ## 🌟 Características Principales
 
-1. **Ecosistema Completo de Microservicios Locales**: Coexistencia de servicios especializados en segundo plano: **Gemma 4** (`:8000`), **Whisper GPU** (`:8001`), **F5-TTS GPU** (`:8002`), **PyAnnote Diarization** (`:8003`), **Docling OCR** (`:5020`), **Fallbacks CPU con 0 VRAM** (`:18011` y `:18012`) y **Dashboard Web** (`:8004`).
-2. **Alta Disponibilidad con Failover Transparente**: El API Gateway (`:8000`-`:8003`) conmuta automáticamente las peticiones de transcripción y voz hacia los microservicios en CPU si la GPU se apaga o entra en mantenimiento, asegurando que el asistente nunca quede "sordo" ni "mudo".
-3. **Gestión Coordinada de VRAM**: Asignación estricta de memoria (Gemma 4 al 50%, Whisper al 10%, F5-TTS al 10%, Docling a ~800MB y PyAnnote a ~400MB), manteniendo la suite completa cargada en caliente sin riesgo de OOM.
+1. **Ecosistema Completo de Microservicios Locales**: Coexistencia de 9 microservicios especializados en segundo plano: **Gemma 4** (`:8000`), **Whisper GPU** (`:8001`), **F5-TTS GPU** (`:8002`), **PyAnnote Diarization** (`:8003`), **Qwen3 Embeddings en RAM** (`:8005`), **Docling OCR** (`:5020`), **Fallbacks CPU con 0 VRAM** (`:18011` y `:18012`) y **Dashboard Web** (`:8004`).
+2. **Alta Disponibilidad con Failover Transparente**: El API Gateway (`:8000`-`:8005`) conmuta automáticamente las peticiones de transcripción y voz hacia los microservicios en CPU si la GPU se apaga o entra en mantenimiento, asegurando que el asistente nunca quede "sordo" ni "mudo".
+3. **Gestión Coordinada de VRAM y RAM**: Asignación estricta de memoria (Gemma 4 al 50%, Whisper al 10%, F5-TTS al 10%, Docling a ~800MB y PyAnnote a ~400MB en GPU; Qwen3-Embedding a ~1.2 GB en RAM del sistema), manteniendo la suite completa cargada en caliente sin colisiones.
 4. **Dashboard Web Interactivo**: Monitoreo de recursos en tiempo real (CPU, RAM, VRAM), controlador gráfico de todos los servicios systemd y pruebas interactivas de las APIs.
-5. **Instalación como Servicios del Sistema (`systemd`)**: Autoinstaladores integrados con autorreinicio (`install_service.sh`, `install_whisper_service.sh`, `install_tts_service.sh`, `install_fallback_stt_service.sh`, `install_fallback_tts_service.sh`, `install_diarization_service.sh`, `install_docling_service.sh` y `install_dashboard_service.sh`).
-6. **Despliegue Multimodal de Audio y Visión**: Soporte nativo para procesar imágenes, documentos estructurados y voz directamente.
+5. **Instalación como Servicios del Sistema (`systemd`)**: Autoinstaladores integrados con autorreinicio (`install_service.sh`, `install_whisper_service.sh`, `install_tts_service.sh`, `install_fallback_stt_service.sh`, `install_fallback_tts_service.sh`, `install_diarization_service.sh`, `install_embeddings_service.sh`, `install_docling_service.sh` y `install_dashboard_service.sh`).
+6. **Despliegue Multimodal de Audio, Visión y Embeddings**: Soporte nativo para procesar imágenes, documentos estructurados, búsqueda vectorial y voz directamente.
 7. **Exposición Swagger UI y Scalar (`/docs`)**: Documentación interactiva completa autogenerada en el puerto de cada servicio de forma nativa.
 
 ---
@@ -305,6 +305,45 @@ Accede al panel interactivo y haz clic en **"Authorize"** con tu API key:
 curl -X POST http://localhost:8003/v1/audio/diarize \
   -H "Authorization: Bearer tu_clave_api_aqui" \
   -F "file=@mi_voz_24k_mono.wav"
+```
+
+---
+
+## 🧠 Servidor de Embeddings Semánticos y RAG: vLLM-Embeddings
+
+Para alimentar el sistema RAG (*Retrieval-Augmented Generation*), la búsqueda vectorial en LanceDB y el análisis semántico de documentos de Teccam PDF, el proyecto incluye un microservicio de embeddings de última generación basado en **`Qwen/Qwen3-Embedding-0.6B`** corriendo en el puerto **`8005`** (backend interno `18005`).
+
+### 1. Ventajas de Arquitectura y Rendimiento
+* **0 MB de VRAM:** Todo el cálculo se ejecuta en la **CPU** aprovechando los 12 hilos del procesador.
+* **Precarga en Caliente (Hot-Standby):** El modelo (~595 millones de parámetros, ~1.2 GB en RAM) permanece cargado permanentemente en la memoria RAM del sistema, eliminando cualquier latencia de carga en frío (*Zero Cold-Start*).
+* **API Compatible con OpenAI:** Expone el endpoint estándar `POST /v1/embeddings` (compatible con LangChain, LlamaIndex, Open-WebUI, Teccam PDF y LanceDB).
+* **Vectores de 1024 Dimensiones:** Normalización L2 unitaria y soporte para textos largos (hasta 8.192 tokens de contexto).
+
+### 2. Instalación del servicio systemd
+
+```bash
+./install_embeddings_service.sh
+```
+
+### 3. Comandos de administración
+
+* **Ver logs en tiempo real:** `sudo journalctl -u vllm-embeddings -f`
+* **Ver estado:** `sudo systemctl status vllm-embeddings`
+* **Detener servicio:** `sudo systemctl stop vllm-embeddings`
+* **Reiniciar servicio:** `sudo systemctl restart vllm-embeddings`
+
+### 4. Documentación interactiva (Swagger UI)
+
+Accede desde tu navegador para probar y documentar los endpoints:
+`http://localhost:8005/docs` (o directo al backend en `http://localhost:18005/docs`).
+
+### 5. Ejemplo de prueba vía `curl`
+
+```bash
+curl -X POST http://localhost:8005/v1/embeddings \
+  -H "Authorization: Bearer tu_clave_api_aqui" \
+  -H "Content-Type: application/json" \
+  -d '{"input": "Prueba de generación de embedding vectorial con Qwen3 en RAM"}'
 ```
 
 ---
