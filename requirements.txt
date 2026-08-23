@@ -1,0 +1,37 @@
+# ==============================================================================
+# vLLM Local Suite - Dependencias del Proyecto
+# ==============================================================================
+
+# Núcleo vLLM e Inferencia
+vllm
+torch
+
+# Servidores Web y APIs
+fastapi
+uvicorn
+httpx
+flask
+requests
+pydantic
+python-dotenv
+psutil
+
+# Base de Datos
+pymongo
+
+# Transcripción (STT) y Diarización de Audio
+faster-whisper
+pyannote.audio
+sounddevice
+numpy
+scipy
+soundfile
+pydub
+
+# Síntesis de Voz (TTS) y Clonación
+f5-tts
+edge-tts
+huggingface_hub
+
+# Procesamiento de Documentos y OCR
+docling-serve

@@ -61,19 +61,38 @@ source venv/bin/activate
 
 ### 2. Instalar dependencias del sistema y Python
 
-Primero, instala las herramientas del sistema necesarias (el compilador CUDA `nvcc` para vLLM, `libportaudio2` para capturar audio, y asegúrate de tener el servidor **MongoDB** instalado y ejecutándose en tu máquina):
+#### A. Paquetes del Sistema (Linux / Ubuntu)
+
+Instala las herramientas del sistema necesarias (`ffmpeg` para decodificación y conversión de audio, `libportaudio2` para captura de micrófono en tiempo real, el compilador CUDA `nvcc` para vLLM, y asegúrate de tener el servidor **MongoDB** instalado y en ejecución):
 
 ```bash
-sudo apt update && sudo apt install -y nvidia-cuda-toolkit libportaudio2
-```
-
-Luego, instala vLLM junto con los paquetes necesarios para la diarización, el procesamiento de audio, las peticiones de red y la conexión a la base de datos:
-
-```bash
-pip install vllm python-dotenv pyannote.audio faster-whisper sounddevice numpy scipy requests pymongo
+sudo apt update && sudo apt install -y nvidia-cuda-toolkit libportaudio2 ffmpeg
 ```
 
 > **Nota:** El paquete `nvidia-cuda-toolkit` provee el compilador `nvcc`, requerido por el backend FlashInfer de vLLM para la compilación en tiempo de ejecución (JIT).
+
+#### B. Paquetes de Python
+
+Puedes instalar todas las dependencias del ecosistema directamente con el archivo `requirements.txt`:
+
+```bash
+pip install -r requirements.txt
+```
+
+O instalarlas explícitamente mediante `pip`:
+
+```bash
+pip install vllm torch fastapi uvicorn httpx flask psutil requests pydantic python-dotenv pymongo faster-whisper pyannote.audio sounddevice numpy scipy soundfile pydub f5-tts edge-tts huggingface_hub docling-serve
+```
+
+| Categoría | Librerías | Propósito |
+| :--- | :--- | :--- |
+| **Inferencia LLM** | `vllm`, `torch` | Servidor OpenAI API para Gemma 4 y aceleración CUDA. |
+| **Gateway & Dashboard** | `fastapi`, `uvicorn`, `httpx`, `flask`, `psutil` | Proxy inverso, seguridad/autenticación, telemetría y GUI. |
+| **Transcripción (STT)** | `faster-whisper`, `sounddevice`, `numpy`, `scipy` | Whisper GPU + Fallback CPU INT8 + Captura de micrófono. |
+| **Voz (TTS) & Diarización** | `f5-tts`, `edge-tts`, `pyannote.audio`, `soundfile`, `pydub` | F5-TTS con clonación, Fallback Edge CPU y separación de interlocutores. |
+| **Documentos & OCR** | `docling-serve` | Extracción de layouts, tablas y OCR para Teccam PDF y RAG. |
+| **Base de Datos & Config** | `pymongo`, `python-dotenv`, `pydantic` | Persistencia en MongoDB y validación de variables de entorno. |
 
 ### 3. Configurar las variables de entorno (`.env`)
 
