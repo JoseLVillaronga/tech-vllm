@@ -29,10 +29,89 @@ Para permitir que los 4 servicios de Inteligencia Artificial corran en caliente 
 | **Dashboard Web GUI** | `8004` | *(Directo)* | **0 GB (VRAM)** | Monitoreo del sistema, edición de .env y test |
 | **Gnome / Sistema Linux** | - | - | **~1.1 GB** | Entorno gráfico y aplicaciones de usuario |
 
-* **VRAM Total Usada:** **`~19.5 GB`**
+* **VRAM Total Usada (Modo Estándar):** **`~19.5 GB`**
 * **VRAM Total Libre:** **`~4.5 GB`** (Margen de seguridad perfecto para evitar caídas por *Out Of Memory*).
 
 > **🛡️ Nota de Red y Seguridad:** Por motivos de seguridad, los motores de IA reales (backends) enlazan exclusivamente en localhost (`127.0.0.1`) en los puertos del rango `18000`. Todo tráfico externo pasa obligatoriamente por el **vLLM Gateway Proxy** en los puertos públicos estándar (`8000`-`8003`), el cual realiza la validación de credenciales.
+
+---
+
+## 🎛️ Guía Estratégica: Escenarios de Uso y Orquestación de VRAM (24 GB)
+
+En un entorno de hardware local con **24 GB de VRAM (NVIDIA RTX 3090 / RTX 4090)**, la coexistencia de múltiples modelos de frontera (LLMs de 26B/30B, motores de voz, diarización, visión y RAG de alta fidelidad) exige **reconocer los límites físicos de la memoria y elegir conscientemente el perfil operativo más adecuado según la tarea en curso**.
+
+Gracias a la arquitectura desacoplada de la suite, los **Fallbacks automáticos en CPU** y el **motor de embeddings de uso dual (CUDA o RAM)**, es posible alternar entre escenarios con un solo clic desde el Dashboard (`:8004`) sin comprometer la estabilidad ni la disponibilidad general.
+
+![Distribución de VRAM en Perfil RAG Intensivo](screenshots/dashboard_rag_profile_vram.png)
+
+---
+
+### 1. 📚 Perfil A: "RAG Intensivo y Consulta Documental" *(Escenario Actual Recomendado)*
+
+* **Objetivo:** Velocidad de respuesta instantánea en búsquedas vectoriales híbridas (Dense 1024D + BM25) en LanceDB, con latencia imperceptible respecto a una consulta directa sin RAG.
+* **Distribución de VRAM (~18.1 GB - 21.0 GB):**
+  - **Gemma 4-E4B-it (vLLM en `:18000`):** `~13.2 GB` (`gpu_memory_utilization=0.55`).
+  - **Qwen3-Embedding (CUDA en `:18005`):** `~3.5 GB - 4.5 GB` (`EMBEDDINGS_DEVICE=cuda`, `EMBEDDINGS_CPU_THREADS=0`). *Imprescindible en GPU para absorber los picos de reindexado masivo sin demoras.*
+  - **Docling OCR (GPU en `:5020`):** `~800 MB`.
+  - **Sistema / Gnome:** `~1.1 GB`.
+* **Estado de Servicios de Audio:**
+  - `Whisper GPU` (`:8001`), `F5-TTS GPU` (`:8002`) y `PyAnnote Diarization` (`:8003`): **`INACTIVE`**.
+  - `Fallback STT` (`:18011`) y `Fallback TTS` (`:18012`): **`ACTIVE (CPU / 0 VRAM)`**.
+* **Sincronización Automática:** El temporizador Systemd (`vllm-rag-sync.timer`) procesa las actualizaciones diferenciales a las 00:00 y 12:00 en CUDA a máxima velocidad.
+
+---
+
+### 2. 💻 Perfil B: "Asistente de Código / Modelo Grande" *(Qwen3-Coder 30B / Gemma 4 26B)*
+
+* **Objetivo:** Máxima capacidad de razonamiento lógico, refactorización y programación asistida en el modelo principal de vLLM.
+* **Distribución de VRAM (~22.0 GB - 23.5 GB):**
+  - **LLM Principal 26B/30B (FP8 / AWQ / NVFP4):** `~20.5 GB - 22.0 GB` (`gpu_memory_utilization=0.88 - 0.92`).
+  - **Sistema / Gnome:** `~1.1 GB`.
+* **Ajustes Críticos de la Suite:**
+  - **Embeddings en RAM del Sistema:** Configurar `EMBEDDINGS_DEVICE=cpu` y `EMBEDDINGS_CPU_THREADS=8` en `.env`. Esto libera **4.0 GB de VRAM completa** transfiriendo la inferencia vectorial a los 64 GB de RAM del sistema.
+  - **Pausar Sincronización Automática:** Desactivar temporalmente el timer (`sudo systemctl stop vllm-rag-sync.timer`) para evitar que una indexación diferencial a medianoche o mediodía provoque un pico de memoria y un *Out Of Memory (OOM)* en vLLM.
+  - **Audio:** Todos los servicios GPU apagados, delegando voz a los fallbacks de CPU o desactivándolos.
+
+---
+
+### 3. 🎨 Perfil C: "Multimodalidad y Generación de Imágenes" *(Gemma 4 + FLUX.2 Klein 4B)*
+
+* **Objetivo:** Diálogo multimodal con análisis visual + generación y edición de imágenes mediante modelos de difusión (*vLLM-Omni* en `:18004`).
+* **Distribución de VRAM (~20.5 GB - 22.5 GB):**
+  - **Gemma 4-E4B-it (LLM/Visión):** `~12.5 GB - 13.0 GB`.
+  - **FLUX.2 Klein 4B / SDXL Diffusion:** `~7.5 GB - 8.5 GB`.
+  - **Sistema / Gnome:** `~1.1 GB`.
+* **Ajustes de la Suite:**
+  - `Qwen3-Embedding` operando en CPU (`EMBEDDINGS_DEVICE=cpu`) o RAG desactivado.
+  - Servicios pesados de audio en GPU apagados (`Whisper`, `F5-TTS`, `Diarization` inactivos, usando fallbacks CPU).
+
+---
+
+### 4. 🎙️ Perfil D: "Laboratorio de Voz, Clonación y Diarización Completa" *(Audio Lab)*
+
+* **Objetivo:** Clonación de voz multilingüe de alta fidelidad, transcripción de reuniones largas con identificación exacta de locutores y LLM conversacional.
+* **Distribución de VRAM (~21.0 GB - 23.0 GB):**
+  - **Whisper-large-v3-turbo (GPU `:8001`):** `~2.9 GB`.
+  - **F5-TTS Voice Cloning (GPU `:8002`):** `~2.2 GB`.
+  - **PyAnnote 3.1 Diarization (GPU `:8003`):** `~0.8 GB`.
+  - **Gemma 4-E4B-it (LLM `:8000`):** `~13.2 GB`.
+  - **Sistema / Gnome:** `~1.1 GB`.
+* **Ajustes de la Suite:**
+  - `Qwen3-Embedding` operando en CPU (`EMBEDDINGS_DEVICE=cpu`).
+  - Sincronización RAG delegada a CPU para proteger la VRAM de audio.
+
+---
+
+### 📋 Cuadro Comparativo de Perfiles Operativos (24 GB VRAM)
+
+| Perfil de Uso | LLM Principal | Embeddings (Qwen3) | RAG Sync Timer | Audio GPU (Whisper/F5/Diar) | Audio Fallback CPU | VRAM Ocupada |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: |
+| **A: RAG Intensivo** | Gemma 4 (55%) | **CUDA (GPU)** | **Activo (GPU)** | Inactivo | **Activo** | **~18.1 GB** |
+| **B: Asistente Código** | 30B / 26B (90%) | **RAM (CPU)** | *Pausado* | Inactivo | Opcional | **~22.5 GB** |
+| **C: Imagen / Diffusion**| Gemma 4 (50%) + FLUX | **RAM (CPU)** | *Pausado* | Inactivo | **Activo** | **~21.5 GB** |
+| **D: Audio Lab Completo**| Gemma 4 (50%) | **RAM (CPU)** | Activo (CPU) | **Activo (GPU)** | Standby | **~20.5 GB** |
+
+> **💡 Conclusión Operativa:** *"Con 24 GB de VRAM no es necesario resignar capacidades, sino elegir conscientemente el modo de trabajo más conveniente para cada momento y orquestar los microservicios en consecuencia."*
 
 ---
 
