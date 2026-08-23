@@ -69,6 +69,8 @@ SERVICES = {
     "fallback_tts": "vllm-fallback-tts",
     "diarization": "vllm-diarization",
     "embeddings": "vllm-embeddings",
+    "image": "vllm-image",
+    "rag_sync": "vllm-rag-sync.timer",
     "gateway": "vllm-gateway",
     "docling": "docling"
 }
@@ -82,7 +84,9 @@ SERVICE_PORTS = {
     "fallback_tts": 18012,
     "diarization": 8003,
     "embeddings": 8005,
-    "gateway": "8000-8005",
+    "image": 8006,
+    "rag_sync": "08:00/20:00",
+    "gateway": "8000-8006",
     "docling": 5020
 }
 
@@ -94,6 +98,7 @@ BACKEND_PORTS = {
     "tts": int(os.getenv("TTS_BACKEND_PORT", "18002")),
     "fallback_tts": int(os.getenv("TTS_FALLBACK_PORT", "18012")),
     "diarization": int(os.getenv("DIARIZATION_BACKEND_PORT", "18003")),
+    "image": int(os.getenv("IMAGE_BACKEND_PORT", "18004")),
     "embeddings": int(os.getenv("EMBEDDINGS_BACKEND_PORT", "18005"))
 }
 
@@ -1548,6 +1553,36 @@ def api_test_diarize():
         return Response(res.text, status=res.status_code, content_type="application/json")
     except Exception as e:
         return jsonify({"error": f"No se pudo conectar al servicio de Diarización (puerto {BACKEND_PORTS['diarization']}): {str(e)}"}), 502
+
+@app.route("/api/test/image", methods=["POST"])
+def api_test_image():
+    """
+    Proxy interactivo para probar la generación de imágenes en el puerto 18004.
+    """
+    current_vars = parse_env_to_dict()
+    api_key = current_vars.get("API_KEY", API_KEY)
+    
+    data = request.json or {}
+    prompt = data.get("prompt", "A cute futuristic robot in high-tech laboratory")
+    size = data.get("size", "512x512")
+    
+    url = f"http://127.0.0.1:{BACKEND_PORTS['image']}/v1/images/generations"
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {api_key}"
+    }
+    payload = {
+        "prompt": prompt,
+        "size": size,
+        "n": 1,
+        "response_format": "url"
+    }
+    
+    try:
+        res = requests.post(url, json=payload, headers=headers, timeout=120)
+        return Response(res.text, status=res.status_code, content_type="application/json")
+    except Exception as e:
+        return jsonify({"error": f"No se pudo conectar al servicio de Generación de Imágenes (puerto {BACKEND_PORTS['image']}): {str(e)}"}), 502
 
 # ==============================================================================
 # Endpoints de Base de Conocimiento RAG & LanceDB (Teccam PDF)

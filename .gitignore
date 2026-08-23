@@ -31,3 +31,7 @@ torch_compile_cache/
 data/
 *.lance/
 
+# Salidas de modelos e imágenes generadas
+outputs/
+*.png
+

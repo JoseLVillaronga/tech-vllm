@@ -367,12 +367,44 @@
                                     <span class="font-bold text-slate-200">API Gateway</span>
                                     <span id="status-gateway" class="px-2 py-0.5 rounded text-xs font-mono font-bold uppercase bg-slate-800 text-slate-400">Cargando...</span>
                                 </div>
-                                <p class="text-xs text-slate-400">Puertos 8000-8005 | Proxy & Auth</p>
+                                <p class="text-xs text-slate-400">Puertos 8000-8006 | Proxy & Auth</p>
                             </div>
                             <div class="flex gap-2 mt-4 pt-4 border-t border-slate-800/50">
                                 <button onclick="controlService('gateway', 'start')" class="flex-1 py-1.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600 text-emerald-300 hover:text-white text-xs font-medium transition-all">Start</button>
                                 <button onclick="controlService('gateway', 'stop')" class="flex-1 py-1.5 rounded-lg bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white text-xs font-medium transition-all">Stop</button>
                                 <button onclick="controlService('gateway', 'restart')" class="flex-1 py-1.5 rounded-lg bg-indigo-600/20 hover:bg-indigo-600 text-indigo-300 hover:text-white text-xs font-medium transition-all">Restart</button>
+                            </div>
+                        </div>
+
+                        <!-- Service Card: Generador de Imágenes (Diffusion) -->
+                        <div class="bg-slate-900/60 border border-slate-800/80 p-5 rounded-xl flex flex-col justify-between">
+                            <div>
+                                <div class="flex justify-between items-center mb-2">
+                                    <span class="font-bold text-slate-200">Generador de Imágenes</span>
+                                    <span id="status-image" class="px-2 py-0.5 rounded text-xs font-mono font-bold uppercase bg-slate-800 text-slate-400">Cargando...</span>
+                                </div>
+                                <p class="text-xs text-slate-400">Puerto 8006 (18004) | SDXL Turbo (0 VRAM)</p>
+                            </div>
+                            <div class="flex gap-2 mt-4 pt-4 border-t border-slate-800/50">
+                                <button onclick="controlService('image', 'start')" class="flex-1 py-1.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600 text-emerald-300 hover:text-white text-xs font-medium transition-all">Start</button>
+                                <button onclick="controlService('image', 'stop')" class="flex-1 py-1.5 rounded-lg bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white text-xs font-medium transition-all">Stop</button>
+                                <button onclick="controlService('image', 'restart')" class="flex-1 py-1.5 rounded-lg bg-indigo-600/20 hover:bg-indigo-600 text-indigo-300 hover:text-white text-xs font-medium transition-all">Restart</button>
+                            </div>
+                        </div>
+
+                        <!-- Service Card: Sincronizador RAG Timer -->
+                        <div class="bg-slate-900/60 border border-slate-800/80 p-5 rounded-xl flex flex-col justify-between">
+                            <div>
+                                <div class="flex justify-between items-center mb-2">
+                                    <span class="font-bold text-slate-200">Sincronizador RAG</span>
+                                    <span id="status-rag_sync" class="px-2 py-0.5 rounded text-xs font-mono font-bold uppercase bg-slate-800 text-slate-400">Cargando...</span>
+                                </div>
+                                <p class="text-xs text-slate-400">Timer systemd | Actualización 08:00 y 20:00</p>
+                            </div>
+                            <div class="flex gap-2 mt-4 pt-4 border-t border-slate-800/50">
+                                <button onclick="controlService('rag_sync', 'start')" class="flex-1 py-1.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600 text-emerald-300 hover:text-white text-xs font-medium transition-all">Start</button>
+                                <button onclick="controlService('rag_sync', 'stop')" class="flex-1 py-1.5 rounded-lg bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white text-xs font-medium transition-all">Stop</button>
+                                <button onclick="controlService('rag_sync', 'restart')" class="flex-1 py-1.5 rounded-lg bg-indigo-600/20 hover:bg-indigo-600 text-indigo-300 hover:text-white text-xs font-medium transition-all">Restart</button>
                             </div>
                         </div>
                     </div>
@@ -658,7 +690,42 @@
                                 </div>
                             </div>
                         </div>
-                        <button onclick="testDiarize()" class="w-full py-2 bg-amber-600 hover:bg-amber-500 rounded-lg text-sm font-semibold transition-all">Subir y Diarizar</button>
+                    <!-- Image Generation Test (Diffusion / SDXL-Turbo / FLUX) -->
+                    <div class="glass-panel p-6 rounded-2xl flex flex-col justify-between min-h-[300px] lg:col-span-2">
+                        <div>
+                            <div class="flex items-center justify-between mb-3">
+                                <h3 class="text-md font-bold flex items-center gap-2 text-pink-400">
+                                    🎨 Generación de Imágenes (Diffusion - 8006 / 18004)
+                                </h3>
+                                <div class="flex items-center gap-2">
+                                    <span class="text-xs text-slate-400 font-mono">Resolución:</span>
+                                    <select id="img-test-size" class="bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1 text-xs text-pink-300 font-mono focus:outline-none focus:border-pink-500 cursor-pointer">
+                                        <option value="512x512">512 x 512 (Rápido ~1.5s)</option>
+                                        <option value="768x768">768 x 768</option>
+                                        <option value="1024x1024">1024 x 1024 (HD)</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-2">
+                                <div class="flex flex-col gap-2">
+                                    <label class="block text-xs font-semibold text-slate-300">Prompt en lenguaje natural:</label>
+                                    <textarea id="img-test-prompt" rows="4" placeholder="Describe la imagen que deseas generar (ej: A majestic digital neon tiger running through a cyberpunk cyber-forest, 8k)..." class="w-full bg-slate-900 border border-slate-800 rounded-xl p-3 text-xs text-slate-200 focus:outline-none focus:border-pink-500 font-sans"></textarea>
+                                    <button onclick="testImage()" id="btn-test-image" class="w-full py-2.5 bg-pink-600 hover:bg-pink-500 rounded-lg text-sm font-semibold transition-all flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-pink-600/20">
+                                        <span>✨</span> Generar Imagen
+                                    </button>
+                                </div>
+                                <div class="bg-slate-900/60 border border-slate-800 rounded-xl p-3 flex flex-col items-center justify-center min-h-[180px] relative overflow-hidden" id="img-test-preview-container">
+                                    <div id="img-test-placeholder" class="text-center text-slate-500 text-xs flex flex-col items-center gap-2">
+                                        <svg class="h-10 w-10 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                                            <path stroke-linecap="round" stroke-linejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                        </svg>
+                                        <span>La imagen renderizada aparecerá aquí...</span>
+                                    </div>
+                                    <img id="img-test-result" class="hidden max-h-[260px] rounded-lg object-contain shadow-md border border-slate-700" />
+                                    <div id="img-test-info" class="hidden mt-2 text-[10px] text-slate-400 font-mono text-center"></div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
                 </div>
@@ -1898,6 +1965,80 @@
                 output.innerText = JSON.stringify(data, null, 2);
             } catch (err) {
                 output.innerText = `Error: ${err.message}`;
+            }
+        }
+
+        // Image Generation Test
+        async function testImage() {
+            const promptInput = document.getElementById('img-test-prompt');
+            const sizeSelect = document.getElementById('img-test-size');
+            const btn = document.getElementById('btn-test-image');
+            const imgEl = document.getElementById('img-test-result');
+            const placeholder = document.getElementById('img-test-placeholder');
+            const infoEl = document.getElementById('img-test-info');
+            
+            const prompt = promptInput ? promptInput.value.trim() : "";
+            if (!prompt) {
+                alert("Por favor ingresa un prompt en texto para generar la imagen.");
+                return;
+            }
+            
+            const size = sizeSelect ? sizeSelect.value : "512x512";
+            const originalHtml = btn ? btn.innerHTML : "";
+            
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = '<span>⏳</span> Renderizando imagen (~1.5s)...';
+            }
+            if (placeholder) {
+                placeholder.classList.remove('hidden');
+                placeholder.innerHTML = '<span class="animate-pulse text-pink-400 font-medium">✨ Renderizando imagen con difusión...</span>';
+            }
+            if (imgEl) imgEl.classList.add('hidden');
+            if (infoEl) infoEl.classList.add('hidden');
+            
+            try {
+                const t0 = performance.now();
+                const res = await fetch('/api/test/image', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        prompt: prompt,
+                        size: size
+                    })
+                });
+                const data = await res.json();
+                const elapsedSec = ((performance.now() - t0) / 1000).toFixed(2);
+                
+                if (data.data && data.data[0] && data.data[0].url) {
+                    const imgUrl = data.data[0].url;
+                    if (imgEl) {
+                        imgEl.src = imgUrl;
+                        imgEl.classList.remove('hidden');
+                    }
+                    if (placeholder) placeholder.classList.add('hidden');
+                    if (infoEl) {
+                        infoEl.innerHTML = `✅ Renderizada en <b>${elapsedSec}s</b> (${size}) | <a href="${imgUrl}" target="_blank" download class="text-pink-400 hover:underline font-bold">Descargar PNG</a>`;
+                        infoEl.classList.remove('hidden');
+                    }
+                } else if (data.error) {
+                    alert("Error en generación: " + data.error);
+                    if (placeholder) {
+                        placeholder.innerHTML = `<span class="text-rose-400">⚠️ ${data.error}</span>`;
+                    }
+                } else {
+                    alert("Respuesta inesperada: " + JSON.stringify(data));
+                }
+            } catch (err) {
+                alert("Error de conexión: " + err.message);
+                if (placeholder) {
+                    placeholder.innerHTML = `<span class="text-rose-400">⚠️ Error: ${err.message}</span>`;
+                }
+            } finally {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = originalHtml;
+                }
             }
         }
 

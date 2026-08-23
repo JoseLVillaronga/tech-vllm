@@ -9,6 +9,7 @@ import ipaddress
 from fastapi import FastAPI, Request, Response, HTTPException, status, BackgroundTasks
 from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 import httpx
 from pymongo import MongoClient
 from datetime import datetime, timedelta
@@ -425,6 +426,11 @@ def create_proxy_app(service_name: str, target_port: int, fallback_port: Optiona
         allow_headers=["*"],
     )
     
+    # Servir imágenes generadas como recursos estáticos
+    out_img_dir = os.getenv("IMAGE_OUTPUT_DIR", "/home/jose/vllm/outputs/images")
+    os.makedirs(out_img_dir, exist_ok=True)
+    app.mount("/outputs/images", StaticFiles(directory=out_img_dir), name="images")
+    
     @app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD", "PATCH"])
     async def proxy(request: Request, path: str, background_tasks: BackgroundTasks):
         current_service = service_name
@@ -627,6 +633,22 @@ def create_proxy_app(service_name: str, target_port: int, fallback_port: Optiona
                                         "created": int(time.time()),
                                         "owned_by": "openai-alias"
                                     })
+                                    
+                                # Si tiene permiso de imagen, exponer también el modelo de generación de imágenes
+                                if is_master or ("image" in allowed_services):
+                                    img_model = get_env_setting("IMAGE_MODEL", "stabilityai/sdxl-turbo")
+                                    combined_models.append({
+                                        "id": img_model,
+                                        "object": "model",
+                                        "created": int(time.time()),
+                                        "owned_by": "local-diffusion"
+                                    })
+                                    combined_models.append({
+                                        "id": "local/image-generator",
+                                        "object": "model",
+                                        "created": int(time.time()),
+                                        "owned_by": "local-diffusion"
+                                    })
                     except Exception as le:
                         print(f"⚠️ Gateway: Error obteniendo modelos locales: {le}", file=sys.stderr, flush=True)
                 
@@ -721,6 +743,21 @@ def create_proxy_app(service_name: str, target_port: int, fallback_port: Optiona
             current_target_port = embeddings_backend_port
             current_service = "embeddings"
             model_name = "Qwen/Qwen3-Embedding-0.6B"
+
+        # Interceptar /v1/images/generations en gemma proxy (puerto 8000) para enrutar al generador de imágenes
+        if current_service == "gemma" and path.strip("/") in ["v1/images/generations", "images/generations"] and request.method == "POST":
+            is_master = (token == MASTER_KEY)
+            allowed_services = key_doc.get("services", []) if key_doc else []
+            if not is_master and ("image" not in allowed_services):
+                asyncio.create_task(asyncio.to_thread(save_blocked_request_log, client_ip, "image", path, "service_denied:image"))
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Tu clave API no tiene permisos autorizados para el servicio de Generación de Imágenes."
+                )
+            image_backend_port = int(os.getenv("IMAGE_BACKEND_PORT", "18004"))
+            current_target_port = image_backend_port
+            current_service = "image"
+            model_name = os.getenv("IMAGE_MODEL", "stabilityai/sdxl-turbo")
 
         # Interceptar /v1/rag/search o /api/tools/rag-search para búsqueda directa en LanceDB
         if path.strip("/") in ["v1/rag/search", "rag/search", "api/tools/rag-search"] and request.method == "POST":
@@ -1224,7 +1261,9 @@ async def run_servers():
     whisper_port = int(os.getenv("WHISPER_BACKEND_PORT", "18001"))
     tts_port = int(os.getenv("TTS_BACKEND_PORT", "18002"))
     diarization_port = int(os.getenv("DIARIZATION_BACKEND_PORT", "18003"))
+    image_port = int(os.getenv("IMAGE_BACKEND_PORT", "18004"))
     embeddings_port = int(os.getenv("EMBEDDINGS_BACKEND_PORT", "18005"))
+    image_gateway_port = int(os.getenv("IMAGE_GATEWAY_PORT", "8006"))
     
     whisper_fallback_port = int(os.getenv("STT_FALLBACK_PORT", "18011"))
     tts_fallback_port = int(os.getenv("TTS_FALLBACK_PORT", "18012"))
@@ -1234,6 +1273,7 @@ async def run_servers():
     tts_app = create_proxy_app("tts", tts_port, fallback_port=tts_fallback_port)
     diarization_app = create_proxy_app("diarization", diarization_port)
     embeddings_app = create_proxy_app("embeddings", embeddings_port)
+    image_app = create_proxy_app("image", image_port)
     
     # Configurar uvicorn para cada puerto público
     config_gemma = uvicorn.Config(gemma_app, host="0.0.0.0", port=8000, log_level="warning")
@@ -1241,12 +1281,14 @@ async def run_servers():
     config_tts = uvicorn.Config(tts_app, host="0.0.0.0", port=8002, log_level="warning")
     config_diarization = uvicorn.Config(diarization_app, host="0.0.0.0", port=8003, log_level="warning")
     config_embeddings = uvicorn.Config(embeddings_app, host="0.0.0.0", port=8005, log_level="warning")
+    config_image = uvicorn.Config(image_app, host="0.0.0.0", port=image_gateway_port, log_level="warning")
     
     server_gemma = uvicorn.Server(config_gemma)
     server_whisper = uvicorn.Server(config_whisper)
     server_tts = uvicorn.Server(config_tts)
     server_diarization = uvicorn.Server(config_diarization)
     server_embeddings = uvicorn.Server(config_embeddings)
+    server_image = uvicorn.Server(config_image)
     
     print("=" * 60)
     print("🛡️ Iniciando Gateway de Autenticación y Proxy...")
@@ -1255,6 +1297,7 @@ async def run_servers():
     print(f"🟢 F5-TTS Proxy:       8002 -> {tts_port} (Fallback CPU: {tts_fallback_port})")
     print(f"🟢 Diarización Proxy: 8003 -> {diarization_port}")
     print(f"🟢 Embeddings Proxy:  8005 -> {embeddings_port}")
+    print(f"🟢 Imagen Proxy:      {image_gateway_port} -> {image_port}")
     print("=" * 60)
     
     try:
@@ -1265,7 +1308,8 @@ async def run_servers():
             server_whisper.serve(),
             server_tts.serve(),
             server_diarization.serve(),
-            server_embeddings.serve()
+            server_embeddings.serve(),
+            server_image.serve()
         )
     finally:
         await close_http_client()
