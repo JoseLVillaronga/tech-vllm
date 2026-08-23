@@ -307,6 +307,41 @@ El Dashboard incluye una copia local de la biblioteca Tailwind CSS en `static/js
 
 ---
 
+## 📄 Procesamiento de Documentos y OCR: Docling Serve
+
+`docling-serve` es un motor de análisis y extracción de documentos (PDFs, tablas complejas, layout y OCR) de alto rendimiento, optimizado para GPU (~800MB VRAM) y expuesto en el puerto **`5020`**.
+
+### 1. Rol en la Arquitectura y Ecosistema
+
+Docling cumple un **doble propósito estratégico y desacoplado** dentro de la infraestructura:
+
+1. **Motor de Extracción y OCR de Alta Fidelidad para [Teccam PDF](https://github.com/JoseLVillaronga/teccam_pdf):**
+   * Actúa como el backend de procesamiento profundo para la biblioteca de **Teccam PDF** (`DOCLING_IP:5020`).
+   * Convierte documentos escaneados y PDFs técnicos a Markdown preservando tablas, encabezados y jerarquías visuales.
+   * `teccam_pdf` extrae complementariamente las figuras e imágenes reales vía PyMuPDF (en `static/documentos/<doc_id>/`), reemplaza los placeholders `<!-- image -->` de Docling por las rutas locales y persiste el libro normalizado en MongoDB para la lectura interactiva de los usuarios.
+
+2. **Motor de Chunking Semántico para el Pipeline RAG:**
+   * Expone endpoints de segmentación inteligente (`/v1/chunk/hierarchical` y `/v1/chunk/hybrid`).
+   * Es consumido por el proceso de sincronización periódica (2 veces al día) que lee la API RAG de Teccam PDF (`:5022`), trocea los libros sin romper artículos ni tablas, genera vectores con **Qwen3-Embedding** en CPU y los indexa en **LanceDB** (ver detalle en [`ROADMAP_IDEAS.md`](ROADMAP_IDEAS.md#5-embeddings-semánticos-y-rag-qwen3-embedding-06b)).
+
+### 2. Instalación del servicio systemd
+
+```bash
+./install_docling_service.sh
+```
+
+### 3. Comandos de administración
+
+* **Ver logs en tiempo real:** `sudo journalctl -u docling -f`
+* **Ver estado:** `sudo systemctl status docling`
+* **Detener servicio:** `sudo systemctl stop docling`
+* **Reiniciar servicio:** `sudo systemctl restart docling`
+* **Documentación interactiva Swagger:** `http://localhost:5020/docs`
+* **Documentación interactiva Scalar:** `http://localhost:5020/scalar`
+* **Control Web:** Integrado directamente en la cuadrícula de servicios del [Dashboard Web](http://localhost:8004) (`:8004`).
+
+---
+
 ## 🧪 Pruebas con `curl`
 
 ### 1. Probar el Chat (Gemma 4 en Puerto 8000)

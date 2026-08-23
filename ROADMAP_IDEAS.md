@@ -148,30 +148,30 @@ Para evitar que el asistente quede "sordo" o "mudo" mientras la GPU está dedica
   * **Modo ONNX / INT8 (FastEmbed / Optimum):** $\approx \mathbf{800\text{ MB} - 1.2\text{ GB}}$ de RAM.
   * **Modo FP16 (PyTorch / Sentence-Transformers):** $\approx \mathbf{1.5\text{ GB} - 1.8\text{ GB}}$ de RAM.
   * **Modo GGUF Q4 (llama.cpp en CPU):** $\approx \mathbf{500\text{ MB} - 700\text{ MB}}$ de RAM.
-* **Impacto en el Sistema:** Representa menos del **3%** de la memoria RAM disponible.
-* **Latencia de Inferencia en CPU:** Al no ser un modelo generativo autorregresivo (solo realiza un *forward pass* directo sobre el texto), la generación del vector de embedding toma entre **10 ms y 35 ms** por consulta en CPU multinúcleo moderna.
 * **Ventaja Estratégica:** Mantiene el 100% de los 24 GB de la GPU RTX 3090 completamente limpios para el LLM y FLUX.2 Klein.
 
-### 5.5. Sinergia con Teccam PDF (`teccam_pdf`) y Rendimiento en Ryzen 5 (12 Hilos)
+### 5.5. Sinergia con Teccam PDF (`teccam_pdf`), Docling Serve y Rendimiento en Ryzen 5 (12 Hilos)
 
-* **Integración con Teccam PDF:**
-  * `teccam_pdf` extrae documentos PDF y páginas web, los normaliza a Markdown y los almacena en MongoDB junto con sus imágenes.
-  * Con **Qwen3-Embedding-0.6B** en RAM, cada documento de `teccam_pdf` puede ser troceado (*chunking*) y vectorizado automáticamente para permitir **RAG conversacional y búsqueda semántica** desde el LLM sobre toda la biblioteca documental.
+* **Integración con [Teccam PDF](https://github.com/JoseLVillaronga/teccam_pdf):**
+  * `teccam_pdf` extrae documentos PDF y páginas web usando **Docling Serve** (`:5020`) para OCR/layout y **PyMuPDF** para extracción de imágenes reales en `static/documentos/<doc_id>/`, normalizando todo a Markdown con metadatos estructurados en MongoDB.
+  * Expone una API desacoplada en **FastAPI (Puerto `5022`)** que permite consultar el índice de libros accesibles, filtrar por temas/categorías y descargar el Markdown puro para ingesta RAG.
+  * Con **Docling Serve** (`:5020`) actuando como motor de *chunking* jerárquico y **Qwen3-Embedding-0.6B** en RAM/CPU, cada documento se segmenta y vectoriza automáticamente para permitir **RAG conversacional y búsqueda semántica** desde el LLM sobre toda la biblioteca documental.
 
 * **Rendimiento en AMD Ryzen 5 (6 núcleos / 12 hilos):**
   1. **Consulta en tiempo real (Chat / Búsqueda en línea):**
      * Vectorizar una pregunta de usuario (~20–50 tokens) toma **entre 12 ms y 25 ms** en 12 hilos de CPU. Para el usuario es una latencia imperceptible (tiempo real).
   2. **Ingesta y vectorización por lotes (Documentos de Teccam PDF):**
-     * Un PDF técnico de 100 páginas (~250 chunks de texto) se vectoriza en **1.5 a 3.5 segundos** en segundo plano en CPU sin bloquear la interfaz ni consumir VRAM.
+     * Un PDF técnico de 100 páginas (~250 chunks semánticos generados por Docling) se vectoriza en **1.5 a 3.5 segundos** en segundo plano en CPU sin bloquear la interfaz ni consumir VRAM extra.
   3. **Nota sobre precisión en CPU (FP16 vs INT8/ONNX):**
      * Las CPUs Ryzen con soporte AVX2 / AVX-512 ejecutan de forma óptima vectores enteros (`INT8` / `AVX2 VNNI` vía ONNX Runtime / `fastembed`), duplicando la velocidad respecto a coma flotante pura (`FP32`), manteniendo prácticamente un 99.9% de similitud semántica.
 
 ### 5.6. Indexación Diferencial Programada y Base Vectorial Embebida con LanceDB
 
-* **Estrategia de Indexación por Lotes (Cron / Systemd Timer Diario):**
-  * Un script o servicio en segundo plano se ejecuta periódicamente (ej. una vez al día o ante eventos) recorriendo la colección de MongoDB en `teccam_pdf`.
-  * **Sincronización diferencial:** Consulta únicamente documentos nuevos o modificados (marcando una bandera `vector_indexed: true` o comparando `updated_at`).
-  * Trocea los textos en Markdown y genera los embeddings con **Qwen3-Embedding-0.6B** en CPU, persistiendo los vectores en la base vectorial.
+* **Estrategia de Indexación por Lotes (Cron / Systemd Timer - 2 Veces al Día):**
+  * Un proceso en segundo plano se ejecuta periódicamente (2 veces al día) consumiendo la API de **Teccam PDF** (`http://127.0.0.1:5022/v1/libros?desde=...`).
+  * **Sincronización diferencial:** Consulta únicamente documentos nuevos o modificados por fecha.
+  * **Chunking Semántico de Calidad con Docling:** El proceso envía el Markdown puro a `docling-serve` (`http://127.0.0.1:5020/v1/chunk/hierarchical` o `/v1/chunk/hybrid`) para obtener fragmentos semánticos perfectos (que preservan tablas, secciones legales y encabezados sin cortes arbitrarios).
+  * **Vectorización en CPU:** Genera los embeddings con **Qwen3-Embedding-0.6B** en CPU y persiste los vectores con sus metadatos en **LanceDB**.
 
 * **¿Por qué LanceDB como Base de Datos Vectorial?**
   * **Embebida y Serverless:** Se ejecuta directamente en el proceso de Python (`lancedb`) sin requerir contenedores ni servidores externos pesados.
@@ -190,11 +190,21 @@ Para evitar que el asistente quede "sordo" o "mudo" mientras la GPU está dedica
 
 ```
 +-----------------------------------------------------------------------------+
-|                     Teccam PDF + MongoDB (Fuente de Verdad / SSOT)           |
-|  - Almacenamiento maestro de documentos: título, autor, categoría, texto   |
+|               Teccam PDF + MongoDB (Fuente de Verdad / SSOT)                |
+|  - Almacenamiento maestro de libros: título, autor, categoría, texto e imgs |
+|  - Motor de extracción: docling-serve (:5020) + PyMuPDF                     |
+|  - API de Exportación RAG: FastAPI (:5022)                                  |
 +-----------------------------------------------------------------------------+
                                        |
-                                       | (Sync Diario / Desacoplado)
+                                       | (Sync Programado 2x/día - API :5022)
+                                       v
++-----------------------------------------------------------------------------+
+|        Proceso de Sincronización RAG (Desacoplado en Segundo Plano)         |
+|  1. Obtiene Markdown desde Teccam PDF (:5022)                               |
+|  2. Segmenta con docling-serve (:5020 - /v1/chunk/hierarchical)             |
+|  3. Vectoriza con Qwen3-Embedding-0.6B (CPU - 0 VRAM)                       |
++-----------------------------------------------------------------------------+
+                                       |
                                        v
 +-----------------------------------------------------------------------------+
 |               LanceDB (Índice Vectorial Derivado con Metadatos)             |
@@ -210,6 +220,7 @@ Para evitar que el asistente quede "sordo" o "mudo" mientras la GPU está dedica
 
 * **Principio de Diseño:**
   * **MongoDB en `teccam_pdf`:** Actúa como la **fuente de verdad (*Single Source of Truth*)**. Es el repositorio transaccional donde se crean, leen, editan y eliminan documentos completos con sus imágenes.
+  * **Docling Serve (`:5020`):** Cumple doble rol: (1) Extractor profundo inicial para Teccam PDF y (2) Segmentador semántico (*chunker*) para el sincronizador RAG.
   * **LanceDB:** Actúa como una **vista materializada vectorial desacoplada**, optimizada exclusivamente para búsqueda rápida por similitud.
 
 * **Filtrado por Metadatos (*Metadata Filtering* en LanceDB):**
@@ -237,9 +248,9 @@ Para evitar que el asistente quede "sordo" o "mudo" mientras la GPU está dedica
    * Cargar y descargar pesos de 8 GB a través del bus PCIe no solo consume entre 3 y 8 segundos de latencia fría (*cold start*), sino que produce fragmentación de memoria en CUDA y bloqueos perceptibles en el flujo conversacional.
    * **Conclusión:** La generación de imágenes mediante orquestación dinámica es un módulo complementario de alto consumo, no el núcleo del sistema diario.
 
-2. **El riesgo del *Chunking* ingenuo en el RAG sobre Teccam PDF:**
+2. **El riesgo del *Chunking* ingenuo resuelto con Docling Serve:**
    * La división ingenua por tamaño fijo (ej. 500 tokens) destruye el contexto de artículos legales, tablas o fragmentos de código, degradando la calidad de los embeddings y provocando alucinaciones en el LLM.
-   * **Solución requerida:** Implementar *Semantic / Heading-based Chunking* aprovechando las cabeceras (`#`, `##`) y la estructura nativa en Markdown que ya genera `teccam_pdf`.
+   * **Solución adoptada:** Se utiliza la API de segmentación semántica de **Docling Serve** (`/v1/chunk/hierarchical` y `/v1/chunk/hybrid` en `:5020`), aprovechando que ya está residente en memoria y conoce la estructura jerárquica y tabular completa del documento.
 
 ### 6.2. Matriz de Prioridades de Desarrollo Recomendada
 
@@ -248,8 +259,8 @@ Para evitar que el asistente quede "sordo" o "mudo" mientras la GPU está dedica
 |                             ORDEN DE IMPLEMENTACIÓN                           |
 +-------------------------------------------------------------------------------+
 |  1. RESILIENCIA Y FAILOVER  -->  2. BASE DE CONOCIMIENTO  -->  3. IMÁGENES    |
-|     (Fallbacks en CPU /           (RAG LanceDB + MongoDB /         (FLUX.2    |
-|      Circuit Breakers)             Ryzen 5 + 40GB RAM)              vLLM-Omni)|
+|     (Fallbacks en CPU /           (RAG LanceDB + Teccam /          (FLUX.2    |
+|      Circuit Breakers)             Docling + Ryzen 5)               vLLM-Omni)|
 |     * Dificultad: Baja            * Dificultad: Media              * Dif: Alta|
 |     * Impacto: Estabilidad        * Impacto: Inteligencia real     * Imp: Lujo|
 +-------------------------------------------------------------------------------+
@@ -262,13 +273,13 @@ Para evitar que el asistente quede "sordo" o "mudo" mientras la GPU está dedica
   * Integrar conmutación automática (*Circuit Breaker*) en `app_gateway.py`.
 * **Resultado:** El asistente nunca se queda mudo ni sordo; base sólida para cualquier experimento posterior.
 
-#### 🥈 Fase 2: Conocimiento Real (Puente Teccam PDF $\rightarrow$ LanceDB $\rightarrow$ LLM)
+#### 🥈 Fase 2: Conocimiento Real (Puente Teccam PDF $\rightarrow$ Docling Chunking $\rightarrow$ LanceDB $\rightarrow$ LLM)
 * **Objetivo:** Explotar los 40 GB de RAM libres y los 12 hilos del Ryzen 5 para dotar al LLM de memoria documental privada.
 * **Acciones:**
-  * Script de sincronización diferencial contra MongoDB (`teccam_pdf`).
-  * *Chunking* semántico por estructura Markdown.
-  * Ingesta vectorial en LanceDB mediante Qwen3-Embedding-0.6B en CPU.
-  * Inyección contextual en el Gateway / LLM.
+  * Proceso de sincronización diferencial programado (2 veces al día) consumiendo la API FastAPI de `teccam_pdf` (`:5022`).
+  * *Chunking* jerárquico/híbrido mediante la API de `docling-serve` (`:5020`).
+  * Ingesta vectorial en LanceDB mediante Qwen3-Embedding-0.6B en CPU (0 MB VRAM).
+  * Inyección contextual en el Gateway / LLM con filtros de metadatos SQL.
 * **Resultado:** Búsqueda y citas precisas con latencias menores a 20 ms con 0 MB de VRAM ocupados.
 
 #### 🥉 Fase 3: Multimodalidad Avanzada (FLUX.2 Klein 4B con vLLM-Omni)

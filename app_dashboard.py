@@ -66,7 +66,8 @@ SERVICES = {
     "whisper": "vllm-whisper",
     "tts": "vllm-tts",
     "diarization": "vllm-diarization",
-    "gateway": "vllm-gateway"
+    "gateway": "vllm-gateway",
+    "docling": "docling"
 }
 
 # Puertos locales de cada servicio
@@ -75,7 +76,8 @@ SERVICE_PORTS = {
     "whisper": 8001,
     "tts": 8002,
     "diarization": 8003,
-    "gateway": "8000-8003"
+    "gateway": "8000-8003",
+    "docling": 5020
 }
 
 # Puertos internos de los motores reales detrás del Gateway
