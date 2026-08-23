@@ -605,6 +605,14 @@ def create_proxy_app(service_name: str, target_port: int, fallback_port: Optiona
                                         "owned_by": "local-web-search"
                                     })
                                 
+                                # Exponer modelo virtual local/gemma-4-rag (Base de Conocimiento LanceDB)
+                                combined_models.append({
+                                    "id": "local/gemma-4-rag",
+                                    "object": "model",
+                                    "created": int(time.time()),
+                                    "owned_by": "local-rag-lancedb"
+                                })
+                                
                                 # Si tiene permiso de embeddings, exponer también el modelo de embeddings
                                 if is_master or ("embeddings" in allowed_services):
                                     combined_models.append({
@@ -778,6 +786,12 @@ def create_proxy_app(service_name: str, target_port: int, fallback_port: Optiona
                     actual_model = "gemma-4-web"
                     base_vllm_model = os.getenv("MODEL", "google/gemma-4-E4B-it").strip('"').strip("'")
                     data["model"] = base_vllm_model
+                elif req_model in ["local/gemma-4-rag", "gemma-4-rag"]:
+                    # Caso Especial: Modelo virtual con Base de Conocimiento RAG LanceDB Integrada
+                    is_cloud_request = False
+                    actual_model = "gemma-4-rag"
+                    base_vllm_model = os.getenv("MODEL", "google/gemma-4-E4B-it").strip('"').strip("'")
+                    data["model"] = base_vllm_model
                 elif req_model.startswith("local/"):
                     # Caso 1: Modelo local con prefijo explícito 'local/'
                     is_cloud_request = False
@@ -835,10 +849,10 @@ def create_proxy_app(service_name: str, target_port: int, fallback_port: Optiona
                                         authorized_candidate = cp
                                         break
                                 
-                                if ("gemma" in allowed_services or is_master) and (req_model in ["gemma-4-reasoning", "gemma-4-web", "google/gemma-4-E4B-it"] or not authorized_candidate):
+                                if ("gemma" in allowed_services or is_master) and (req_model in ["gemma-4-reasoning", "gemma-4-web", "gemma-4-rag", "google/gemma-4-E4B-it"] or not authorized_candidate):
                                     is_cloud_request = False
                                     actual_model = req_model
-                                    if req_model == "gemma-4-web":
+                                    if req_model in ["gemma-4-web", "gemma-4-rag"]:
                                         data["model"] = os.getenv("MODEL", "google/gemma-4-E4B-it").strip('"').strip("'")
                                 elif authorized_candidate:
                                     is_cloud_request = True
@@ -928,6 +942,41 @@ def create_proxy_app(service_name: str, target_port: int, fallback_port: Optiona
                             else:
                                 messages.insert(0, {"role": "system", "content": search_prompt.strip()})
                 
+                # Inyectar contexto de Base de Conocimiento RAG (LanceDB) para el modelo virtual gemma-4-rag
+                if not is_cloud_request and actual_model == "gemma-4-rag" and path.strip("/") == "v1/chat/completions" and "messages" in data:
+                    try:
+                        from rag_engine import search_knowledge_base, format_rag_context_for_llm, get_rag_settings
+                        rag_sett = get_rag_settings()
+                        if rag_sett.get("enabled", True):
+                            messages = data["messages"]
+                            last_user_msg = next((m for m in reversed(messages) if m.get("role") == "user"), None)
+                            user_query = ""
+                            if last_user_msg:
+                                content_val = last_user_msg.get("content", "")
+                                if isinstance(content_val, str):
+                                    user_query = content_val
+                                elif isinstance(content_val, list):
+                                    text_parts = [p.get("text", "") for p in content_val if isinstance(p, dict) and p.get("type") == "text"]
+                                    user_query = " ".join(text_parts)
+                                    
+                            if user_query:
+                                rag_results = search_knowledge_base(query=user_query, top_k=4)
+                                if rag_results:
+                                    rag_context_str = format_rag_context_for_llm(rag_results)
+                                    rag_prompt = (
+                                        f"\n\n[CONTEXTO DE LA BASE DE CONOCIMIENTO DOCUMENTAL (LANCEDB - TECCAM)]:\n"
+                                        f"{rag_context_str}\n"
+                                        f"--------------------------------------------------\n"
+                                        f"Instrucciones: Responde a la pregunta del usuario utilizando de manera prioritaria y rigurosa la información y fuentes proporcionadas arriba. Cita los documentos y secciones de donde proviene la información cuando sea relevante."
+                                    )
+                                    system_msg = next((m for m in messages if m.get("role") == "system"), None)
+                                    if system_msg:
+                                        system_msg["content"] = f"{system_msg.get('content', '')}{rag_prompt}".strip()
+                                    else:
+                                        messages.insert(0, {"role": "system", "content": rag_prompt.strip()})
+                    except Exception as re:
+                        print(f"⚠️ Error en contextualización RAG para gemma-4-rag: {re}", file=sys.stderr, flush=True)
+
                 body = json.dumps(data).encode("utf-8")
             except Exception as json_err:
                 print(f"⚠️ Error al interceptar y parsear JSON en el Gateway: {json_err}", file=sys.stderr, flush=True)

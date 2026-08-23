@@ -497,7 +497,26 @@ graph TD
 * **Ejecutar sincronización manual por terminal:** `/home/jose/vllm/venv/bin/python app_rag_sync.py`
 * **Ver historial de ejecuciones:** Disponible en el Dashboard (`:8004`) o vía MongoDB en `vllm.rag_sync_logs`.
 
-### 4. Ejemplo de Consulta vía API (`/v1/rag/search`)
+### 4. Modelo Virtual con RAG Integrado: `local/gemma-4-rag` (Cero Configuración)
+
+El API Gateway expone automáticamente el modelo virtual **`local/gemma-4-rag`** en `/v1/models`.
+
+* Al seleccionar **`local/gemma-4-rag`** en Open-WebUI o en cualquier cliente OpenAI:
+  1. El Gateway intercepta la consulta del usuario.
+  2. Ejecuta la búsqueda híbrida en LanceDB en ~50ms respetando los dominios de conocimiento activos.
+  3. Inyecta el contexto enriquecido con citas y fuentes en el prompt de Gemma 4.
+  4. Gemma 4 responde de forma fundamentada y rigurosa citando los artículos y libros.
+
+### 5. Integración como Herramienta Nativa en Open-WebUI (*Function Calling*)
+
+Si preferís que Gemma 4 decida autónomamente cuándo invocar el RAG dentro de Open-WebUI:
+
+1. Ve a **Workspace > Tools** (Área de Trabajo > Herramientas) en Open-WebUI y haz clic en **"+" (Crear Herramienta)**.
+2. Copia y pega el código de [`tools/openwebui_rag_tool.py`](tools/openwebui_rag_tool.py).
+3. Guarda la herramienta con el nombre **`Búsqueda RAG Teccam (LanceDB)`**.
+4. Ve a **Workspace > Models**, edita tu modelo `google/gemma-4-E4B-it` y activa el interruptor de la herramienta.
+
+### 6. Ejemplo de Consulta Directa vía API (`/v1/rag/search`)
 
 ```bash
 curl -X POST http://localhost:8000/v1/rag/search \
@@ -505,6 +524,7 @@ curl -X POST http://localhost:8000/v1/rag/search \
   -H "Content-Type: application/json" \
   -d '{
     "query": "Cuáles son los objetivos del procedimiento de soporte en puestos de trabajo de Teccam",
+    "temas": ["Procedimientos Teccam"],
     "top_k": 3
   }'
 ```
