@@ -281,16 +281,52 @@ Para evitar que el asistente quede "sordo" o "mudo" mientras la GPU está dedica
   * Integración completa en el Dashboard Web (`:8004`).
 * **Resultado:** El asistente nunca se queda mudo ni sordo; base sólida y resiliente 24/7.
 
-#### 🥈 Fase 2: Conocimiento Real (Puente Teccam PDF $\rightarrow$ Docling Chunking $\rightarrow$ LanceDB $\rightarrow$ LLM)
+#### 🥈 Fase 2: Conocimiento Real (Puente Teccam PDF $\rightarrow$ Docling Chunking $\rightarrow$ LanceDB $\rightarrow$ LLM) - [✅ COMPLETADA]
 * **Objetivo:** Explotar los 40 GB de RAM libres y los 12 hilos del Ryzen 5 para dotar al LLM de memoria documental privada.
-* **Acciones:**
-  * Proceso de sincronización diferencial programado (2 veces al día) consumiendo la API FastAPI de `teccam_pdf` (`:5022`).
-  * *Chunking* jerárquico/híbrido mediante la API de `docling-serve` (`:5020`).
-  * Ingesta vectorial en LanceDB mediante Qwen3-Embedding-0.6B en CPU (0 MB VRAM).
-  * Inyección contextual en el Gateway / LLM con filtros de metadatos SQL.
-* **Resultado:** Búsqueda y citas precisas con latencias menores a 20 ms con 0 MB de VRAM ocupados.
+* **Acciones Implementadas:**
+  * Proceso de sincronización diferencial programado (2 veces al día a las 00:00 y 12:00) consumiendo la API FastAPI de `teccam_pdf` (`:5022`).
+  * Ingesta vectorial y búsqueda híbrida (Dense 1024D Qwen3 + Sparse BM25) en LanceDB.
+  * Multiselección y filtrado por dominios de conocimiento (`Derecho Argentino`, `Procedimientos Teccam`, `Estrategia`, `Filosofía`).
+  * Interruptor maestro de activación/desactivación del RAG en Dashboard y Gateway.
+  * Exposición del modelo virtual `local/gemma-4-rag` en `/v1/models` y herramienta nativa para Open-WebUI (`tools/openwebui_rag_tool.py`).
+* **Resultado:** Búsqueda y citas exactas con latencias de ~50ms y fundamentación rigurosa en el LLM.
 
 #### 🥉 Fase 3: Multimodalidad Avanzada (FLUX.2 Klein 4B con vLLM-Omni)
 * **Objetivo:** Incorporar generación y edición de imagen bajo demanda.
 * **Acciones:** Integrar el servicio en puerto backend 18004 / proxy 8004 y orquestación desde el Dashboard.
 * **Justificación de su orden:** Al estar ya operativas las Fases 1 y 2, el apagado/encendido de servicios GPU o el consumo de VRAM no romperá jamás la estabilidad del asistente ni la base de conocimiento.
+
+---
+
+## 7. Análisis de Topología Dual-GPU (2 x RTX 3090 = 48 GB VRAM)
+
+### 7.1. ¿Por qué evitar Tensor Parallelism (TP) sin puente NVLink físico?
+* **El cuello de botella del bus PCIe en placas de consumo:** El paralelismo de tensores (*Tensor Parallelism / TP=2*) requiere sincronización matemática masiva (`AllReduce`) entre las dos GPUs en cada capa de atención de cada token generado.
+* Sin un puente físico **NVLink de 3 o 4 ranuras** (que provee 112 GB/s bidireccionales directos), la comunicación está forzada a circular por las líneas PCIe de la placa madre (frecuentemente degradadas a PCIe 4.0 x8/x8 al instalar dos GPUs de consumo).
+* **Veredicto:** Intentar correr modelos gigantescos (70B+) divididos en 2x RTX 3090 sin NVLink genera una penalización severa de latencia y caída drástica de tokens/segundo.
+
+### 7.2. La Estrategia Óptima: Aislamiento Completo por Microservicio (*Process Sharding*)
+La verdadera ventaja de incorporar una segunda RTX 3090 en esta arquitectura no es forzar un modelo gigante, sino **eliminar la necesidad de alternar perfiles o apagar servicios satélites**:
+
+```
++---------------------------------------------------------------------------------------------------+
+|                           TOPOLOGÍA DUAL-GPU DESACOPLADA (2 x RTX 3090)                            |
++---------------------------------------------------------------------------------------------------+
+|  GPU 0 (24 GB) -> DEDICADA 100% AL LLM PRINCIPAL (CUDA_VISIBLE_DEVICES=0)                         |
+|  * Modelos probados y optimizados: Gemma 4-E4B-it, Gemma 4 26B, Qwen3-Coder 30B (FP8 / NVFP4).     |
+|  * Ancho de banda de memoria dedicado (936 GB/s) sin tráfico inter-GPU.                           |
+|  * Capacidad para 128K tokens de ventana de contexto sin restricciones de KV Cache.               |
++---------------------------------------------------------------------------------------------------+
+|  GPU 1 (24 GB) -> DEDICADA AL ECOSISTEMA MULTIMODAL Y SATÉLITE (CUDA_VISIBLE_DEVICES=1)          |
+|  * Qwen3-Embedding (RAG en CUDA):            ~3.5 GB                                              |
+|  * Whisper Large-v3 (Transcripción GPU):      ~3.0 GB                                              |
+|  * F5-TTS (Clonación de Voz GPU):             ~2.5 GB                                              |
+|  * PyAnnote (Diarización de Hablantes):       ~0.8 GB                                              |
+|  * Docling OCR (Extracción de Documentos):    ~0.8 GB                                              |
+|  * FLUX.2 Klein 4B (Generación de Imágenes):  ~8.0 GB                                              |
+|                                                                                                   |
+|  Total en GPU 1: ~18.6 GB / 24 GB (¡Todo en caliente simultáneamente y con latencia cero!)        |
++---------------------------------------------------------------------------------------------------+
+```
+
+* **Cero tráfico entre GPUs por PCIe:** La interacción entre el LLM (`GPU 0`) y los satélites (`GPU 1`) se realiza exclusivamente a través de peticiones HTTP en loopback (`127.0.0.1`), preservando la máxima velocidad de inferencia en ambas placas.
