@@ -507,6 +507,8 @@ El API Gateway expone automáticamente el modelo virtual **`local/gemma-4-rag`**
   3. Inyecta el contexto enriquecido con citas y fuentes en el prompt de Gemma 4.
   4. Gemma 4 responde de forma fundamentada y rigurosa citando los artículos y libros.
 
+![Respuesta RAG en Open-WebUI con local/gemma-4-rag](screenshots/openwebui_gemma_rag.png)
+
 ### 5. Integración como Herramienta Nativa en Open-WebUI (*Function Calling*)
 
 Si preferís que Gemma 4 decida autónomamente cuándo invocar el RAG dentro de Open-WebUI:
