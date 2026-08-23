@@ -1,0 +1,107 @@
+            <!-- TAB 4: VOCES CLONADAS (CLONING PROFILE MANAGER) -->
+            <div id="tab-voices" class="tab-content hidden flex flex-col gap-6">
+                <div class="glass-panel p-6 rounded-2xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                    <div>
+                        <h2 class="text-xl font-bold text-slate-100 flex items-center gap-2">
+                            <svg class="h-6 w-6 text-cyan-400 animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                            </svg>
+                            Gestor de Voces y Clonación Dinámica
+                        </h2>
+                        <p class="text-xs text-slate-400 mt-1">Crea, edita y activa perfiles de voz para Texto a Voz (F5-TTS). Los cambios surten efecto inmediatamente.</p>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div class="glass-panel p-5 rounded-2xl flex flex-col gap-4">
+                        <h3 class="text-sm font-bold text-slate-200 border-b border-slate-800 pb-2">Crear Nuevo Perfil</h3>
+                        <div class="flex flex-col gap-3">
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-300 mb-1">Nombre del Perfil:</label>
+                                <input id="voice-name" type="text" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500" placeholder="Ej: Mi Voz Natural, Voz de Locutor...">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-300 mb-1">Descripción Corta:</label>
+                                <input id="voice-desc" type="text" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500" placeholder="Ej: Tono rioplatense, voz alegre...">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-300 mb-1">Texto Pronunciado (Referencia):</label>
+                                <textarea id="voice-text" class="w-full bg-slate-900 border border-slate-800 rounded-lg p-3 h-20 text-xs text-slate-200 focus:outline-none focus:border-cyan-500" placeholder="El texto exacto que se dice en el audio..."></textarea>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-300 mb-1">Origen del Audio:</label>
+                                <div class="grid grid-cols-2 gap-2 mt-1">
+                                    <button onclick="toggleAudioInput('record')" id="btn-input-record" class="py-1.5 rounded-lg text-xs font-semibold bg-cyan-600/30 text-cyan-400 border border-cyan-500/30">
+                                        Grabar Micrófono
+                                    </button>
+                                    <button onclick="toggleAudioInput('file')" id="btn-input-file" class="py-1.5 rounded-lg text-xs font-semibold bg-slate-900 text-slate-400 border border-slate-800 hover:bg-slate-800">
+                                        Subir Archivo
+                                    </button>
+                                </div>
+                            </div>
+                            <div id="box-record" class="bg-slate-900/50 border border-slate-800 rounded-xl p-4 flex flex-col items-center justify-center gap-3">
+                                <div class="flex items-center gap-2">
+                                    <span id="record-indicator" class="h-2.5 w-2.5 rounded-full bg-slate-500"></span>
+                                    <span id="record-timer" class="text-xs font-mono text-slate-400">00:00</span>
+                                </div>
+                                <div class="flex gap-3">
+                                    <button onclick="startRecording()" id="btn-start-record" class="h-10 w-10 rounded-full bg-red-600 hover:bg-red-500 flex items-center justify-center text-white transition-all shadow-lg hover:shadow-red-500/20">🎙️</button>
+                                    <button onclick="stopRecording()" id="btn-stop-record" disabled class="h-10 w-10 rounded-full bg-slate-800 text-slate-500 flex items-center justify-center transition-all cursor-not-allowed">⏹️</button>
+                                </div>
+                                <div id="record-preview-box" class="hidden w-full flex flex-col items-center gap-2">
+                                    <span class="text-[10px] text-slate-500">Muestra Grabada</span>
+                                    <audio id="record-audio-player" class="w-full h-8" controls></audio>
+                                </div>
+                            </div>
+                            <div id="box-file" class="hidden bg-slate-900/50 border border-slate-800 rounded-xl p-4 flex flex-col gap-2">
+                                <input type="file" id="voice-file-input" accept="audio/*" class="hidden" onchange="handleVoiceFileChange()">
+                                <label for="voice-file-input" class="w-full h-20 border border-dashed border-slate-800 rounded-lg flex flex-col items-center justify-center gap-2 cursor-pointer hover:border-cyan-500/50 bg-slate-950 transition-all">
+                                    <svg class="h-6 w-6 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
+                                    </svg>
+                                    <span id="voice-file-label" class="text-[10px] font-semibold text-slate-400">Haz clic para subir WAV o MP3</span>
+                                </label>
+                            </div>
+                            <button onclick="saveVoiceProfile()" class="w-full mt-2 py-2 bg-gradient-to-r from-cyan-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 rounded-lg text-sm font-semibold transition-all">
+                                Guardar Perfil de Voz
+                            </button>
+                        </div>
+                    </div>
+                    <div class="glass-panel p-5 rounded-2xl lg:col-span-2 flex flex-col gap-4">
+                        <h3 class="text-sm font-bold text-slate-200 border-b border-slate-800 pb-2">Perfiles Guardados</h3>
+                        <div id="voices-list-container" class="flex flex-col gap-3 max-h-[480px] overflow-y-auto pr-1">
+                            <div class="text-center py-8 text-xs text-slate-500">Cargando perfiles...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- MODAL DE EDICIÓN -->
+            <div id="edit-voice-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm hidden z-50 flex items-center justify-center p-4">
+                <div class="glass-panel max-w-md w-full p-6 rounded-2xl flex flex-col gap-4 shadow-2xl border border-slate-850">
+                    <div class="flex justify-between items-center border-b border-slate-800 pb-2">
+                        <h3 class="text-sm font-bold text-slate-100">Editar Perfil de Voz</h3>
+                        <button onclick="closeEditModal()" class="text-slate-400 hover:text-white text-lg">&times;</button>
+                    </div>
+                    <input type="hidden" id="edit-voice-id">
+                    <div class="flex flex-col gap-3">
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-300 mb-1">Nombre del Perfil:</label>
+                            <input id="edit-voice-name" type="text" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-300 mb-1">Descripción Corta:</label>
+                            <input id="edit-voice-desc" type="text" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-300 mb-1">Texto Pronunciado (Referencia):</label>
+                            <textarea id="edit-voice-text" class="w-full bg-slate-900 border border-slate-800 rounded-lg p-3 h-20 text-xs text-slate-200 focus:outline-none focus:border-cyan-500"></textarea>
+                        </div>
+                        <div class="flex gap-3 justify-end mt-2">
+                            <button onclick="closeEditModal()" class="px-4 py-1.5 bg-slate-900 border border-slate-800 hover:bg-slate-800 rounded-lg text-xs font-semibold text-slate-400 transition-all">Cancelar</button>
+                            <button onclick="updateVoiceProfile()" class="px-4 py-1.5 bg-cyan-600 hover:bg-cyan-500 rounded-lg text-xs font-semibold text-white transition-all">Guardar Cambios</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+

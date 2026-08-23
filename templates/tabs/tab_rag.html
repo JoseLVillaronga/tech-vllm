@@ -1,0 +1,154 @@
+            <!-- TAB 7: BASE DE CONOCIMIENTO RAG & LANCEDB -->
+            <div id="tab-rag" class="tab-content hidden flex flex-col gap-6">
+                <!-- Header y Acción Principal -->
+                <div class="glass-panel p-6 rounded-2xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                    <div>
+                        <h2 class="text-xl font-bold text-slate-100 flex items-center gap-2">
+                            <svg class="h-6 w-6 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                            </svg>
+                            Base de Conocimiento RAG & Base Vectorial LanceDB
+                        </h2>
+                        <p class="text-xs text-slate-400 mt-1">
+                            Sincronizador diferencial conectado a Teccam PDF (<span class="font-mono text-purple-300">http://192.168.1.33:5022</span>) con chunking jerárquico y vectores 1024D (Qwen3).
+                        </p>
+                    </div>
+                    <div class="flex items-center gap-3 flex-wrap">
+                        <button onclick="toggleRagMasterPower()" id="btn-toggle-rag-power" class="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all border bg-emerald-950/60 border-emerald-500/40 text-emerald-300 hover:bg-emerald-900/60" title="Activar o desactivar globalmente el acceso al RAG para el Gateway y LLM">
+                            <span id="badge-rag-power" class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                            <span id="text-rag-power">Servicio RAG: ACTIVO</span>
+                        </button>
+                        <button onclick="triggerRagSync(false)" id="btn-sync-rag" class="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white rounded-xl text-sm font-semibold shadow-lg shadow-purple-900/30 transition-all">
+                            <svg id="icon-sync-rag" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                            </svg>
+                            <span id="text-sync-rag">Sincronizar Base RAG Ahora</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Banner de RAG Desactivado (si aplica) -->
+                <div id="rag-disabled-banner" class="hidden p-4 rounded-2xl bg-amber-950/40 border border-amber-500/40 flex items-center justify-between gap-4">
+                    <div class="flex items-center gap-3">
+                        <span class="text-xl">⏸️</span>
+                        <div>
+                            <div class="text-sm font-bold text-amber-200">El servicio RAG está desactivado globalmente</div>
+                            <div class="text-xs text-amber-300/80">El API Gateway en el puerto 8000 rechazará las consultas al RAG y Gemma 4 responderá sin consultar LanceDB.</div>
+                        </div>
+                    </div>
+                    <button onclick="toggleRagMasterPower(true)" class="px-3.5 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-xs font-bold text-white transition-all shadow-md">
+                        Reactivar RAG
+                    </button>
+                </div>
+
+                <!-- Métricas Clave RAG -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div class="bg-slate-900/60 border border-slate-800/80 p-5 rounded-2xl flex flex-col justify-between">
+                        <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Libros Indexados</div>
+                        <div class="text-3xl font-extrabold text-slate-100 font-mono" id="rag-stat-docs">-</div>
+                        <div class="text-xs text-emerald-400 mt-2 flex items-center gap-1">
+                            <span class="inline-block w-2 h-2 rounded-full bg-emerald-400"></span> Conectado a Teccam PDF
+                        </div>
+                    </div>
+                    <div class="bg-slate-900/60 border border-slate-800/80 p-5 rounded-2xl flex flex-col justify-between">
+                        <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Vectores en LanceDB</div>
+                        <div class="text-3xl font-extrabold text-purple-300 font-mono" id="rag-stat-chunks">-</div>
+                        <div class="text-xs text-slate-400 mt-2">Dimensión 1024D (Qwen3)</div>
+                    </div>
+                    <div class="bg-slate-900/60 border border-slate-800/80 p-5 rounded-2xl flex flex-col justify-between">
+                        <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Temas / Dominios</div>
+                        <div class="text-3xl font-extrabold text-indigo-300 font-mono" id="rag-stat-topics">-</div>
+                        <div class="text-xs text-slate-400 mt-2">Derecho, Estrategia, etc.</div>
+                    </div>
+                    <div class="bg-slate-900/60 border border-slate-800/80 p-5 rounded-2xl flex flex-col justify-between">
+                        <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Última Sincronización</div>
+                        <div class="text-sm font-bold text-slate-200 font-mono" id="rag-stat-last-sync">-</div>
+                        <div class="text-xs text-purple-400 mt-2 font-mono" id="rag-stat-last-duration">-</div>
+                    </div>
+                </div>
+
+                <!-- Selector de Dominios de Conocimiento Activos -->
+                <div class="glass-panel p-6 rounded-2xl flex flex-col gap-4">
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800/60 pb-3">
+                        <div>
+                            <h3 class="text-md font-bold text-slate-100 flex items-center gap-2">
+                                <span>🎯</span> Dominios de Conocimiento Habilitados
+                            </h3>
+                            <p class="text-xs text-slate-400 mt-0.5">
+                                Selecciona uno o varios dominios. Si seleccionas temas específicos, las búsquedas del RAG y de Gemma 4 se restringirán únicamente a ellos.
+                            </p>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <button onclick="toggleAllRagTopics()" id="btn-toggle-all-topics" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-300 transition-all">
+                                Todos los Dominios
+                            </button>
+                            <button onclick="saveGlobalRagTopics()" id="btn-save-topics" class="px-3.5 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-xs font-semibold text-white transition-all shadow-md shadow-purple-950 flex items-center gap-1.5">
+                                <span>💾</span> Guardar como Predeterminado
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="rag-topics-chips-container" class="flex flex-wrap gap-2.5 pt-1">
+                        <div class="text-xs text-slate-500 font-mono py-1">Cargando dominios...</div>
+                    </div>
+                </div>
+
+                <!-- Playground de Búsqueda Vectorial Híbrida -->
+                <div class="glass-panel p-6 rounded-2xl flex flex-col gap-4">
+                    <div class="flex items-center justify-between border-b border-slate-800/60 pb-3">
+                        <h3 class="text-md font-bold text-slate-100 flex items-center gap-2">
+                            <span>🔍</span> Probar Consulta Semántica en LanceDB
+                        </h3>
+                        <span class="text-xs text-purple-300 font-mono bg-purple-950/60 border border-purple-800/50 px-2.5 py-1 rounded-lg">Búsqueda Híbrida (Vector + BM25)</span>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-12 gap-3">
+                        <div class="md:col-span-10">
+                            <input type="text" id="rag-query-input" placeholder="Ej: ¿Cuáles son las funciones del responsable de soporte técnico en Teccam o el artículo 14 bis?" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-purple-500 font-medium" onkeydown="if(event.key === 'Enter') searchRagPlayground()">
+                        </div>
+                        <div class="md:col-span-2">
+                            <button onclick="searchRagPlayground()" id="btn-search-rag" class="w-full py-2.5 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-sm font-semibold transition-all shadow-md shadow-purple-950">
+                                Buscar
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center gap-2 text-xs text-slate-400">
+                        <span class="font-semibold text-slate-300">Filtrando por:</span>
+                        <span id="rag-active-filter-summary" class="font-mono text-purple-300 bg-purple-950/40 border border-purple-800/30 px-2 py-0.5 rounded-lg">Todos los dominios</span>
+                    </div>
+
+                    <div id="rag-results-container" class="hidden flex flex-col gap-3 mt-2">
+                        <div class="flex items-center justify-between text-xs text-slate-400 px-1">
+                            <span id="rag-results-header">Resultados:</span>
+                            <span id="rag-latency-header" class="font-mono text-purple-400"></span>
+                        </div>
+                        <div id="rag-results-list" class="flex flex-col gap-3"></div>
+                    </div>
+                </div>
+
+                <!-- Tabla de Documentos Sincronizados -->
+                <div class="glass-panel p-6 rounded-2xl flex flex-col gap-4">
+                    <h3 class="text-md font-bold text-slate-100 flex items-center gap-2 border-b border-slate-800/60 pb-3">
+                        <span>📚</span> Libros y Documentos Indexados en LanceDB
+                    </h3>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-sm text-slate-300">
+                            <thead class="text-xs uppercase tracking-wider text-slate-400 bg-slate-900/60 border-b border-slate-800">
+                                <tr>
+                                    <th class="px-4 py-3">Título del Documento</th>
+                                    <th class="px-4 py-3">Tema / Dominio</th>
+                                    <th class="px-4 py-3 text-center">Fragmentos (1024D)</th>
+                                    <th class="px-4 py-3 text-center">Estado</th>
+                                    <th class="px-4 py-3 text-right">Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="rag-docs-table-body" class="divide-y divide-slate-800/50">
+                                <tr>
+                                    <td colspan="5" class="px-4 py-6 text-center text-slate-500">Cargando base de conocimiento...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>

@@ -1,0 +1,25 @@
+    <!-- Header -->
+    <header class="glass-panel sticky top-0 z-40 w-full border-b border-slate-800/60 px-6 py-4 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+            <div class="h-10 w-10 rounded-xl bg-gradient-to-tr from-brand to-cyan-400 flex items-center justify-center shadow-lg shadow-brand/20 animate-pulse">
+                <svg class="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                </svg>
+            </div>
+            <div>
+                <h1 class="text-xl font-bold tracking-tight bg-gradient-to-r from-white via-slate-100 to-indigo-300 bg-clip-text text-transparent">vLLM Suite Dashboard</h1>
+                <p class="text-xs text-slate-400">Panel de Control y Orquestación Local de Modelos</p>
+            </div>
+        </div>
+        
+        <!-- Refresh status & Time -->
+        <div class="flex items-center gap-4 text-sm">
+            <span id="last-update" class="text-slate-500 font-mono text-xs">Cargando...</span>
+            <button onclick="refreshData()" class="p-2 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white transition-all flex items-center gap-1.5 border border-slate-700/50">
+                <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 8H18.2" />
+                </svg>
+                Actualizar
+            </button>
+        </div>
+    </header>

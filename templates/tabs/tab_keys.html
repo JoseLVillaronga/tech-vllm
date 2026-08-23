@@ -1,0 +1,461 @@
+            <!-- TAB 5: CLAVES API (API KEYS MANAGER) -->
+            <div id="tab-keys" class="tab-content hidden flex flex-col gap-6">
+                <div class="glass-panel p-6 rounded-2xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                    <div>
+                        <h2 class="text-xl font-bold text-slate-100 flex items-center gap-2">
+                            <svg class="h-6 w-6 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+                            </svg>
+                            Gestor de Claves API Específicas
+                        </h2>
+                        <p class="text-xs text-slate-400 mt-1">Crea claves API limitadas para aplicaciones terceras con restricciones de acceso por servicio y expiración.</p>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <!-- Left: Create Key Form -->
+                    <div class="glass-panel p-5 rounded-2xl flex flex-col gap-4">
+                        <h3 class="text-sm font-bold text-slate-200 border-b border-slate-800 pb-2">Crear Nueva Clave API</h3>
+                        <div class="flex flex-col gap-3">
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-300 mb-1">Nombre de la Clave:</label>
+                                <input id="key-name" type="text" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500" placeholder="Ej: Open-WebUI, Home Assistant...">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-300 mb-1">Descripción:</label>
+                                <input id="key-desc" type="text" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500" placeholder="Ej: Usada para transcripción...">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-300 mb-1">Servicios Locales Autorizados:</label>
+                                <div class="flex flex-col gap-2 mt-1.5 bg-slate-900/50 border border-slate-800 rounded-xl p-3">
+                                    <label class="flex items-center gap-2.5 text-xs text-slate-300 cursor-pointer">
+                                        <input type="checkbox" name="key-services" value="gemma" class="rounded border-slate-800 text-cyan-600 focus:ring-cyan-500 bg-slate-950">
+                                        Gemma LLM & Visión (Puerto 8000)
+                                    </label>
+                                    <label class="flex items-center gap-2.5 text-xs text-slate-300 cursor-pointer">
+                                        <input type="checkbox" name="key-services" value="whisper" class="rounded border-slate-800 text-cyan-600 focus:ring-cyan-500 bg-slate-950">
+                                        Whisper STT (Puerto 8001)
+                                    </label>
+                                    <label class="flex items-center gap-2.5 text-xs text-slate-300 cursor-pointer">
+                                        <input type="checkbox" name="key-services" value="tts" class="rounded border-slate-800 text-cyan-600 focus:ring-cyan-500 bg-slate-950">
+                                        F5-TTS Voice (Puerto 8002)
+                                    </label>
+                                    <label class="flex items-center gap-2.5 text-xs text-slate-300 cursor-pointer">
+                                        <input type="checkbox" name="key-services" value="diarization" class="rounded border-slate-800 text-cyan-600 focus:ring-cyan-500 bg-slate-950">
+                                        Diarización (Puerto 8003)
+                                    </label>
+                                    <label class="flex items-center gap-2.5 text-xs text-slate-300 cursor-pointer">
+                                        <input type="checkbox" name="key-services" value="embeddings" class="rounded border-slate-800 text-cyan-600 focus:ring-cyan-500 bg-slate-950">
+                                        Qwen3 Embeddings (Puerto 8005)
+                                    </label>
+                                    <label class="flex items-center gap-2.5 text-xs text-slate-300 cursor-pointer">
+                                        <input type="checkbox" name="key-services" value="image" class="rounded border-slate-800 text-cyan-600 focus:ring-cyan-500 bg-slate-950">
+                                        Generador de Imágenes (Puerto 8006)
+                                    </label>
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-300 mb-1">Proveedores en la Nube Autorizados:</label>
+                                <div id="key-cloud-providers-container" class="flex flex-col gap-2 mt-1.5 bg-slate-900/50 border border-slate-800 rounded-xl p-3 max-h-72 overflow-y-auto">
+                                    <span class="text-[10px] text-slate-500">Cargando proveedores...</span>
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-300 mb-1">Cupo Máximo de Tokens (Opcional, 0 = Ilimitado):</label>
+                                <input id="key-max-tokens" type="number" min="0" step="1000" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500" placeholder="Ej: 500000 (0 = Sin límite)">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-300 mb-1">Periodo de Renovación de Cupo:</label>
+                                <select id="key-quota-reset" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500">
+                                    <option value="none">Manual / Sin reinicio (Saldo Acumulado)</option>
+                                    <option value="daily">📅 Diario (Se reinicia a las 00:00 hs UTC)</option>
+                                    <option value="monthly">🗓️ Mensual (Se reinicia el día 1 de cada mes)</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-300 mb-1">Fecha de Expiración (Opcional):</label>
+                                <input id="key-expiry" type="date" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500">
+                            </div>
+                            <button onclick="createApiKey()" class="w-full mt-2 py-2 bg-gradient-to-r from-cyan-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 rounded-lg text-sm font-semibold transition-all">
+                                Generar Clave API
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Right: Keys List -->
+                    <div class="glass-panel p-5 rounded-2xl lg:col-span-2 flex flex-col gap-4">
+                        <h3 class="text-sm font-bold text-slate-200 border-b border-slate-800 pb-2">Claves Activas</h3>
+                        <div id="keys-list-container" class="flex flex-col gap-3 max-h-[480px] overflow-y-auto pr-1">
+                            <div class="text-center py-8 text-xs text-slate-500">Cargando claves...</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Divisor / Línea de separación -->
+                <div class="border-t border-slate-800/60 my-4"></div>
+
+                <!-- CONTROL DE ACCESO POR IP -->
+                <div class="glass-panel p-6 rounded-2xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                    <div>
+                        <h2 class="text-xl font-bold text-slate-100 flex items-center gap-2">
+                            <svg class="h-6 w-6 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                            </svg>
+                            Filtro de Seguridad de Red (Whitelist / Blacklist IP)
+                        </h2>
+                        <p class="text-xs text-slate-400 mt-1">
+                            Restringe el acceso al Gateway Proxy basándote en direcciones IP individuales o subredes mediante notación CIDR (ej. <code class="text-indigo-300">192.168.1.0/24</code>). Si la Lista Blanca está vacía, se permite cualquier IP que no esté en la Lista Negra.
+                        </p>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <!-- Left: Create IP Rule Form -->
+                    <div class="glass-panel p-5 rounded-2xl flex flex-col gap-4">
+                        <h3 class="text-sm font-bold text-slate-200 border-b border-slate-800 pb-2">Crear Regla de IP</h3>
+                        <div class="flex flex-col gap-3">
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-300 mb-1">Nombre / Dispositivo:</label>
+                                <input id="ip-rule-name" type="text" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-500" placeholder="Ej: Mi Laptop, Subred Hogar...">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-300 mb-1">IP o Subred (CIDR):</label>
+                                <input id="ip-rule-network" type="text" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-500" placeholder="Ej: 192.168.1.45 o 192.168.0.0/16">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-300 mb-1">Tipo de Acción:</label>
+                                <select id="ip-rule-action" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-500 cursor-pointer">
+                                    <option value="whitelist" selected>Lista Blanca (Autorizar acceso)</option>
+                                    <option value="blacklist">Lista Negra (Bloquear acceso)</option>
+                                </select>
+                            </div>
+                            <div class="flex items-center gap-2 mt-1">
+                                <input type="checkbox" id="ip-rule-active" checked class="rounded border-slate-800 text-emerald-600 focus:ring-emerald-500 bg-slate-950">
+                                <label for="ip-rule-active" class="text-xs text-slate-300 cursor-pointer select-none">Habilitar regla de inmediato</label>
+                            </div>
+                            <button onclick="createIpRule()" class="w-full mt-2 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition-all shadow-lg flex items-center justify-center gap-2">
+                                <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
+                                </svg>
+                                Añadir Regla de IP
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Right: IP Rules List -->
+                    <div class="glass-panel p-5 rounded-2xl lg:col-span-2 flex flex-col gap-4">
+                        <h3 class="text-sm font-bold text-slate-200 border-b border-slate-800 pb-2">Reglas de IP Configuradas</h3>
+                        <div class="overflow-y-auto max-h-[380px] pr-1">
+                            <table class="w-full text-left text-xs border-collapse">
+                                <thead>
+                                    <tr class="border-b border-slate-850 text-slate-400 font-semibold uppercase">
+                                        <th class="py-2.5 px-3">Dispositivo / Nombre</th>
+                                        <th class="py-2.5 px-3">Dirección IP o Rango CIDR</th>
+                                        <th class="py-2.5 px-3">Acción</th>
+                                        <th class="py-2.5 px-3">Estado</th>
+                                        <th class="py-2.5 px-3 text-right">Opciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="ip-rules-list" class="divide-y divide-slate-850 text-slate-300">
+                                    <tr>
+                                        <td colspan="5" class="text-center py-8 text-slate-500">Cargando reglas de IP...</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- PROVEEDORES DE IA EN LA NUBE (OpenAI, OpenRouter, etc.) -->
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
+                    <!-- Registrar Proveedor -->
+                    <div class="glass-panel p-5 rounded-2xl flex flex-col gap-4">
+                        <div class="border-b border-slate-800 pb-2 flex justify-between items-center">
+                            <h3 class="text-sm font-bold text-slate-200" id="cloud-form-title">Registrar Proveedor en la Nube</h3>
+                            <button id="btn-cancel-cloud-edit" onclick="cancelCloudEdit()" class="hidden text-xs text-rose-450 hover:text-rose-400 transition-colors">Cancelar</button>
+                        </div>
+                        <input type="hidden" id="cloud-provider-id" value="">
+                        
+                        <div class="flex flex-col gap-3">
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-400 mb-1">Nombre del Proveedor</label>
+                                <input type="text" id="cloud-provider-name" placeholder="Ej: OpenRouter o DeepSeek" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500">
+                            </div>
+                            
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-400 mb-1">URL Base de la API</label>
+                                <input type="text" id="cloud-provider-url" placeholder="Ej: https://openrouter.ai/api/v1" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500 font-mono">
+                            </div>
+                            
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-400 mb-1">Clave API (Bearer Token)</label>
+                                <input type="password" id="cloud-provider-key" placeholder="Pegar token del proveedor..." class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500 font-mono">
+                            </div>
+                            
+                            <div class="flex items-center gap-2 py-1">
+                                <input type="checkbox" id="cloud-provider-active" checked class="rounded border-slate-800 bg-slate-950 text-cyan-600 focus:ring-cyan-500 focus:ring-offset-slate-900">
+                                <label for="cloud-provider-active" class="text-xs text-slate-350 select-none">Habilitar proveedor de inmediato</label>
+                            </div>
+                            
+                            <button onclick="saveCloudProvider()" id="btn-save-cloud" class="w-full mt-2 py-2 bg-cyan-600 hover:bg-cyan-500 text-slate-950 font-bold rounded-xl text-xs transition-all shadow-lg flex items-center justify-center gap-1.5">
+                                <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
+                                </svg>
+                                <span id="btn-save-cloud-text">Añadir Proveedor</span>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Proveedores Registrados -->
+                    <div class="lg:col-span-2 glass-panel p-5 rounded-2xl flex flex-col gap-4">
+                        <div class="border-b border-slate-800 pb-2">
+                            <h3 class="text-sm font-bold text-slate-200">Proveedores en la Nube Configurados</h3>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left text-xs border-collapse">
+                                <thead>
+                                    <tr class="border-b border-slate-850 text-slate-400 font-semibold uppercase">
+                                        <th class="py-2.5 px-3">Proveedor</th>
+                                        <th class="py-2.5 px-3">URL Base</th>
+                                        <th class="py-2.5 px-3">Clave API</th>
+                                        <th class="py-2.5 px-3">Estado</th>
+                                        <th class="py-2.5 px-3 text-right">Opciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="cloud-providers-list" class="divide-y divide-slate-850 text-slate-300">
+                                    <tr>
+                                        <td colspan="5" class="text-center py-8 text-slate-500">Cargando proveedores en la nube...</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Historial de Intentos de Acceso Bloqueados (Firewall IP) -->
+                <div class="glass-panel p-5 rounded-2xl flex flex-col gap-4 mt-6">
+                    <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                        <h3 class="text-sm font-bold text-slate-200">Historial y Auditoría de Intentos Bloqueados (Filtro IP)</h3>
+                        <div class="flex gap-2">
+                            <button onclick="exportBlockedRequests()" class="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 rounded-lg text-xs font-semibold text-white transition-all flex items-center gap-1.5 shadow-md">
+                                <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                                </svg>
+                                Exportar a Excel
+                            </button>
+                            <button onclick="loadBlockedRequests(1)" class="px-3 py-1 bg-slate-900 border border-slate-800 hover:bg-slate-800 rounded-lg text-xs font-semibold text-slate-400 transition-all flex items-center gap-1.5">
+                                <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 8H18.5" />
+                                </svg>
+                                Recargar
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Filtros de Búsqueda Avanzados -->
+                    <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3 bg-slate-900/10 p-4 border border-slate-800/40 rounded-xl">
+                        <div>
+                            <label class="block text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">Fecha Inicio</label>
+                            <input type="date" id="sec-filter-start" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">Fecha Fin</label>
+                            <input type="date" id="sec-filter-end" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">Dirección IP</label>
+                            <input type="text" id="sec-filter-ip" placeholder="Ej: 172.18..." class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">Servicio</label>
+                            <select id="sec-filter-service" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500">
+                                <option value="">Todos</option>
+                                <option value="gemma">Gemma (LLM)</option>
+                                <option value="whisper">Whisper (ASR)</option>
+                                <option value="tts">F5-TTS (Voz)</option>
+                                <option value="diarization">Diarización (PyAnnote)</option>
+                                <option value="embeddings">Embeddings (Qwen3)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">Motivo / Filtro</label>
+                            <select id="sec-filter-reason" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500">
+                                <option value="">Todos</option>
+                                <option value="whitelist">Lista Blanca</option>
+                                <option value="blacklist">Lista Negra</option>
+                                <option value="api_key">Clave API Error</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-5 gap-3">
+                        <div class="md:col-span-4">
+                            <input type="text" id="sec-filter-endpoint" placeholder="Buscar por ruta / endpoint (ej: /v1/chat/completions)..." class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 font-mono">
+                        </div>
+                        <div class="flex gap-2">
+                            <button onclick="loadBlockedRequests(1)" class="flex-1 py-2 bg-indigo-650 hover:bg-indigo-600 text-white rounded-lg text-xs font-semibold transition-all">Filtrar</button>
+                            <button onclick="clearBlockedFilters()" class="py-2 px-3 bg-slate-900 border border-slate-800 hover:bg-slate-800 rounded-lg text-xs font-semibold text-slate-400 transition-all">Limpiar</button>
+                        </div>
+                    </div>
+
+                    <!-- Tabla de Resultados -->
+                    <div class="overflow-y-auto max-h-[350px] pr-1 border border-slate-800/40 rounded-xl bg-slate-950/20">
+                        <table class="w-full text-left text-xs border-collapse">
+                            <thead>
+                                <tr class="border-b border-slate-850 bg-slate-900/10 text-slate-400 font-semibold uppercase">
+                                    <th class="py-2.5 px-3">Fecha y Hora (Local)</th>
+                                    <th class="py-2.5 px-3">Dirección IP</th>
+                                    <th class="py-2.5 px-3">Servicio</th>
+                                    <th class="py-2.5 px-3">Ruta (Endpoint)</th>
+                                    <th class="py-2.5 px-3">Motivo / Filtro</th>
+                                </tr>
+                            </thead>
+                            <tbody id="blocked-requests-list" class="divide-y divide-slate-850 text-slate-300">
+                                <tr>
+                                    <td colspan="5" class="text-center py-6 text-slate-500">No hay intentos bloqueados registrados en el período seleccionado.</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Footer de Paginación -->
+                    <div class="flex items-center justify-between border-t border-slate-800/60 pt-4 text-xs">
+                        <div class="text-slate-400 font-mono" id="blocked-pagination-info">
+                            Mostrando 0-0 de 0 registros
+                        </div>
+                        <div class="flex gap-1" id="blocked-pagination-buttons">
+                            <!-- Botones de paginación -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- MODAL DE EDICIÓN DE CLAVE -->
+            <div id="edit-key-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm hidden z-50 flex items-center justify-center p-4 overflow-y-auto">
+                <div class="glass-panel max-w-lg w-full max-h-[90vh] rounded-2xl flex flex-col shadow-2xl border border-slate-850 overflow-hidden my-auto">
+                    <!-- Header Fijo -->
+                    <div class="flex justify-between items-center border-b border-slate-800 p-4 pb-3 shrink-0">
+                        <h3 class="text-sm font-bold text-slate-100 flex items-center gap-2">
+                            <span>🔑</span> Editar Clave API
+                        </h3>
+                        <button type="button" onclick="closeEditKeyModal()" class="text-slate-400 hover:text-white text-lg p-1">&times;</button>
+                    </div>
+                    <input type="hidden" id="edit-key-id">
+                    
+                    <!-- Cuerpo Desplazable (Scrollable) -->
+                    <div class="flex-1 overflow-y-auto p-5 flex flex-col gap-3.5">
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-300 mb-1">Nombre de la Clave:</label>
+                            <input id="edit-key-name" type="text" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-300 mb-1">Descripción:</label>
+                            <input id="edit-key-desc" type="text" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-300 mb-1">Servicios Locales Autorizados:</label>
+                            <div class="flex flex-col gap-2 mt-1.5 bg-slate-900/50 border border-slate-800 rounded-xl p-3">
+                                <label class="flex items-center gap-2.5 text-xs text-slate-300 cursor-pointer">
+                                    <input type="checkbox" id="edit-key-service-gemma" class="rounded border-slate-800 text-cyan-600 focus:ring-cyan-500 bg-slate-950">
+                                    Gemma LLM & Visión (Puerto 8000)
+                                </label>
+                                <label class="flex items-center gap-2.5 text-xs text-slate-300 cursor-pointer">
+                                    <input type="checkbox" id="edit-key-service-whisper" class="rounded border-slate-800 text-cyan-600 focus:ring-cyan-500 bg-slate-950">
+                                    Whisper STT (Puerto 8001)
+                                </label>
+                                <label class="flex items-center gap-2.5 text-xs text-slate-300 cursor-pointer">
+                                    <input type="checkbox" id="edit-key-service-tts" class="rounded border-slate-800 text-cyan-600 focus:ring-cyan-500 bg-slate-950">
+                                    F5-TTS Voice (Puerto 8002)
+                                </label>
+                                <label class="flex items-center gap-2.5 text-xs text-slate-300 cursor-pointer">
+                                    <input type="checkbox" id="edit-key-service-diarization" class="rounded border-slate-800 text-cyan-600 focus:ring-cyan-500 bg-slate-950">
+                                    Diarización (Puerto 8003)
+                                </label>
+                                <label class="flex items-center gap-2.5 text-xs text-slate-300 cursor-pointer">
+                                    <input type="checkbox" id="edit-key-service-embeddings" class="rounded border-slate-800 text-cyan-600 focus:ring-cyan-500 bg-slate-950">
+                                    Qwen3 Embeddings (Puerto 8005)
+                                </label>
+                                <label class="flex items-center gap-2.5 text-xs text-slate-300 cursor-pointer">
+                                    <input type="checkbox" id="edit-key-service-image" class="rounded border-slate-800 text-cyan-600 focus:ring-cyan-500 bg-slate-950">
+                                    Generador de Imágenes (Puerto 8006)
+                                </label>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-300 mb-1">Proveedores en la Nube Autorizados:</label>
+                            <div id="edit-key-cloud-providers-container" class="flex flex-col gap-2 mt-1.5 bg-slate-900/50 border border-slate-800 rounded-xl p-3 max-h-64 overflow-y-auto">
+                                <span class="text-[10px] text-slate-500">Cargando proveedores...</span>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-300 mb-1">Cupo Máximo de Tokens (0 = Ilimitado):</label>
+                            <input id="edit-key-max-tokens" type="number" min="0" step="1000" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500" placeholder="Ej: 500000 (0 = Sin límite)">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-300 mb-1">Periodo de Renovación de Cupo:</label>
+                            <select id="edit-key-quota-reset" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500">
+                                <option value="none">Manual / Sin reinicio (Saldo Acumulado)</option>
+                                <option value="daily">📅 Diario (Se reinicia a las 00:00 hs UTC)</option>
+                                <option value="monthly">🗓️ Mensual (Se reinicia el día 1 de cada mes)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-300 mb-1">Fecha de Expiración (Opcional):</label>
+                            <input id="edit-key-expiry" type="date" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-300 mb-1">Estado de Actividad:</label>
+                            <select id="edit-key-active" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-cyan-500">
+                                <option value="true">Activa (Habilitada)</option>
+                                <option value="false">Desactivada (Suspendida)</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <!-- Footer Fijo de Acciones -->
+                    <div class="flex gap-3 justify-end items-center border-t border-slate-800 p-4 bg-slate-950/80 shrink-0">
+                        <button type="button" onclick="closeEditKeyModal()" class="px-4 py-2 bg-slate-900 border border-slate-800 hover:bg-slate-800 rounded-lg text-xs font-semibold text-slate-300 hover:text-white transition-all">Cancelar</button>
+                        <button type="button" onclick="updateApiKey()" class="px-4 py-2 bg-gradient-to-r from-cyan-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 rounded-lg text-xs font-semibold text-white shadow-lg shadow-cyan-900/30 transition-all">Guardar Cambios</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- MODAL DE EDICIÓN DE REGLA DE IP -->
+            <div id="edit-ip-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm hidden z-50 flex items-center justify-center p-4">
+                <div class="glass-panel max-w-md w-full p-6 rounded-2xl flex flex-col gap-4 shadow-2xl border border-slate-850">
+                    <div class="flex justify-between items-center border-b border-slate-800 pb-2">
+                        <h3 class="text-sm font-bold text-slate-100">Editar Regla de IP</h3>
+                        <button onclick="closeEditIpModal()" class="text-slate-400 hover:text-white text-lg">&times;</button>
+                    </div>
+                    <input type="hidden" id="edit-ip-id">
+                    <div class="flex flex-col gap-3">
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-300 mb-1">Nombre / Dispositivo:</label>
+                            <input id="edit-ip-name" type="text" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-500">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-300 mb-1">IP o Subred (CIDR):</label>
+                            <input id="edit-ip-network" type="text" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-500">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-300 mb-1">Tipo de Acción:</label>
+                            <select id="edit-ip-action" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-500">
+                                <option value="whitelist">Lista Blanca (Autorizar acceso)</option>
+                                <option value="blacklist">Lista Negra (Bloquear acceso)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-300 mb-1">Estado de la Regla:</label>
+                            <select id="edit-ip-active" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-500">
+                                <option value="true">Habilitada (Activa)</option>
+                                <option value="false">Desactivada (Inactiva)</option>
+                            </select>
+                        </div>
+                        <div class="flex gap-3 justify-end mt-2">
+                            <button onclick="closeEditIpModal()" class="px-4 py-1.5 bg-slate-900 border border-slate-800 hover:bg-slate-800 rounded-lg text-xs font-semibold text-slate-400 transition-all">Cancelar</button>
+                            <button onclick="updateIpRule()" class="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 rounded-lg text-xs font-semibold text-white transition-all">Guardar Cambios</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
