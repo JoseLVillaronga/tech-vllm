@@ -612,15 +612,107 @@ curl -X POST http://localhost:8000/v1/chat/completions \
 * **Consulta de Manual Interno (Procedimiento General de Soporte en Puestos Teccam):**
 ![Respuesta RAG en Open-WebUI para Procedimientos Teccam](screenshots/openwebui_gemma_rag_teccam.png)
 
-### 5. Integración como Herramienta Nativa en Open-WebUI (*Function Calling*)
+### 5. Integración como Herramienta Nativa en Open-WebUI (*Function Calling / Tool Calling*)
 
-Si preferís que Gemma 4 decida autónomamente cuándo invocar el RAG dentro de Open-WebUI:
+Permite que tanto los modelos locales (Gemma 4) como los modelos de proveedores en la nube (DeepSeek, Claude, GPT, etc.) consulten autónomamente la base de conocimiento vectorial en LanceDB cuando la conversación lo requiera.
 
-1. Ve a **Workspace > Tools** (Área de Trabajo > Herramientas) en Open-WebUI y haz clic en **"+" (Crear Herramienta)**.
-2. Copia y pega el código de [`tools/openwebui_rag_tool.py`](tools/openwebui_rag_tool.py).
-3. Configura tu clave API en las *Valves* o reemplaza `TU_CLAVE_API_VLLM_AQUI`.
-4. Guarda la herramienta con el nombre **`Búsqueda RAG Teccam (LanceDB)`**.
-5. Ve a **Workspace > Models**, edita tu modelo `google/gemma-4-E4B-it` y activa el interruptor de la herramienta.
+#### A. Pasos de Instalación en Open-WebUI:
+1. Ve a **Workspace (Espacio de Trabajo) ➔ Herramientas (Tools)** y haz clic en el botón **`+` (Crear Herramienta)**.
+2. Copia y pega el código Python de la herramienta presentado a continuación (también disponible en [`tools/openwebui_rag_tool.py`](tools/openwebui_rag_tool.py)).
+3. Haz clic en **Guardar**.
+4. Haz clic en el ícono de engranaje ⚙️ de la herramienta (**Valves / Válvulas**) y define:
+   * **`GATEWAY_URL`**: `http://192.168.1.47:8000/v1/rag/search` (utiliza la IP del host si Open-WebUI corre dentro de Docker).
+   * **`API_KEY`**: Tu clave API maestra o una clave secundaria creada en el Dashboard con permiso de acceso.
+   * **`DEFAULT_TOP_K`**: `4` (número de fragmentos de contexto a recuperar).
+5. Ve a **Workspace ➔ Modelos**, edita el modelo deseado (ej: `google/gemma-4-E4B-it`, `deepseek/deepseek-v4...`, etc.) y activa el interruptor de la herramienta **`Búsqueda RAG Teccam (LanceDB)`**.
+
+#### B. Código de la Herramienta (*Custom Tool*):
+
+```python
+"""
+title: Búsqueda RAG Teccam (LanceDB)
+author: Jose Luis Villaronga
+description: Consulta la base de conocimiento documental de Teccam indexada en LanceDB con vectores 1024D (Qwen3) y BM25 híbrido.
+required_open_webui_version: 0.3.0
+requirements: requests, pydantic
+version: 1.0.0
+"""
+
+import os
+import requests
+from typing import Optional, List
+from pydantic import BaseModel, Field
+
+
+class Tools:
+    class Valves(BaseModel):
+        GATEWAY_URL: str = Field(
+            default="http://192.168.1.47:8000/v1/rag/search",
+            description="URL del endpoint de búsqueda RAG en el Gateway de la suite vLLM (usar 192.168.1.47 si corre en Docker)."
+        )
+        API_KEY: str = Field(
+            default="TU_CLAVE_API_VLLM_AQUI",
+            description="Clave API autorizada para consultar el servicio RAG."
+        )
+        DEFAULT_TOP_K: int = Field(
+            default=4,
+            description="Cantidad máxima de fragmentos relevantes a recuperar por búsqueda."
+        )
+
+    def __init__(self):
+        self.valves = self.Valves()
+
+    def buscar_en_base_de_conocimiento(
+        self,
+        consulta: str = Field(
+            ...,
+            description="Pregunta o términos de búsqueda específicos para consultar en los libros y procedimientos (ej: 'artículo 14 bis constitución', 'funciones del responsable de soporte en Teccam', 'patrón de reingeniería código espagueti')."
+        ),
+        dominios: Optional[List[str]] = Field(
+            None,
+            description="Opcional: Lista de temas a filtrar. Opciones: ['Derecho Argentino', 'Procedimientos Teccam', 'Estrategia', 'Filosofía']. Dejar vacío para buscar en toda la base."
+        )
+    ) -> str:
+        """
+        Consulta la base de datos documental y jurídica de Teccam en LanceDB.
+        Utiliza esta herramienta siempre que el usuario haga preguntas sobre leyes argentinas, artículos de la Constitución, Código Civil, procedimientos internos de Teccam, arquitectura de software o filosofía.
+        """
+        headers = {
+            "Authorization": f"Bearer {self.valves.API_KEY}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "query": consulta,
+            "temas": dominios if dominios else None,
+            "top_k": self.valves.DEFAULT_TOP_K
+        }
+
+        try:
+            response = requests.post(
+                self.valves.GATEWAY_URL,
+                json=payload,
+                headers=headers,
+                timeout=12.0
+            )
+
+            if response.status_code == 503:
+                return "Aviso: El servicio de Base de Conocimiento RAG está temporalmente desactivado globalmente."
+
+            if response.status_code != 200:
+                return f"Error en la consulta RAG (HTTP {response.status_code}): {response.text}"
+
+            data = response.json()
+            context = data.get("context", "")
+            results_count = data.get("results_count", 0)
+
+            if not context or results_count == 0:
+                return f"No se encontraron fragmentos relevantes en la base de conocimiento para la consulta: '{consulta}'."
+
+            return f"--- CONTEXTO RECUPERADO DE LA BASE DE CONOCIMIENTO LANCEDB ({results_count} fragmentos) ---\n\n{context}\n\n--- FIN DEL CONTEXTO RECUPERADO ---"
+
+        except Exception as e:
+            return f"Error de conexión con el motor RAG local ({self.valves.GATEWAY_URL}): {str(e)}"
+```
 
 ### 6. Ejemplo de Consulta Directa de Búsqueda Vectorial (`/v1/rag/search`)
 
