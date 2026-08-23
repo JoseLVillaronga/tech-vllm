@@ -142,7 +142,7 @@ def get_key_doc(token: str):
     if token == MASTER_KEY:
         return {
             "name": "Master Key",
-            "services": ["gemma", "whisper", "tts", "diarization"],
+            "services": ["gemma", "whisper", "tts", "diarization", "embeddings"],
             "allowed_providers": ["*"],
             "is_active": True
         }
@@ -426,6 +426,9 @@ def create_proxy_app(service_name: str, target_port: int, fallback_port: Optiona
     
     @app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD", "PATCH"])
     async def proxy(request: Request, path: str, background_tasks: BackgroundTasks):
+        current_service = service_name
+        current_target_port = target_port
+        
         # 1. Validar reglas de IP antes de cualquier otra comprobación
         # Extraer IP real detrás de proxies (Caddy, Nginx, etc.)
         client_ip = request.headers.get("x-real-ip")
@@ -440,7 +443,7 @@ def create_proxy_app(service_name: str, target_port: int, fallback_port: Optiona
             
             # Comprobar Lista Negra (Blacklist)
             if any(client_ip_obj in net for net in cached_blacklist):
-                asyncio.create_task(asyncio.to_thread(save_blocked_request_log, client_ip, service_name, path, "blacklist"))
+                asyncio.create_task(asyncio.to_thread(save_blocked_request_log, client_ip, current_service, path, "blacklist"))
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail=f"Acceso denegado: Dirección IP ({client_ip}) bloqueada por lista negra."
@@ -449,7 +452,7 @@ def create_proxy_app(service_name: str, target_port: int, fallback_port: Optiona
             # Comprobar Lista Blanca (Whitelist)
             if cached_whitelist:
                 if not any(client_ip_obj in net for net in cached_whitelist):
-                    asyncio.create_task(asyncio.to_thread(save_blocked_request_log, client_ip, service_name, path, "whitelist"))
+                    asyncio.create_task(asyncio.to_thread(save_blocked_request_log, client_ip, current_service, path, "whitelist"))
                     raise HTTPException(
                         status_code=status.HTTP_403_FORBIDDEN,
                         detail=f"Acceso denegado: Dirección IP ({client_ip}) no autorizada en lista blanca."
@@ -474,7 +477,7 @@ def create_proxy_app(service_name: str, target_port: int, fallback_port: Optiona
         if not token:
             # Registrar intento de autenticación fallido
             await register_failed_attempt(client_ip)
-            asyncio.create_task(asyncio.to_thread(save_blocked_request_log, client_ip, service_name, path, "api_key"))
+            asyncio.create_task(asyncio.to_thread(save_blocked_request_log, client_ip, current_service, path, "api_key"))
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="API Key faltante. Debe proporcionarse en la cabecera 'Authorization: Bearer <key>'"
@@ -482,10 +485,10 @@ def create_proxy_app(service_name: str, target_port: int, fallback_port: Optiona
             
         # Validar token
         key_doc = get_key_doc(token)
-        if not validate_token_doc(key_doc, service_name):
+        if not validate_token_doc(key_doc, current_service):
             # Registrar intento de autenticación fallido
             await register_failed_attempt(client_ip)
-            asyncio.create_task(asyncio.to_thread(save_blocked_request_log, client_ip, service_name, path, "api_key"))
+            asyncio.create_task(asyncio.to_thread(save_blocked_request_log, client_ip, current_service, path, "api_key"))
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="API Key inválida, desactivada, expirada o sin permisos para este servicio."
@@ -496,14 +499,14 @@ def create_proxy_app(service_name: str, target_port: int, fallback_port: Optiona
             max_tokens = int(key_doc.get("max_tokens") or 0)
             used_tokens = int(key_doc.get("used_tokens") or 0)
             if max_tokens > 0 and used_tokens >= max_tokens:
-                asyncio.create_task(asyncio.to_thread(save_blocked_request_log, client_ip, service_name, path, f"token_quota_exceeded:{used_tokens}/{max_tokens}"))
+                asyncio.create_task(asyncio.to_thread(save_blocked_request_log, client_ip, current_service, path, f"token_quota_exceeded:{used_tokens}/{max_tokens}"))
                 raise HTTPException(
                     status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                     detail=f"Cupo de tokens agotado para esta clave API ({used_tokens:,} / {max_tokens:,} consumidos). Contacta al administrador para renovar o reiniciar tu cupo."
                 )
             
         # Interceptar endpoint de Tool de Búsqueda Web (Ollama Cloud)
-        if service_name == "gemma" and path.strip("/") in ["api/tools/web-search", "v1/tools/web_search", "v1/tools/web-search"] and request.method == "POST":
+        if current_service == "gemma" and path.strip("/") in ["api/tools/web-search", "v1/tools/web_search", "v1/tools/web-search"] and request.method == "POST":
             try:
                 import json
                 tool_body = await request.body()
@@ -563,7 +566,7 @@ def create_proxy_app(service_name: str, target_port: int, fallback_port: Optiona
                 )
             
         # Interceptar /v1/models en gemma proxy para combinar locales y en la nube según permisos granulares
-        if service_name == "gemma" and path.strip("/") == "v1/models" and request.method == "GET":
+        if current_service == "gemma" and path.strip("/") == "v1/models" and request.method == "GET":
             try:
                 import json
                 import time
@@ -578,7 +581,7 @@ def create_proxy_app(service_name: str, target_port: int, fallback_port: Optiona
                     try:
                         async with httpx.AsyncClient(timeout=3.0) as temp_cli:
                             headers_local = {"Authorization": f"Bearer {MASTER_KEY}"}
-                            resp_local = await temp_cli.get(f"http://127.0.0.1:{target_port}/v1/models", headers=headers_local)
+                            resp_local = await temp_cli.get(f"http://127.0.0.1:{current_target_port}/v1/models", headers=headers_local)
                             if resp_local.status_code == 200:
                                 local_data = resp_local.json().get("data", [])
                                 for lm in local_data:
@@ -600,6 +603,21 @@ def create_proxy_app(service_name: str, target_port: int, fallback_port: Optiona
                                         "object": "model",
                                         "created": int(time.time()),
                                         "owned_by": "local-web-search"
+                                    })
+                                
+                                # Si tiene permiso de embeddings, exponer también el modelo de embeddings
+                                if is_master or ("embeddings" in allowed_services):
+                                    combined_models.append({
+                                        "id": "Qwen/Qwen3-Embedding-0.6B",
+                                        "object": "model",
+                                        "created": int(time.time()),
+                                        "owned_by": "local-embeddings"
+                                    })
+                                    combined_models.append({
+                                        "id": "text-embedding-3-small",
+                                        "object": "model",
+                                        "created": int(time.time()),
+                                        "owned_by": "openai-alias"
                                     })
                     except Exception as le:
                         print(f"⚠️ Gateway: Error obteniendo modelos locales: {le}", file=sys.stderr, flush=True)
@@ -671,20 +689,37 @@ def create_proxy_app(service_name: str, target_port: int, fallback_port: Optiona
         
         # Inicializar variables de telemetría
         start_time = datetime.utcnow()
-        model_name = service_name
-        if service_name == "whisper":
+        model_name = current_service
+        if current_service == "whisper":
             model_name = "openai/whisper-large-v3-turbo"
-        elif service_name == "tts":
+        elif current_service == "tts":
             model_name = "SWivid/F5-TTS"
-        elif service_name == "diarization":
+        elif current_service == "diarization":
             model_name = "pyannote/speaker-diarization-3.1"
+        elif current_service == "embeddings":
+            model_name = "Qwen/Qwen3-Embedding-0.6B"
             
+        # Interceptar /v1/embeddings en gemma proxy (puerto 8000) para enrutar a Qwen3-Embedding en RAM
+        if current_service == "gemma" and path.strip("/") in ["v1/embeddings", "embeddings"] and request.method == "POST":
+            is_master = (token == MASTER_KEY)
+            allowed_services = key_doc.get("services", []) if key_doc else []
+            if not is_master and ("embeddings" not in allowed_services):
+                asyncio.create_task(asyncio.to_thread(save_blocked_request_log, client_ip, "embeddings", path, "service_denied:embeddings"))
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Tu clave API no tiene permisos autorizados para el servicio de Embeddings."
+                )
+            embeddings_backend_port = int(os.getenv("EMBEDDINGS_BACKEND_PORT", "18005"))
+            current_target_port = embeddings_backend_port
+            current_service = "embeddings"
+            model_name = "Qwen/Qwen3-Embedding-0.6B"
+
         # Determinar si es una petición a un modelo en la nube o local
         is_cloud_request = False
         cloud_provider = None
         matched_cloud = False
         
-        if service_name == "gemma" and body:
+        if current_service == "gemma" and body:
             try:
                 import json
                 data = json.loads(body)
@@ -857,7 +892,7 @@ def create_proxy_app(service_name: str, target_port: int, fallback_port: Optiona
                 print(f"⚠️ Error al interceptar y parsear JSON en el Gateway: {json_err}", file=sys.stderr, flush=True)
 
         # Validación granular de permisos por modelo/proveedor en el servicio Gemma
-        if service_name == "gemma":
+        if current_service == "gemma":
             is_master = (token == MASTER_KEY)
             if is_cloud_request and cloud_provider:
                 provider_id = cloud_provider.get("provider_id", "")
@@ -873,7 +908,7 @@ def create_proxy_app(service_name: str, target_port: int, fallback_port: Optiona
                     or matched_cloud
                 )
                 if not is_authorized:
-                    asyncio.create_task(asyncio.to_thread(save_blocked_request_log, client_ip, service_name, path, f"cloud_provider_denied:{provider_name}"))
+                    asyncio.create_task(asyncio.to_thread(save_blocked_request_log, client_ip, current_service, path, f"cloud_provider_denied:{provider_name}"))
                     raise HTTPException(
                         status_code=status.HTTP_403_FORBIDDEN,
                         detail=f"Acceso denegado: Esta clave API no tiene permisos para acceder al proveedor en la nube '{provider_name}'."
@@ -881,7 +916,7 @@ def create_proxy_app(service_name: str, target_port: int, fallback_port: Optiona
             elif not is_cloud_request and path.strip("/") != "v1/models":
                 allowed_services = key_doc.get("services", []) if key_doc else []
                 if not is_master and ("gemma" not in allowed_services):
-                    asyncio.create_task(asyncio.to_thread(save_blocked_request_log, client_ip, service_name, path, "local_gemma_denied"))
+                    asyncio.create_task(asyncio.to_thread(save_blocked_request_log, client_ip, current_service, path, "local_gemma_denied"))
                     raise HTTPException(
                         status_code=status.HTTP_403_FORBIDDEN,
                         detail="Acceso denegado: Esta clave API no tiene permisos para acceder al modelo local Gemma."
@@ -898,8 +933,8 @@ def create_proxy_app(service_name: str, target_port: int, fallback_port: Optiona
             headers["host"] = parsed_url.netloc
             headers["authorization"] = f"Bearer {cloud_provider['api_key']}"
         else:
-            target_url = f"http://127.0.0.1:{target_port}/{path}"
-            headers["host"] = f"127.0.0.1:{target_port}"
+            target_url = f"http://127.0.0.1:{current_target_port}/{path}"
+            headers["host"] = f"127.0.0.1:{current_target_port}"
             headers["authorization"] = f"Bearer {MASTER_KEY}"
 
         client = get_http_client()
@@ -930,7 +965,7 @@ def create_proxy_app(service_name: str, target_port: int, fallback_port: Optiona
                     fallback_url = f"http://127.0.0.1:{fallback_port}/{path}"
                     fallback_headers = dict(headers)
                     fallback_headers["host"] = f"127.0.0.1:{fallback_port}"
-                    print(f"⚠️ [Gateway Failover] Backend principal ({service_name} :{target_port}) no disponible ({primary_err}). Reenviando transparentemente a Fallback CPU (:{fallback_port})...", flush=True)
+                    print(f"⚠️ [Gateway Failover] Backend principal ({current_service} :{current_target_port}) no disponible ({primary_err}). Reenviando transparentemente a Fallback CPU (:{fallback_port})...", flush=True)
                     req_fb = client.build_request(
                         method=request.method,
                         url=fallback_url,
@@ -969,7 +1004,7 @@ def create_proxy_app(service_name: str, target_port: int, fallback_port: Optiona
                             non_stream_body += chunk
                         
                         # Extraer tokens del stream en caliente si es Gemma y la petición fue exitosa
-                        if service_name == "gemma" and resp.status_code == 200 and is_streaming:
+                        if current_service == "gemma" and resp.status_code == 200 and is_streaming:
                             try:
                                 chunk_str = chunk.decode("utf-8", errors="ignore")
                                 for line in chunk_str.split("\n"):
@@ -1000,7 +1035,7 @@ def create_proxy_app(service_name: str, target_port: int, fallback_port: Optiona
                             yield buffer[:-10]
                             buffer = buffer[-10:]
                 except asyncio.CancelledError:
-                    print(f"🔌 Cliente cerró la conexión para {service_name} prematuramente.")
+                    print(f"🔌 Cliente cerró la conexión para {current_service} prematuramente.")
                 finally:
                     if buffer:
                         if b"<turn|>" in buffer:
@@ -1025,7 +1060,7 @@ def create_proxy_app(service_name: str, target_port: int, fallback_port: Optiona
                         completion_tokens = 0
                         audio_duration_sec = 0.0
                         
-                        if service_name == "gemma":
+                        if current_service == "gemma":
                             if usage_data:
                                 prompt_tokens = usage_data.get("prompt_tokens", 0)
                                 completion_tokens = usage_data.get("completion_tokens", 0)
@@ -1045,11 +1080,11 @@ def create_proxy_app(service_name: str, target_port: int, fallback_port: Optiona
                                         completion_tokens = 1
                                 except Exception:
                                     pass
-                        elif service_name == "tts":
+                        elif current_service == "tts":
                             # PCM 24kHz Mono = 48,000 bytes por segundo de audio (descontando cabecera de 44 bytes)
                             if total_bytes_yielded > 44:
                                 audio_duration_sec = (total_bytes_yielded - 44) / 48000.0
-                        elif service_name in ("whisper", "diarization"):
+                        elif current_service in ("whisper", "diarization"):
                             # Estimación sobre el cuerpo del archivo (WAV 16kHz mono = 32,000 bytes/segundo)
                             if body:
                                 audio_duration_sec = len(body) / 32000.0
@@ -1059,7 +1094,7 @@ def create_proxy_app(service_name: str, target_port: int, fallback_port: Optiona
                             save_usage_log,
                             client_ip,
                             token,
-                            service_name,
+                            current_service,
                             path,
                             model_name,
                             prompt_tokens,
@@ -1077,7 +1112,7 @@ def create_proxy_app(service_name: str, target_port: int, fallback_port: Optiona
         except Exception as e:
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=f"Error al conectar con el motor de inferencia local ({service_name}): {str(e)}"
+                detail=f"Error al conectar con el motor de inferencia local ({current_service}): {str(e)}"
             )
             
     return app

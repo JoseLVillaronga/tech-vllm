@@ -766,6 +766,10 @@
                                         <input type="checkbox" name="key-services" value="diarization" class="rounded border-slate-800 text-cyan-600 focus:ring-cyan-500 bg-slate-950">
                                         Diarización (Puerto 8003)
                                     </label>
+                                    <label class="flex items-center gap-2.5 text-xs text-slate-300 cursor-pointer">
+                                        <input type="checkbox" name="key-services" value="embeddings" class="rounded border-slate-800 text-cyan-600 focus:ring-cyan-500 bg-slate-950">
+                                        Qwen3 Embeddings (Puerto 8005)
+                                    </label>
                                 </div>
                             </div>
                             <div>
@@ -988,6 +992,7 @@
                                 <option value="whisper">Whisper (ASR)</option>
                                 <option value="tts">F5-TTS (Voz)</option>
                                 <option value="diarization">Diarización (PyAnnote)</option>
+                                <option value="embeddings">Embeddings (Qwen3)</option>
                             </select>
                         </div>
                         <div>
@@ -1083,6 +1088,10 @@
                                 <label class="flex items-center gap-2.5 text-xs text-slate-300 cursor-pointer">
                                     <input type="checkbox" id="edit-key-service-diarization" class="rounded border-slate-800 text-cyan-600 focus:ring-cyan-500 bg-slate-950">
                                     Diarización (Puerto 8003)
+                                </label>
+                                <label class="flex items-center gap-2.5 text-xs text-slate-300 cursor-pointer">
+                                    <input type="checkbox" id="edit-key-service-embeddings" class="rounded border-slate-800 text-cyan-600 focus:ring-cyan-500 bg-slate-950">
+                                    Qwen3 Embeddings (Puerto 8005)
                                 </label>
                             </div>
                         </div>
@@ -2187,7 +2196,8 @@
                         'gemma': { name: 'LLM Local', color: 'bg-indigo-500/10 text-indigo-400' },
                         'whisper': { name: 'STT', color: 'bg-cyan-500/10 text-cyan-400' },
                         'tts': { name: 'TTS', color: 'bg-emerald-500/10 text-emerald-400' },
-                        'diarization': { name: 'DIAR', color: 'bg-amber-500/10 text-amber-400' }
+                        'diarization': { name: 'DIAR', color: 'bg-amber-500/10 text-amber-400' },
+                        'embeddings': { name: 'EMBEDDINGS', color: 'bg-purple-500/10 text-purple-400' }
                     };
                     (k.services || []).forEach(s => {
                         const info = svcMap[s] || { name: s, color: 'bg-slate-500/10 text-slate-400' };
@@ -2408,6 +2418,7 @@
             document.getElementById('edit-key-service-whisper').checked = services.includes('whisper');
             document.getElementById('edit-key-service-tts').checked = services.includes('tts');
             document.getElementById('edit-key-service-diarization').checked = services.includes('diarization');
+            document.getElementById('edit-key-service-embeddings').checked = services.includes('embeddings');
             
             // Consultar modelos existentes asignados a esta clave API
             let keyModelsByProv = {};
@@ -2448,6 +2459,7 @@
             if (document.getElementById('edit-key-service-whisper').checked) services.push('whisper');
             if (document.getElementById('edit-key-service-tts').checked) services.push('tts');
             if (document.getElementById('edit-key-service-diarization').checked) services.push('diarization');
+            if (document.getElementById('edit-key-service-embeddings').checked) services.push('embeddings');
 
             const allowed_providers = [];
             const allowed_models = {};
