@@ -346,6 +346,32 @@ curl -X POST http://localhost:8005/v1/embeddings \
   -d '{"input": "Prueba de generación de embedding vectorial con Qwen3 en RAM"}'
 ```
 
+### 6. Integración con Open-WebUI (RAG y Documentos en Español)
+
+Para que Open-WebUI utilice este motor de embeddings de alta resolución al procesar documentos (PDFs, textos, webs) en lugar del modelo básico por defecto o de enviar los documentos a la nube de OpenAI:
+
+1. Ve a **Panel de Administración > Ajustes > Documentos** (*Admin Panel > Settings > Documents*).
+2. En la sección **Motor de Embeddings (*Embedding Engine*)**, selecciona: **`OpenAI`**.
+3. Configura los siguientes campos:
+   * **URL Base de la API:** `http://localhost:8005/v1` *(o `http://host.docker.internal:8005/v1` si corres Open-WebUI dentro de Docker)*.
+   * **Clave de la API (*API Key*):** Tu clave configurada en el archivo `.env` (`tu_clave_api_aqui`).
+   * **Modelo de Embedding (*Embedding Model*):** `Qwen/Qwen3-Embedding-0.6B`.
+   * **Batch Size:** `32` o `64`.
+4. Haz clic en **Guardar**.
+
+#### 📊 Comparativa de Rendimiento RAG: Por Defecto vs Qwen3-Embedding
+
+| Criterio | Motor por Defecto en Open-WebUI (`all-MiniLM-L6-v2`) | Nuestro Servidor (`Qwen3-Embedding-0.6B`) |
+| :--- | :--- | :--- |
+| **Dimensión Vectorial** | 384 dimensiones (baja densidad semántica) | **1024 dimensiones (alta fidelidad semántica)** |
+| **Calidad en Español y Multilingüe** | Pobre / Regular (entrenado casi exclusivamente en inglés) | **Estado del Arte (SOTA nativo multilingüe)** |
+| **Comprensión de Textos Técnicos y Legales** | Tiende a perder matices y cláusulas críticas | **Preserva relaciones complejas, tablas y jerarquías** |
+| **Contexto de Entrada Soportado** | 256 - 512 tokens | **Hasta 8.192 tokens de contexto** |
+| **Privacidad y Costos** | Local (pero débil) o Nube OpenAI (\$ de pago) | **100% Local, Privado, Gratuito y 0 VRAM** |
+| **Sinergia del Ecosistema** | Fragmentado solo dentro de Open-WebUI | **Espacio vectorial unificado para Teccam PDF, LanceDB y WebUI** |
+
+> **💡 Impacto en la Práctica:** Al subir el mismo documento PDF en Open-WebUI, la búsqueda semántica con Qwen3 recupera los fragmentos exactos y relevantes del texto en español con mucha mayor precisión, reduciendo drásticamente las alucinaciones del LLM al responder preguntas sobre documentos.
+
 ---
 
 ## 🖥️ Dashboard Web de Administración: vLLM-Dashboard

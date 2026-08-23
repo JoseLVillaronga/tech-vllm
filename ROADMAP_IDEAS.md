@@ -234,9 +234,9 @@ Para evitar que el asistente quede "sordo" o "mudo" mientras la GPU está dedica
     ```
   * **Aislamiento de Dominios:** Evita que términos legales se mezclen o confundan con literatura, ciencia ficción o manuales de código.
 
-* **Control de Dominio en el Gateway:**
-  * **Manual:** El usuario puede seleccionar en la interfaz qué base de conocimiento activar (ej. selector de categoría: *"Solo Derecho Argentino"* o *"Todos"*).
-  * **Automático:** El Gateway puede usar Qwen3-Embedding para clasificar la intención del usuario y filtrar automáticamente por la categoría adecuada.
+* **Integración Directa con Open-WebUI RAG:**
+  * Open-WebUI puede apuntar directamente a `http://localhost:8005/v1` como motor de embeddings OpenAI compatible.
+  * Al subir cualquier PDF a Open-WebUI, los chunks se vectorizan con **Qwen3-Embedding-0.6B (1024 dims)** en lugar del modelo estándar en inglés `all-MiniLM` (384 dims), logrando una precisión semántica superadora en español y eliminando alucinaciones al consultar documentos en el chat sin ocupar VRAM.
 
 ---
 
