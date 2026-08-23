@@ -462,6 +462,51 @@
                             </div>
                         </div>
 
+                        <!-- Motor de Embeddings & RAG (Uso Dual: CUDA / CPU) -->
+                        <div class="space-y-4 pt-4 border-t border-slate-800/40">
+                            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-2">
+                                <div>
+                                    <h3 class="text-sm font-bold text-indigo-400 uppercase font-mono tracking-wider flex items-center gap-2">
+                                        <span>🧠</span> Motor de Embeddings Qwen3 & Base RAG
+                                    </h3>
+                                    <p class="text-xs text-slate-400 mt-0.5">Alterna entre inferencia en GPU (CUDA) para máxima velocidad o en RAM (CPU) para liberar 4 GB de VRAM.</p>
+                                </div>
+                                <div class="flex flex-wrap gap-2">
+                                    <button type="button" onclick="selectQuickEmbeddingsMode('cuda', 0, 64)" class="px-3 py-1.5 rounded-lg bg-indigo-950/80 hover:bg-indigo-900 border border-indigo-500/40 text-xs font-semibold text-indigo-200 transition-all flex items-center gap-1 cursor-pointer">
+                                        <span>⚡</span> Modo CUDA (GPU)
+                                    </button>
+                                    <button type="button" onclick="selectQuickEmbeddingsMode('cpu', 6, 16)" class="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-xs font-semibold text-slate-300 transition-all flex items-center gap-1 cursor-pointer">
+                                        <span>🧠</span> Modo RAM (CPU)
+                                    </button>
+                                    <button type="button" onclick="restartEmbeddingsService()" id="btn-restart-embeddings" class="px-3 py-1.5 rounded-lg bg-purple-950/60 hover:bg-purple-900 border border-purple-600/40 text-xs font-semibold text-purple-200 transition-all flex items-center gap-1 cursor-pointer">
+                                        <span>🔄</span> Reiniciar Servicio
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                                <div>
+                                    <label class="block text-xs font-semibold text-slate-300 mb-1">EMBEDDINGS_DEVICE</label>
+                                    <select name="EMBEDDINGS_DEVICE" id="embeddings-device-select" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 font-mono cursor-pointer" onchange="handleEmbeddingsDeviceChange(this.value)">
+                                        <option value="cuda">cuda (GPU - Máxima Velocidad)</option>
+                                        <option value="cpu">cpu (RAM - Ahorro 4GB VRAM)</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-semibold text-slate-300 mb-1">EMBEDDINGS_CPU_THREADS</label>
+                                    <input type="number" name="EMBEDDINGS_CPU_THREADS" id="embeddings-cpu-threads-input" placeholder="0 para CUDA, 6 para CPU" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 font-mono">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-semibold text-slate-300 mb-1">EMBEDDINGS_BATCH_SIZE</label>
+                                    <input type="number" name="EMBEDDINGS_BATCH_SIZE" id="embeddings-batch-size-input" placeholder="64 para CUDA, 16 para CPU" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 font-mono">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-semibold text-slate-300 mb-1">EMBEDDINGS_MODEL</label>
+                                    <input type="text" name="EMBEDDINGS_MODEL" readonly class="w-full bg-slate-950/60 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-400 font-mono cursor-not-allowed">
+                                </div>
+                            </div>
+                        </div>
+
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-slate-800/40">
                             <!-- Bottom Left: Network / Ports -->
                             <div class="space-y-4">
@@ -1666,6 +1711,60 @@
                 }
             } catch (err) {
                 alert(`Error de red: ${err.message}`);
+            }
+        }
+
+        function selectQuickEmbeddingsMode(device, threads, batchSize) {
+            const form = document.getElementById('config-form');
+            if (!form) return;
+            if (form.elements['EMBEDDINGS_DEVICE']) form.elements['EMBEDDINGS_DEVICE'].value = device;
+            if (form.elements['EMBEDDINGS_CPU_THREADS']) form.elements['EMBEDDINGS_CPU_THREADS'].value = threads;
+            if (form.elements['EMBEDDINGS_BATCH_SIZE']) form.elements['EMBEDDINGS_BATCH_SIZE'].value = batchSize;
+        }
+
+        function handleEmbeddingsDeviceChange(device) {
+            const form = document.getElementById('config-form');
+            if (!form) return;
+            if (device === 'cuda') {
+                if (form.elements['EMBEDDINGS_CPU_THREADS']) form.elements['EMBEDDINGS_CPU_THREADS'].value = 0;
+                if (form.elements['EMBEDDINGS_BATCH_SIZE']) form.elements['EMBEDDINGS_BATCH_SIZE'].value = 64;
+            } else if (device === 'cpu') {
+                if (form.elements['EMBEDDINGS_CPU_THREADS']) form.elements['EMBEDDINGS_CPU_THREADS'].value = 6;
+                if (form.elements['EMBEDDINGS_BATCH_SIZE']) form.elements['EMBEDDINGS_BATCH_SIZE'].value = 16;
+            }
+        }
+
+        async function restartEmbeddingsService() {
+            const btn = document.getElementById('btn-restart-embeddings');
+            const originalHtml = btn ? btn.innerHTML : '';
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = '<span>⏳</span> Reiniciando...';
+            }
+            try {
+                const res = await fetch('/api/service/embeddings/restart', { method: 'POST' });
+                const data = await res.json();
+                if (data.success) {
+                    if (btn) btn.innerHTML = '<span>✅</span> ¡Reiniciado!';
+                    setTimeout(() => {
+                        if (btn) {
+                            btn.disabled = false;
+                            btn.innerHTML = originalHtml;
+                        }
+                    }, 2000);
+                } else {
+                    alert("Error al reiniciar embeddings: " + (data.error || "Desconocido"));
+                    if (btn) {
+                        btn.disabled = false;
+                        btn.innerHTML = originalHtml;
+                    }
+                }
+            } catch (err) {
+                alert("Error de conexión: " + err.message);
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = originalHtml;
+                }
             }
         }
 
