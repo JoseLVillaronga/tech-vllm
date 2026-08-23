@@ -77,13 +77,15 @@ Gracias a la arquitectura desacoplada de la suite, los **Fallbacks automáticos 
 ### 3. 🎨 Perfil C: "Multimodalidad y Generación de Imágenes" *(Gemma 4 + FLUX.2 Klein 4B)*
 
 * **Objetivo:** Diálogo multimodal con análisis visual + generación y edición de imágenes mediante modelos de difusión (*vLLM-Omni* en `:18004`).
-* **Distribución de VRAM (~20.5 GB - 22.5 GB):**
-  - **Gemma 4-E4B-it (LLM/Visión):** `~12.5 GB - 13.0 GB`.
-  - **FLUX.2 Klein 4B / SDXL Diffusion:** `~7.5 GB - 8.5 GB`.
-  - **Sistema / Gnome:** `~1.1 GB`.
-* **Ajustes de la Suite:**
-  - `Qwen3-Embedding` operando en CPU (`EMBEDDINGS_DEVICE=cpu`) o RAG desactivado.
-  - Servicios pesados de audio en GPU apagados (`Whisper`, `F5-TTS`, `Diarization` inactivos, usando fallbacks CPU).
+* **Distribución de VRAM (~21.5 GB - 22.8 GB):**
+  - **Gemma 4-E4B-it (LLM/Visión en `:18000`):** `~12.5 GB - 13.0 GB`.
+  - **FLUX.2 Klein 4B / SDXL Diffusion (GPU en `:18004`):** `~7.5 GB - 8.5 GB`.
+  - **Sistema / Gnome / Escritorio:** `~1.3 GB`.
+* **Ajustes Críticos de Apagado para Proteger la VRAM:**
+  - **Docling OCR (`:5020`):** **`INACTIVE`** $\rightarrow$ *Apagar obligatoriamente para liberar los **~884 MB** de VRAM de los modelos de visión de documentos.*
+  - **Qwen3-Embedding (`:18005`):** Operando en RAM/CPU (`EMBEDDINGS_DEVICE=cpu`) o RAG desactivado $\rightarrow$ Libera **~1.5 GB**.
+  - **Audio GPU (`Whisper`, `F5-TTS`, `Diarization`):** **`INACTIVE`** $\rightarrow$ Delegado 100% a los Fallbacks de CPU (`:18011` y `:18012`) con **0 VRAM**.
+  - **Margen de Seguridad:** `~1.5 GB - 2.5 GB libres` para búferes de activación y KV Cache sin riesgo de OOM.
 
 ---
 
@@ -97,19 +99,20 @@ Gracias a la arquitectura desacoplada de la suite, los **Fallbacks automáticos 
   - **Gemma 4-E4B-it (LLM `:8000`):** `~13.2 GB`.
   - **Sistema / Gnome:** `~1.1 GB`.
 * **Ajustes de la Suite:**
-  - `Qwen3-Embedding` operando en CPU (`EMBEDDINGS_DEVICE=cpu`).
+  - `Docling OCR`: **`INACTIVE`** o en demanda.
+  - `Qwen3-Embedding`: Operando en CPU (`EMBEDDINGS_DEVICE=cpu`).
   - Sincronización RAG delegada a CPU para proteger la VRAM de audio.
 
 ---
 
 ### 📋 Cuadro Comparativo de Perfiles Operativos (24 GB VRAM)
 
-| Perfil de Uso | LLM Principal | Embeddings (Qwen3) | RAG Sync Timer | Audio GPU (Whisper/F5/Diar) | Audio Fallback CPU | VRAM Ocupada |
-| :--- | :---: | :---: | :---: | :---: | :---: | :---: |
-| **A: RAG Intensivo** | Gemma 4 (55%) | **CUDA (GPU)** | **Activo (GPU)** | Inactivo | **Activo** | **~18.1 GB** |
-| **B: Asistente Código** | 30B / 26B (90%) | **RAM (CPU)** | *Pausado* | Inactivo | Opcional | **~22.5 GB** |
-| **C: Imagen / Diffusion**| Gemma 4 (50%) + FLUX | **RAM (CPU)** | *Pausado* | Inactivo | **Activo** | **~21.5 GB** |
-| **D: Audio Lab Completo**| Gemma 4 (50%) | **RAM (CPU)** | Activo (CPU) | **Activo (GPU)** | Standby | **~20.5 GB** |
+| Perfil de Uso | LLM Principal | Embeddings (Qwen3) | Docling OCR GPU | RAG Sync Timer | Audio GPU (Whisper/F5/Diar) | Audio Fallback CPU | VRAM Ocupada |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **A: RAG Intensivo** | Gemma 4 (55%) | **CUDA (GPU)** | **Activo (~884MB)** | **Activo (GPU)** | Inactivo | **Activo** | **~18.1 GB** |
+| **B: Asistente Código** | 30B / 26B (90%) | **RAM (CPU)** | Inactivo | *Pausado* | Inactivo | Opcional | **~22.5 GB** |
+| **C: Imagen / Diffusion**| Gemma 4 (50%) + FLUX | **RAM (CPU)** | **Inactivo (Apagado)** | *Pausado* | Inactivo | **Activo** | **~21.8 GB** |
+| **D: Audio Lab Completo**| Gemma 4 (50%) | **RAM (CPU)** | Inactivo | Activo (CPU) | **Activo (GPU)** | Standby | **~20.5 GB** |
 
 > **💡 Conclusión Operativa:** *"Con 24 GB de VRAM no es necesario resignar capacidades, sino elegir conscientemente el modo de trabajo más conveniente para cada momento y orquestar los microservicios en consecuencia."*
 

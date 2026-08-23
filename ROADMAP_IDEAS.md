@@ -35,13 +35,16 @@ Para ejecutar de forma local y simultánea **LLM + STT + TTS + Diarización + Ge
 ### 2.1. Política de Descarga Bajo Demanda
 Cuando se solicite una tarea de generación de imágenes:
 1. Se pausan/descargan temporalmente de GPU los servicios de:
-   * **STT (Whisper Large / Medium en GPU):** Libera ~2 – 3 GB.
-   * **TTS (F5-TTS en GPU):** Libera ~2 – 3 GB.
-   * **Diarización (PyAnnote en GPU):** Libera ~1.5 – 2 GB.
+   * **STT (Whisper Large / Medium en GPU):** Libera ~2 – 3 GB (delegado a fallback CPU).
+   * **TTS (F5-TTS en GPU):** Libera ~2 – 3 GB (delegado a fallback CPU).
+   * **Diarización (PyAnnote en GPU):** Libera ~0.8 – 1.5 GB.
+   * **Docling OCR (GPU en `:5020`):** Libera **~884 MB** (se detiene durante la sesión de generación visual).
+   * **Embeddings (Qwen3 en `:18005`):** Conmuta a RAM/CPU (`EMBEDDINGS_DEVICE=cpu`) liberando **~1.5 GB**.
 2. **Espacio resultante en VRAM:**
-   * **LLM (vLLM en INT4 / INT8 / AWQ / BF16):** ~6 GB – 9 GB.
-   * **FLUX.2 Klein 4B (vLLM-Omni / INT8):** ~7 GB – 8 GB.
-   * **Margen de Activaciones y KV Cache:** ~7 GB – 11 GB libres.
+   * **LLM (Gemma 4-E4B-it en vLLM):** ~12.5 GB – 13.0 GB.
+   * **FLUX.2 Klein 4B (vLLM-Omni / INT8 / FP8):** ~7.5 GB – 8.5 GB.
+   * **Sistema / Entorno Gráfico:** ~1.3 GB.
+   * **Margen de Activaciones y KV Cache:** ~1.5 GB – 2.5 GB libres.
    * **Total:** Ajustado dentro del límite de 24 GB sin riesgo de *Out-Of-Memory* (OOM).
 
 ---
