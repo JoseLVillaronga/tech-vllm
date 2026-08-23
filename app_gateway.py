@@ -722,19 +722,21 @@ def create_proxy_app(service_name: str, target_port: int, fallback_port: Optiona
                 body_data = json.loads(body) if body else {}
                 query = body_data.get("query", "").strip()
                 tema = body_data.get("tema") or None
+                temas = body_data.get("temas") or None
                 top_k = int(body_data.get("top_k", 5))
                 
                 if not query:
                     raise HTTPException(status_code=400, detail="El parámetro 'query' no puede estar vacío.")
                     
                 t_rag_0 = time.time()
-                results = search_knowledge_base(query=query, tema=tema, top_k=top_k)
+                results = search_knowledge_base(query=query, tema=tema, temas=temas, top_k=top_k)
                 dur_rag_ms = round((time.time() - t_rag_0) * 1000, 2)
                 context_str = format_rag_context_for_llm(results)
                 
                 return JSONResponse(content={
                     "query": query,
                     "tema": tema,
+                    "temas": temas,
                     "results_count": len(results),
                     "latency_ms": dur_rag_ms,
                     "context": context_str,

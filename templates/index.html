@@ -1336,6 +1336,32 @@
                     </div>
                 </div>
 
+                <!-- Selector de Dominios de Conocimiento Activos -->
+                <div class="glass-panel p-6 rounded-2xl flex flex-col gap-4">
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800/60 pb-3">
+                        <div>
+                            <h3 class="text-md font-bold text-slate-100 flex items-center gap-2">
+                                <span>🎯</span> Dominios de Conocimiento Habilitados
+                            </h3>
+                            <p class="text-xs text-slate-400 mt-0.5">
+                                Selecciona uno o varios dominios. Si seleccionas temas específicos, las búsquedas del RAG y de Gemma 4 se restringirán únicamente a ellos.
+                            </p>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <button onclick="toggleAllRagTopics()" id="btn-toggle-all-topics" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-300 transition-all">
+                                Todos los Dominios
+                            </button>
+                            <button onclick="saveGlobalRagTopics()" id="btn-save-topics" class="px-3.5 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-xs font-semibold text-white transition-all shadow-md shadow-purple-950 flex items-center gap-1.5">
+                                <span>💾</span> Guardar como Predeterminado
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="rag-topics-chips-container" class="flex flex-wrap gap-2.5 pt-1">
+                        <div class="text-xs text-slate-500 font-mono py-1">Cargando dominios...</div>
+                    </div>
+                </div>
+
                 <!-- Playground de Búsqueda Vectorial Híbrida -->
                 <div class="glass-panel p-6 rounded-2xl flex flex-col gap-4">
                     <div class="flex items-center justify-between border-b border-slate-800/60 pb-3">
@@ -1346,19 +1372,19 @@
                     </div>
 
                     <div class="grid grid-cols-1 md:grid-cols-12 gap-3">
-                        <div class="md:col-span-8">
-                            <input type="text" id="rag-query-input" placeholder="Ej: ¿Cuáles son las funciones del responsable de soporte técnico en Teccam?" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-purple-500 font-medium" onkeydown="if(event.key === 'Enter') searchRagPlayground()">
-                        </div>
-                        <div class="md:col-span-2">
-                            <select id="rag-tema-select" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-sm text-slate-300 focus:outline-none focus:border-purple-500 font-medium">
-                                <option value="">Todos los temas</option>
-                            </select>
+                        <div class="md:col-span-10">
+                            <input type="text" id="rag-query-input" placeholder="Ej: ¿Cuáles son las funciones del responsable de soporte técnico en Teccam o el artículo 14 bis?" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-purple-500 font-medium" onkeydown="if(event.key === 'Enter') searchRagPlayground()">
                         </div>
                         <div class="md:col-span-2">
                             <button onclick="searchRagPlayground()" id="btn-search-rag" class="w-full py-2.5 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-sm font-semibold transition-all shadow-md shadow-purple-950">
                                 Buscar
                             </button>
                         </div>
+                    </div>
+
+                    <div class="flex items-center gap-2 text-xs text-slate-400">
+                        <span class="font-semibold text-slate-300">Filtrando por:</span>
+                        <span id="rag-active-filter-summary" class="font-mono text-purple-300 bg-purple-950/40 border border-purple-800/30 px-2 py-0.5 rounded-lg">Todos los dominios</span>
                     </div>
 
                     <div id="rag-results-container" class="hidden flex flex-col gap-3 mt-2">
@@ -1759,6 +1785,9 @@
         // ==============================================================================
         // Funciones de Base de Conocimiento RAG & LanceDB (Teccam PDF)
         // ==============================================================================
+        let availableRagTopics = [];
+        let selectedRagTopics = []; // Vacío significa TODOS los temas activos
+
         async function loadRagStats() {
             try {
                 const res = await fetch('/api/rag/stats');
@@ -1784,19 +1813,15 @@
                     if (lastDurEl) lastDurEl.innerText = 'Sincronizado';
                 }
                 
-                // Actualizar dropdown de temas
-                const temaSelect = document.getElementById('rag-tema-select');
-                if (temaSelect && data.topics) {
-                    const currentVal = temaSelect.value;
-                    temaSelect.innerHTML = '<option value="">Todos los temas</option>';
-                    data.topics.forEach(t => {
-                        const opt = document.createElement('option');
-                        opt.value = t.name;
-                        opt.innerText = `${t.name} (${t.chunks_count})`;
-                        temaSelect.appendChild(opt);
-                    });
-                    temaSelect.value = currentVal;
+                // Actualizar temas disponibles
+                availableRagTopics = data.topics || [];
+                
+                // Si la base de datos tenía temas activos predeterminados guardados, cargarlos
+                if (data.active_topics && Array.isArray(data.active_topics) && data.active_topics.length > 0) {
+                    selectedRagTopics = [...data.active_topics];
                 }
+                
+                renderRagTopicChips();
                 
                 // Actualizar tabla de documentos
                 const tbody = document.getElementById('rag-docs-table-body');
@@ -1836,6 +1861,126 @@
                 }
             } catch (err) {
                 console.error("Error cargando estadísticas RAG:", err);
+            }
+        }
+
+        function renderRagTopicChips() {
+            const container = document.getElementById('rag-topics-chips-container');
+            const summaryEl = document.getElementById('rag-active-filter-summary');
+            const btnAll = document.getElementById('btn-toggle-all-topics');
+            
+            if (!container) return;
+            
+            if (!availableRagTopics || availableRagTopics.length === 0) {
+                container.innerHTML = '<span class="text-xs text-slate-500">No hay temas registrados aún.</span>';
+                if (summaryEl) summaryEl.innerText = "Sin dominios";
+                return;
+            }
+            
+            const isAllSelected = (selectedRagTopics.length === 0 || selectedRagTopics.length === availableRagTopics.length);
+            
+            if (btnAll) {
+                if (isAllSelected) {
+                    btnAll.className = "px-3 py-1.5 rounded-xl bg-purple-600 text-xs font-bold text-white shadow-sm transition-all";
+                } else {
+                    btnAll.className = "px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-300 transition-all";
+                }
+            }
+            
+            container.innerHTML = availableRagTopics.map(t => {
+                const isSelected = isAllSelected || selectedRagTopics.includes(t.name);
+                const safeName = escapeHtml(t.name);
+                const safeJsName = t.name.replace(/'/g, "\\'");
+                
+                let icon = "📚";
+                if (t.name.toLowerCase().includes("derecho")) icon = "⚖️";
+                else if (t.name.toLowerCase().includes("procedimiento") || t.name.toLowerCase().includes("teccam")) icon = "🛠️";
+                else if (t.name.toLowerCase().includes("estrategia")) icon = "📈";
+                else if (t.name.toLowerCase().includes("filosof")) icon = "💡";
+                
+                let chipClass = isSelected 
+                    ? "bg-purple-950/80 border-purple-500 text-purple-200 shadow-sm shadow-purple-950 font-semibold"
+                    : "bg-slate-900/60 border-slate-800 text-slate-400 opacity-60 hover:opacity-100 hover:border-slate-700";
+                    
+                let checkBadge = isSelected
+                    ? `<span class="w-2 h-2 rounded-full bg-emerald-400 inline-block"></span>`
+                    : `<span class="w-2 h-2 rounded-full bg-slate-600 inline-block"></span>`;
+                
+                return `
+                    <button type="button" onclick="toggleRagTopic('${safeJsName}')" class="flex items-center gap-2 px-3.5 py-2 rounded-xl border text-xs transition-all cursor-pointer ${chipClass}">
+                        ${checkBadge}
+                        <span>${icon} ${safeName}</span>
+                        <span class="font-mono text-[10px] px-1.5 py-0.5 rounded-md bg-slate-950/60 text-purple-300 font-bold">${t.chunks_count}</span>
+                    </button>
+                `;
+            }).join('');
+            
+            if (summaryEl) {
+                if (isAllSelected) {
+                    summaryEl.innerText = "✨ Todos los dominios (" + availableRagTopics.length + ")";
+                } else {
+                    summaryEl.innerText = "🎯 " + selectedRagTopics.join(', ');
+                }
+            }
+        }
+
+        function toggleRagTopic(topicName) {
+            const isAllSelected = (selectedRagTopics.length === 0 || selectedRagTopics.length === availableRagTopics.length);
+            
+            if (isAllSelected) {
+                // Si estaban todos seleccionados y hace clic en uno, aislar ese tema
+                selectedRagTopics = [topicName];
+            } else {
+                if (selectedRagTopics.includes(topicName)) {
+                    selectedRagTopics = selectedRagTopics.filter(t => t !== topicName);
+                    // Si desmarca todos, vuelve a considerar "Todos"
+                    if (selectedRagTopics.length === 0) {
+                        selectedRagTopics = [];
+                    }
+                } else {
+                    selectedRagTopics.push(topicName);
+                    // Si seleccionó todos individualmente, resetear a vacío (todos)
+                    if (selectedRagTopics.length === availableRagTopics.length) {
+                        selectedRagTopics = [];
+                    }
+                }
+            }
+            renderRagTopicChips();
+        }
+
+        function toggleAllRagTopics() {
+            selectedRagTopics = [];
+            renderRagTopicChips();
+        }
+
+        async function saveGlobalRagTopics() {
+            const btn = document.getElementById('btn-save-topics');
+            const originalHtml = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<span>⏳</span> Guardando...';
+            
+            try {
+                const res = await fetch('/api/rag/settings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ active_topics: selectedRagTopics })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    btn.innerHTML = '<span>✅</span> ¡Guardado!';
+                    setTimeout(() => {
+                        btn.disabled = false;
+                        btn.innerHTML = originalHtml;
+                    }, 2000);
+                } else {
+                    alert("Error guardando configuración RAG: " + (data.error || "Desconocido"));
+                    btn.disabled = false;
+                    btn.innerHTML = originalHtml;
+                }
+            } catch (err) {
+                alert("Error de conexión: " + err.message);
+                btn.disabled = false;
+                btn.innerHTML = originalHtml;
             }
         }
 
@@ -1898,7 +2043,6 @@
 
         async function searchRagPlayground() {
             const input = document.getElementById('rag-query-input');
-            const temaSelect = document.getElementById('rag-tema-select');
             const btn = document.getElementById('btn-search-rag');
             const container = document.getElementById('rag-results-container');
             const resultsList = document.getElementById('rag-results-list');
@@ -1916,12 +2060,13 @@
             resultsList.innerHTML = '<div class="p-4 text-center text-xs text-slate-500 animate-pulse font-mono">Buscando vectores más cercanos en LanceDB...</div>';
             
             try {
+                const filterTemas = (selectedRagTopics && selectedRagTopics.length > 0) ? selectedRagTopics : null;
                 const res = await fetch('/api/rag/search', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         query: query,
-                        tema: temaSelect.value || null,
+                        temas: filterTemas,
                         top_k: 4
                     })
                 });
@@ -1930,7 +2075,7 @@
                 if (latencyHeader) latencyHeader.innerText = `Latencia LanceDB: ${data.latency_ms} ms`;
                 
                 if (!data.results || data.results.length === 0) {
-                    resultsList.innerHTML = '<div class="p-4 bg-slate-900/60 rounded-xl text-center text-xs text-slate-400">No se encontraron fragmentos relevantes para esta consulta.</div>';
+                    resultsList.innerHTML = '<div class="p-4 bg-slate-900/60 rounded-xl text-center text-xs text-slate-400">No se encontraron fragmentos relevantes para los dominios seleccionados.</div>';
                 } else {
                     resultsList.innerHTML = data.results.map((r, idx) => {
                         const simPct = Math.round(r.similarity * 100);

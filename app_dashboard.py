@@ -1607,6 +1607,22 @@ def api_rag_sync():
     except Exception as e:
         return jsonify({"error": f"Error al iniciar sincronización: {str(e)}"}), 500
 
+@app.route("/api/rag/settings", methods=["GET", "POST"])
+def api_rag_settings():
+    """Lee o actualiza la configuración global de RAG (dominios/temas activos)."""
+    try:
+        from rag_engine import get_rag_settings, save_rag_settings
+        if request.method == "POST":
+            data = request.get_json() or {}
+            active_topics = data.get("active_topics", [])
+            success = save_rag_settings(active_topics)
+            return jsonify({"success": success, "active_topics": active_topics})
+        else:
+            settings = get_rag_settings()
+            return jsonify(settings)
+    except Exception as e:
+        return jsonify({"error": f"Error en settings RAG: {str(e)}"}), 500
+
 @app.route("/api/rag/search", methods=["POST"])
 def api_rag_search():
     """Ejecuta una búsqueda de prueba en la base vectorial LanceDB."""
@@ -1615,18 +1631,20 @@ def api_rag_search():
         data = request.get_json() or {}
         query = data.get("query", "").strip()
         tema = data.get("tema") or None
+        temas = data.get("temas") or None
         top_k = int(data.get("top_k", 5))
         
         if not query:
             return jsonify({"error": "La consulta 'query' no puede estar vacía"}), 400
             
         t0 = time.time()
-        results = search_knowledge_base(query=query, tema=tema, top_k=top_k)
+        results = search_knowledge_base(query=query, tema=tema, temas=temas, top_k=top_k)
         dur_ms = round((time.time() - t0) * 1000, 2)
         
         return jsonify({
             "query": query,
             "tema": tema,
+            "temas": temas,
             "results_count": len(results),
             "latency_ms": dur_ms,
             "results": results

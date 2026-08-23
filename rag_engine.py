@@ -96,19 +96,59 @@ def generate_embeddings_batch(texts: List[str], batch_size: int = 32, timeout: f
                 
     return all_embeddings
 
+def get_mongo_db():
+    """Obtiene la conexión a MongoDB con autenticación para persistir configuraciones globales de RAG."""
+    from pymongo import MongoClient
+    user = os.getenv("MONGO_USER", "admin")
+    password = os.getenv("MONGO_PASS", "joseMDB365$")
+    host = os.getenv("MONGO_HOST", "127.0.0.1")
+    db_name = os.getenv("MONGO_DB", "vllm")
+    uri = f"mongodb://{user}:{password}@{host}:27017/{db_name}?authSource=admin"
+    client = MongoClient(uri, serverSelectionTimeoutMS=2000)
+    return client[db_name]
+
+def get_rag_settings() -> Dict[str, Any]:
+    """Obtiene la configuración global de RAG (dominios/temas activos seleccionados)."""
+    try:
+        db = get_mongo_db()
+        doc = db.rag_settings.find_one({"_id": "global"})
+        if doc:
+            return {
+                "active_topics": doc.get("active_topics", [])
+            }
+    except Exception:
+        pass
+    return {"active_topics": []}
+
+def save_rag_settings(active_topics: List[str]) -> bool:
+    """Guarda la configuración global de dominios/temas activos en MongoDB."""
+    try:
+        db = get_mongo_db()
+        db.rag_settings.update_one(
+            {"_id": "global"},
+            {"$set": {"active_topics": active_topics, "updated_at": time.time()}},
+            upsert=True
+        )
+        return True
+    except Exception as e:
+        print(f"⚠️ Error guardando configuración RAG en MongoDB: {e}", file=sys.stderr)
+        return False
+
 def search_knowledge_base(
     query: str,
-    tema: Optional[str] = None,
+    tema: Optional[Any] = None,
+    temas: Optional[List[str]] = None,
     documento_id: Optional[str] = None,
     top_k: int = 5,
     min_score: float = 0.25
 ) -> List[Dict[str, Any]]:
     """
-    Ejecuta una búsqueda sobre LanceDB.
+    Ejecuta una búsqueda híbrida (Vectorial 1024D + FTS BM25) sobre LanceDB.
     
     Args:
         query: Consulta del usuario en lenguaje natural o palabras clave.
-        tema: Filtro opcional por tema/dominio (ej: 'Derecho Argentino', 'Procedimientos Teccam').
+        tema: Filtro opcional por tema/dominio (string o lista de strings).
+        temas: Filtro opcional por lista de dominios múltiples.
         documento_id: Filtro opcional por ID de libro específico.
         top_k: Cantidad de fragmentos más relevantes a retornar.
         min_score: Umbral mínimo de similitud/relevancia.
@@ -128,11 +168,32 @@ def search_knowledge_base(
     # 1. Generar vector para la consulta del usuario
     query_vector = generate_embedding(query_str)
 
-    # 2. Construir filtro SQL / pre-filter si aplica
+    # 2. Determinar dominios/temas a filtrar
+    topics_to_filter = []
+    if temas and isinstance(temas, list):
+        topics_to_filter = [t.strip() for t in temas if t and isinstance(t, str) and t.strip()]
+    elif tema:
+        if isinstance(tema, list):
+            topics_to_filter = [t.strip() for t in tema if t and isinstance(t, str) and t.strip()]
+        elif isinstance(tema, str) and tema.strip():
+            if "," in tema:
+                topics_to_filter = [t.strip() for t in tema.split(",") if t.strip()]
+            else:
+                topics_to_filter = [tema.strip()]
+    else:
+        # Si no se pasó filtro explícito, aplicar los dominios activos globales si existen
+        global_settings = get_rag_settings()
+        topics_to_filter = global_settings.get("active_topics", [])
+
+    # 3. Construir filtro SQL / pre-filter si aplica
     filter_clauses = []
-    if tema and tema.strip():
-        clean_tema = tema.strip().replace("'", "''")
-        filter_clauses.append(f"doc_topic = '{clean_tema}'")
+    if topics_to_filter:
+        clean_temas = [f"'{t.replace('\'', '\'\'')}'" for t in topics_to_filter if t]
+        if len(clean_temas) == 1:
+            filter_clauses.append(f"doc_topic = {clean_temas[0]}")
+        elif len(clean_temas) > 1:
+            filter_clauses.append(f"doc_topic IN ({', '.join(clean_temas)})")
+
     if documento_id and documento_id.strip():
         clean_doc_id = documento_id.strip().replace("'", "''")
         filter_clauses.append(f"doc_id = '{clean_doc_id}'")
@@ -289,6 +350,7 @@ def get_rag_stats() -> Dict[str, Any]:
             "total_documents": len(docs_map),
             "documents": list(docs_map.values()),
             "topics": topics_list,
+            "active_topics": get_rag_settings().get("active_topics", []),
             "lancedb_path": LANCEDB_DIR,
             "table_name": TABLE_NAME
         }
