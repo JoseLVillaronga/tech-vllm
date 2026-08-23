@@ -1634,6 +1634,32 @@ def api_rag_search():
     except Exception as e:
         return jsonify({"error": f"Error ejecutando búsqueda RAG: {str(e)}"}), 500
 
+@app.route("/api/rag/documents/<doc_id>", methods=["DELETE"])
+def api_rag_delete_document(doc_id):
+    """Elimina todos los fragmentos vectoriales de un documento específico en LanceDB."""
+    try:
+        from rag_engine import get_table
+        table = get_table()
+        if table is None:
+            return jsonify({"error": "La tabla de LanceDB no existe"}), 404
+            
+        clean_doc_id = doc_id.strip().replace("'", "''")
+        table.delete(f"doc_id = '{clean_doc_id}'")
+        
+        # Actualizar índice FTS
+        try:
+            table.create_fts_index("text", replace=True)
+        except Exception:
+            pass
+            
+        return jsonify({
+            "success": True,
+            "deleted_doc_id": doc_id,
+            "remaining_chunks": len(table)
+        })
+    except Exception as e:
+        return jsonify({"error": f"Error al eliminar documento de LanceDB: {str(e)}"}), 500
+
 if __name__ == "__main__":
     init_db_telemetry()
     start_telemetry_collector()
