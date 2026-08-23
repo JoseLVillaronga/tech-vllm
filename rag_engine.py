@@ -139,39 +139,84 @@ def search_knowledge_base(
         
     filter_expr = " AND ".join(filter_clauses) if filter_clauses else None
 
-    results = []
+    all_candidates = {}
+    
+    # A) Búsqueda vectorial semántica (1024D)
     try:
-        # Búsqueda vectorial
-        query_builder = table.search(query_vector, query_type="vector")
+        vec_builder = table.search(query_vector, query_type="vector")
         if filter_expr:
-            query_builder = query_builder.where(filter_expr)
+            vec_builder = vec_builder.where(filter_expr)
+        vec_results = vec_builder.limit(top_k * 5).to_list()
         
-        raw_results = query_builder.limit(top_k * 2).to_list()
-        
-        for item in raw_results:
-            # En LanceDB con distancia coseno: _distance va de 0.0 (idéntico) a 2.0 (opuesto)
+        for item in vec_results:
+            d_id = item.get("id")
             dist = item.get("_distance", 1.0)
             similarity = max(0.0, 1.0 - (dist / 2.0))
-            
-            if similarity >= min_score or len(results) < top_k:
-                results.append({
-                    "id": item.get("id"),
-                    "doc_id": item.get("doc_id"),
-                    "doc_title": item.get("doc_title"),
-                    "doc_author": item.get("doc_author"),
-                    "doc_topic": item.get("doc_topic"),
-                    "section_path": item.get("section_path"),
-                    "chunk_index": item.get("chunk_index"),
-                    "content": item.get("content"),
-                    "enriched_text": item.get("text"),
-                    "similarity": round(similarity, 4),
-                    "distance": round(dist, 4)
-                })
-                
-    except Exception as e:
-        print(f"⚠️ [RAG Engine] Error en búsqueda vectorial LanceDB: {e}", file=sys.stderr)
+            all_candidates[d_id] = {
+                "item": item,
+                "vec_sim": similarity,
+                "fts_score": 0.0,
+                "dist": dist
+            }
+    except Exception as ve:
+        print(f"⚠️ [RAG Engine] Error en búsqueda vectorial: {ve}", file=sys.stderr)
 
-    # Limitar a top_k
+    # B) Búsqueda de texto completo (BM25 / FTS)
+    try:
+        fts_builder = table.search(query_str, query_type="fts")
+        if filter_expr:
+            fts_builder = fts_builder.where(filter_expr)
+        fts_results = fts_builder.limit(top_k * 5).to_list()
+        
+        max_fts = max([r.get("_score", 0.0) for r in fts_results]) if fts_results else 1.0
+        if max_fts <= 0:
+            max_fts = 1.0
+            
+        for item in fts_results:
+            d_id = item.get("id")
+            raw_score = item.get("_score", 0.0)
+            norm_fts = raw_score / max_fts
+            
+            if d_id in all_candidates:
+                all_candidates[d_id]["fts_score"] = norm_fts
+            else:
+                all_candidates[d_id] = {
+                    "item": item,
+                    "vec_sim": 0.65, # Baseline de similitud semántica para matches léxicos
+                    "fts_score": norm_fts,
+                    "dist": 0.70
+                }
+    except Exception as fe:
+        pass
+
+    results = []
+    for d_id, data in all_candidates.items():
+        item = data["item"]
+        v_sim = data["vec_sim"]
+        f_sim = data["fts_score"]
+        
+        # Fusión híbrida ponderada
+        if f_sim > 0:
+            final_sim = (v_sim * 0.45) + (f_sim * 0.55)
+        else:
+            final_sim = v_sim
+            
+        if final_sim >= min_score or len(results) < top_k:
+            results.append({
+                "id": item.get("id"),
+                "doc_id": item.get("doc_id"),
+                "doc_title": item.get("doc_title"),
+                "doc_author": item.get("doc_author"),
+                "doc_topic": item.get("doc_topic"),
+                "section_path": item.get("section_path"),
+                "chunk_index": item.get("chunk_index"),
+                "content": item.get("content"),
+                "enriched_text": item.get("text"),
+                "similarity": round(final_sim, 4),
+                "distance": round(data["dist"], 4)
+            })
+
+    # Ordenar por score híbrido y limitar a top_k
     final_results = sorted(results, key=lambda x: x["similarity"], reverse=True)[:top_k]
     dur_ms = (time.time() - t0) * 1000
     print(f"🔍 [RAG Search] Consulta: '{query_str[:40]}...' | {len(final_results)} resultados en {dur_ms:.2f} ms")
