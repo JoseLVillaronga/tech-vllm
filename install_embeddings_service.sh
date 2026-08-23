@@ -52,7 +52,7 @@ fi
 # Crear archivo de servicio
 cat <<EOF > "${SERVICE_PATH}"
 [Unit]
-Description=vLLM OpenAI-Compatible Qwen3-Embedding Server (RAM / CPU - 0 VRAM)
+Description=vLLM OpenAI-Compatible Qwen3-Embedding Server (CUDA GPU / CPU Accelerated)
 After=network.target
 Wants=network-online.target
 

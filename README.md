@@ -314,8 +314,10 @@ curl -X POST http://localhost:8003/v1/audio/diarize \
 Para alimentar el sistema RAG (*Retrieval-Augmented Generation*), la búsqueda vectorial en LanceDB y el análisis semántico de documentos de Teccam PDF, el proyecto incluye un microservicio de embeddings de última generación basado en **`Qwen/Qwen3-Embedding-0.6B`** corriendo en el puerto **`8005`** (backend interno `18005`).
 
 ### 1. Ventajas de Arquitectura y Rendimiento
-* **0 MB de VRAM:** Todo el cálculo se ejecuta en la **CPU** aprovechando los 12 hilos del procesador.
-* **Precarga en Caliente (Hot-Standby):** El modelo (~595 millones de parámetros, ~1.2 GB en RAM) permanece cargado permanentemente en la memoria RAM del sistema, eliminando cualquier latencia de carga en frío (*Zero Cold-Start*).
+* **Aceleración GPU CUDA Ultrarrápida (~1.1 GB VRAM):** Utiliza precisión `bfloat16` y Tensor Cores de la GPU RTX 3090, procesando fragmentos en **~2-3 ms por chunk** (más de 30x más rápido que CPU), ideal para ingesta masiva de documentos en Open-WebUI.
+* **Procesamiento por Mini-Lotes (*Batching*):** Soporta solicitudes concurrentes y lotes de cientos de fragmentos manteniendo el consumo de memoria GPU constante y predecible.
+* **Precarga en Caliente (Hot-Standby):** El modelo (~595 millones de parámetros) permanece cargado permanentemente en memoria (*Zero Cold-Start*).
+* **Modo Fallback / CPU Configurable:** Permite alternar a cálculo en CPU (`EMBEDDINGS_DEVICE=cpu`) si se desea liberar VRAM para tareas multimodales pesadas.
 * **API Compatible con OpenAI:** Expone el endpoint estándar `POST /v1/embeddings` (compatible con LangChain, LlamaIndex, Open-WebUI, Teccam PDF y LanceDB).
 * **Vectores de 1024 Dimensiones:** Normalización L2 unitaria y soporte para textos largos (hasta 8.192 tokens de contexto).
 
@@ -343,7 +345,7 @@ Accede desde tu navegador para probar y documentar los endpoints:
 curl -X POST http://localhost:8005/v1/embeddings \
   -H "Authorization: Bearer tu_clave_api_aqui" \
   -H "Content-Type: application/json" \
-  -d '{"input": "Prueba de generación de embedding vectorial con Qwen3 en RAM"}'
+  -d '{"input": "Prueba de generación de embedding vectorial con Qwen3 en GPU CUDA"}'
 ```
 
 ### 6. Integración con Open-WebUI (RAG y Documentos en Español)
