@@ -64,7 +64,9 @@ ENV_PATH = os.path.join(os.path.dirname(__file__), ".env")
 SERVICES = {
     "gemma": "vllm",
     "whisper": "vllm-whisper",
+    "fallback_stt": "vllm-fallback-stt",
     "tts": "vllm-tts",
+    "fallback_tts": "vllm-fallback-tts",
     "diarization": "vllm-diarization",
     "gateway": "vllm-gateway",
     "docling": "docling"
@@ -74,7 +76,9 @@ SERVICES = {
 SERVICE_PORTS = {
     "gemma": 8000,
     "whisper": 8001,
+    "fallback_stt": 18011,
     "tts": 8002,
+    "fallback_tts": 18012,
     "diarization": 8003,
     "gateway": "8000-8003",
     "docling": 5020
@@ -84,7 +88,9 @@ SERVICE_PORTS = {
 BACKEND_PORTS = {
     "gemma": int(os.getenv("GEMMA_BACKEND_PORT", "18000")),
     "whisper": int(os.getenv("WHISPER_BACKEND_PORT", "18001")),
+    "fallback_stt": int(os.getenv("STT_FALLBACK_PORT", "18011")),
     "tts": int(os.getenv("TTS_BACKEND_PORT", "18002")),
+    "fallback_tts": int(os.getenv("TTS_FALLBACK_PORT", "18012")),
     "diarization": int(os.getenv("DIARIZATION_BACKEND_PORT", "18003"))
 }
 

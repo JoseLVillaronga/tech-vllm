@@ -38,13 +38,13 @@ Para permitir que los 4 servicios de Inteligencia Artificial corran en caliente 
 
 ## 🌟 Características Principales
 
-1. **Ecosistema de Cinco Servidores locales (Gemma 4 en 8000, Whisper en 8001, F5-TTS en 8002, PyAnnote en 8003, Dashboard en 8004)**: Coexistencia de cinco instancias locales en segundo plano para chat, transcripción, generación de voz, separación de interlocutores y gestión web.
-2. **Despliegue Multimodal de Audio y Visión**: Soporte nativo para procesar imágenes y voz directamente.
-3. **Gestión Coordinada de VRAM**: Asignación estricta de memoria (Gemma 4 al 50%, Whisper al 10%, F5-TTS al 10% y PyAnnote a GPU con ~400MB), manteniendo la suite completa siempre cargada en caliente sin colisiones.
-4. **Dashboard Web Interactivo**: Monitoreo de recursos de hardware en tiempo real (CPU, RAM, VRAM), controlador de servicios systemd y pruebas interactivas de todas las APIs.
-5. **Instalación como Servicios del Sistema (`systemd`)**: Autoinstaladores integrados (`install_service.sh`, `install_whisper_service.sh`, `install_tts_service.sh`, `install_diarization_service.sh` y `install_dashboard_service.sh`) con autorreinicio.
-6. **Scripts de Integración de Audio**: Scripts para re-muestrear ondas a la frecuencia nativa esperada (16kHz para Whisper/Gemma y 24kHz para F5-TTS).
-7. **Exposición Swagger UI (`/docs`)**: Documentación interactiva completa autogenerada en el puerto de cada servicio de forma nativa.
+1. **Ecosistema Completo de Microservicios Locales**: Coexistencia de servicios especializados en segundo plano: **Gemma 4** (`:8000`), **Whisper GPU** (`:8001`), **F5-TTS GPU** (`:8002`), **PyAnnote Diarization** (`:8003`), **Docling OCR** (`:5020`), **Fallbacks CPU con 0 VRAM** (`:18011` y `:18012`) y **Dashboard Web** (`:8004`).
+2. **Alta Disponibilidad con Failover Transparente**: El API Gateway (`:8000`-`:8003`) conmuta automáticamente las peticiones de transcripción y voz hacia los microservicios en CPU si la GPU se apaga o entra en mantenimiento, asegurando que el asistente nunca quede "sordo" ni "mudo".
+3. **Gestión Coordinada de VRAM**: Asignación estricta de memoria (Gemma 4 al 50%, Whisper al 10%, F5-TTS al 10%, Docling a ~800MB y PyAnnote a ~400MB), manteniendo la suite completa cargada en caliente sin riesgo de OOM.
+4. **Dashboard Web Interactivo**: Monitoreo de recursos en tiempo real (CPU, RAM, VRAM), controlador gráfico de todos los servicios systemd y pruebas interactivas de las APIs.
+5. **Instalación como Servicios del Sistema (`systemd`)**: Autoinstaladores integrados con autorreinicio (`install_service.sh`, `install_whisper_service.sh`, `install_tts_service.sh`, `install_fallback_stt_service.sh`, `install_fallback_tts_service.sh`, `install_diarization_service.sh`, `install_docling_service.sh` y `install_dashboard_service.sh`).
+6. **Despliegue Multimodal de Audio y Visión**: Soporte nativo para procesar imágenes, documentos estructurados y voz directamente.
+7. **Exposición Swagger UI y Scalar (`/docs`)**: Documentación interactiva completa autogenerada en el puerto de cada servicio de forma nativa.
 
 ---
 
@@ -216,6 +216,33 @@ Para escuchar las respuestas con tu voz clonada y el acento correcto según el i
   | `jose-pt` | 🇧🇷 **Portugués (Brasil)** | `firstpixel/F5-TTS-pt-br` |
 
 *(Nota: Todas las opciones clonan tu timbre de voz nativo en base a `mi_voz_24k_mono.wav`, pero con la pronunciación del acento seleccionado).*
+
+---
+
+## 🛡️ Microservicios de Respaldo (Fallback CPU - 0 MB VRAM) y Failover Automático
+
+Para garantizar **alta disponibilidad 24/7** y evitar que el asistente quede "sordo" o "mudo" si se apagan los motores principales de GPU (por ejemplo, para liberar memoria VRAM en tareas de generación de imágenes o mantenimiento), el sistema incluye dos microservicios en CPU en modo *Hot-Standby* permanente:
+
+### 1. Fallback STT (`vllm-fallback-stt` - Puerto `18011`)
+- **Motor:** `faster-whisper` (`base` / `small`) con cuantización `INT8` en CPU multinúcleo.
+- **Consumo:** **0 MB de VRAM**, ~300 MB de RAM.
+- **Instalación:** `./install_fallback_stt_service.sh`
+- **Comandos:**
+  * Ver estado: `sudo systemctl status vllm-fallback-stt`
+  * Ver logs: `sudo journalctl -u vllm-fallback-stt -f`
+
+### 2. Fallback TTS (`vllm-fallback-tts` - Puerto `18012`)
+- **Motor:** `edge-tts` streaming ultrarrápido con voces neuronales humanas en español (`es-AR-TomasNeural`, `es-ES-AlvaroNeural`) e idiomas extranjeros.
+- **Consumo:** **0 MB de VRAM**, ~150 MB de RAM.
+- **Instalación:** `./install_fallback_tts_service.sh`
+- **Comandos:**
+  * Ver estado: `sudo systemctl status vllm-fallback-tts`
+  * Ver logs: `sudo journalctl -u vllm-fallback-tts -f`
+
+### 3. Mecanismo de Conmutación Transparente en el Gateway
+El **vLLM Gateway Proxy** (`app_gateway.py`) monitorea la salud de los backends principales en los puertos `18001` (Whisper GPU) y `18002` (F5-TTS GPU):
+* **Comportamiento Normal:** Redirige a GPU con máxima fidelidad y clonación de voz.
+* **Failover en Caliente:** Si el motor de GPU no responde (servicio apagado, caída de red o error 502/503), el Gateway **redirige la petición al instante al microservicio de CPU correspondiente** sin que los clientes externos (Open-WebUI, Live Subtitles, scripts) perciban interrupción alguna.
 
 ---
 

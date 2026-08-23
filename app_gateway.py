@@ -2,6 +2,7 @@ import os
 import sys
 import re
 import asyncio
+from typing import Optional
 import uvicorn
 import ipaddress
 from fastapi import FastAPI, Request, Response, HTTPException, status, BackgroundTasks
@@ -412,7 +413,7 @@ async def register_failed_attempt(client_ip: str):
             failed_attempts.pop(client_ip, None)
 
 # Creador de Apps Proxy
-def create_proxy_app(service_name: str, target_port: int) -> FastAPI:
+def create_proxy_app(service_name: str, target_port: int, fallback_port: Optional[int] = None) -> FastAPI:
     app = FastAPI(title=f"Gateway Proxy para {service_name.upper()}")
     
     app.add_middleware(
@@ -902,19 +903,44 @@ def create_proxy_app(service_name: str, target_port: int) -> FastAPI:
             headers["authorization"] = f"Bearer {MASTER_KEY}"
 
         client = get_http_client()
+        resp = None
         
         try:
-            # Construir petición proxy
-            req = client.build_request(
-                method=request.method,
-                url=target_url,
-                headers=headers,
-                content=body,
-                params=request.query_params
-            )
-            
-            # Enviar petición y recibir cabeceras por streaming
-            resp = await client.send(req, stream=True)
+            # 1. Intentar enviar petición al backend principal
+            try:
+                # Construir petición proxy
+                req = client.build_request(
+                    method=request.method,
+                    url=target_url,
+                    headers=headers,
+                    content=body,
+                    params=request.query_params
+                )
+                
+                # Enviar petición y recibir cabeceras por streaming
+                resp = await client.send(req, stream=True)
+                
+                # Si el backend principal devuelve 502/503 y tenemos fallback_port configurado, conmutar
+                if resp.status_code in (502, 503) and fallback_port and not is_cloud_request:
+                    await resp.aclose()
+                    resp = None
+                    raise httpx.ConnectError(f"Backend principal retornó HTTP {resp.status_code if resp else 502}")
+            except (httpx.ConnectError, httpx.ConnectTimeout, httpx.TimeoutException, httpx.ReadTimeout, httpx.NetworkError) as primary_err:
+                if fallback_port and not is_cloud_request:
+                    fallback_url = f"http://127.0.0.1:{fallback_port}/{path}"
+                    fallback_headers = dict(headers)
+                    fallback_headers["host"] = f"127.0.0.1:{fallback_port}"
+                    print(f"⚠️ [Gateway Failover] Backend principal ({service_name} :{target_port}) no disponible ({primary_err}). Reenviando transparentemente a Fallback CPU (:{fallback_port})...", flush=True)
+                    req_fb = client.build_request(
+                        method=request.method,
+                        url=fallback_url,
+                        headers=fallback_headers,
+                        content=body,
+                        params=request.query_params
+                    )
+                    resp = await client.send(req_fb, stream=True)
+                else:
+                    raise primary_err
             
             # Limpiar cabeceras de respuesta conflictivas antes de enviar al cliente
             resp_headers = dict(resp.headers)
@@ -1074,9 +1100,12 @@ async def run_servers():
     tts_port = int(os.getenv("TTS_BACKEND_PORT", "18002"))
     diarization_port = int(os.getenv("DIARIZATION_BACKEND_PORT", "18003"))
     
+    whisper_fallback_port = int(os.getenv("STT_FALLBACK_PORT", "18011"))
+    tts_fallback_port = int(os.getenv("TTS_FALLBACK_PORT", "18012"))
+    
     gemma_app = create_proxy_app("gemma", gemma_port)
-    whisper_app = create_proxy_app("whisper", whisper_port)
-    tts_app = create_proxy_app("tts", tts_port)
+    whisper_app = create_proxy_app("whisper", whisper_port, fallback_port=whisper_fallback_port)
+    tts_app = create_proxy_app("tts", tts_port, fallback_port=tts_fallback_port)
     diarization_app = create_proxy_app("diarization", diarization_port)
     
     # Configurar uvicorn para cada puerto público
@@ -1093,8 +1122,8 @@ async def run_servers():
     print("=" * 60)
     print("🛡️ Iniciando Gateway de Autenticación y Proxy...")
     print(f"🟢 Gemma Proxy:       8000 -> {gemma_port}")
-    print(f"🟢 Whisper Proxy:     8001 -> {whisper_port}")
-    print(f"🟢 F5-TTS Proxy:       8002 -> {tts_port}")
+    print(f"🟢 Whisper Proxy:     8001 -> {whisper_port} (Fallback CPU: {whisper_fallback_port})")
+    print(f"🟢 F5-TTS Proxy:       8002 -> {tts_port} (Fallback CPU: {tts_fallback_port})")
     print(f"🟢 Diarización Proxy: 8003 -> {diarization_port}")
     print("=" * 60)
     

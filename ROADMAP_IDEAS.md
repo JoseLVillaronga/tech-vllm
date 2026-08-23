@@ -100,16 +100,20 @@ Para evitar que el asistente quede "sordo" o "mudo" mientras la GPU está dedica
 
 ---
 
-## 4. Plan de Implementación por Fases (Para Futuras Sesiones)
+## 4. Estado de Implementación por Fases
 
-1. **Fase 1 - Microservicios de Fallback:**
-   * Crear `app_fallback_stt.py` (puerto `18011`) con `faster-whisper` CPU INT8.
-   * Crear `app_fallback_tts.py` (puerto `18012`) con `edge-tts` / `Kokoro-ONNX` / `gTTS`.
-2. **Fase 2 - Failover Dinámico en `app_gateway.py`:**
-   * Añadir lógica de reintento/fallback hacia los puertos `18011` y `18012`.
-3. **Fase 3 - Backend de Imagen con `vllm-omni`:**
+1. **✅ Fase 1 - Resiliencia y Failover Transparente (COMPLETADA Y OPERATIVA):**
+   * `app_fallback_stt.py` (puerto `18011` / `vllm-fallback-stt.service`) con `faster-whisper` en CPU INT8 (0 MB VRAM).
+   * `app_fallback_tts.py` (puerto `18012` / `vllm-fallback-tts.service`) con `edge-tts` en CPU (0 MB VRAM).
+   * Lógica de reintento/failover automático transparente implementada en `app_gateway.py` (`:8001` y `:8002`).
+   * Integración de monitoreo y controles en `app_dashboard.py` y Web GUI (`:8004`).
+2. **⏳ Fase 2 - Conocimiento y RAG Desacoplado (Teccam PDF + Docling Chunking + LanceDB + Qwen3-Embedding):**
+   * Sincronizador diferencial 2 veces al día contra la API de `teccam_pdf` (`:5022`).
+   * Chunking semántico vía `docling-serve` (`:5020`).
+   * Ingesta vectorial en LanceDB en CPU (0 MB VRAM).
+3. **⏳ Fase 3 - Backend de Imagen con `vllm-omni` (FLUX.2 Klein 4B):**
    * Configurar e integrar FLUX.2 Klein 4B en el puerto `18004` expuesto en el proxy `8004`.
-4. **Fase 4 - Orquestación en Dashboard:**
+4. **⏳ Fase 4 - Orquestación en Dashboard:**
    * Añadir control en `app_dashboard.py` para activar el "Modo Imagen" (conmutación automática de servicios).
 
 ---
@@ -266,12 +270,14 @@ Para evitar que el asistente quede "sordo" o "mudo" mientras la GPU está dedica
 +-------------------------------------------------------------------------------+
 ```
 
-#### 🥇 Fase 1: Resiliencia (Fallbacks en CPU y Failover en Gateway)
+#### 🥇 Fase 1: Resiliencia (Fallbacks en CPU y Failover en Gateway) - [✅ COMPLETADA]
 * **Objetivo:** Blindar el sistema contra caídas.
-* **Acciones:**
-  * Crear microservicios de fallback en CPU (FastAPI con `faster-whisper` INT8 y `edge-tts`/`kokoro-onnx`).
-  * Integrar conmutación automática (*Circuit Breaker*) en `app_gateway.py`.
-* **Resultado:** El asistente nunca se queda mudo ni sordo; base sólida para cualquier experimento posterior.
+* **Acciones Implementadas:**
+  * Microservicios de fallback en CPU con 0 VRAM: `app_fallback_stt.py` (`:18011` / `faster-whisper` INT8) y `app_fallback_tts.py` (`:18012` / `edge-tts`).
+  * Conmutación automática (*Failover transparente*) en `app_gateway.py` (`:8001` y `:8002`).
+  * Servicios systemd creados y habilitados (`vllm-fallback-stt.service` y `vllm-fallback-tts.service`).
+  * Integración completa en el Dashboard Web (`:8004`).
+* **Resultado:** El asistente nunca se queda mudo ni sordo; base sólida y resiliente 24/7.
 
 #### 🥈 Fase 2: Conocimiento Real (Puente Teccam PDF $\rightarrow$ Docling Chunking $\rightarrow$ LanceDB $\rightarrow$ LLM)
 * **Objetivo:** Explotar los 40 GB de RAM libres y los 12 hilos del Ryzen 5 para dotar al LLM de memoria documental privada.

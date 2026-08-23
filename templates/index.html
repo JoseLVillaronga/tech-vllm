@@ -225,7 +225,7 @@
                         <span class="h-2 w-2 rounded-full bg-indigo-500 animate-ping"></span>
                         Estado de Servicios Systemd
                     </h2>
-                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
                         <!-- Service Card: Gemma -->
                         <div class="bg-slate-900/60 border border-slate-800/80 p-5 rounded-xl flex flex-col justify-between">
                             <div>
@@ -249,12 +249,28 @@
                                     <span class="font-bold text-slate-200">Whisper ASR</span>
                                     <span id="status-whisper" class="px-2 py-0.5 rounded text-xs font-mono font-bold uppercase bg-slate-800 text-slate-400">Cargando...</span>
                                 </div>
-                                <p class="text-xs text-slate-400">Puerto 8001 | Voz a Texto</p>
+                                <p class="text-xs text-slate-400">Puerto 8001 (18001) | GPU ASR</p>
                             </div>
                             <div class="flex gap-2 mt-4 pt-4 border-t border-slate-800/50">
                                 <button onclick="controlService('whisper', 'start')" class="flex-1 py-1.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600 text-emerald-300 hover:text-white text-xs font-medium transition-all">Start</button>
                                 <button onclick="controlService('whisper', 'stop')" class="flex-1 py-1.5 rounded-lg bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white text-xs font-medium transition-all">Stop</button>
                                 <button onclick="controlService('whisper', 'restart')" class="flex-1 py-1.5 rounded-lg bg-indigo-600/20 hover:bg-indigo-600 text-indigo-300 hover:text-white text-xs font-medium transition-all">Restart</button>
+                            </div>
+                        </div>
+
+                        <!-- Service Card: Fallback STT -->
+                        <div class="bg-slate-900/60 border border-slate-800/80 p-5 rounded-xl flex flex-col justify-between">
+                            <div>
+                                <div class="flex justify-between items-center mb-2">
+                                    <span class="font-bold text-slate-200">Fallback STT</span>
+                                    <span id="status-fallback_stt" class="px-2 py-0.5 rounded text-xs font-mono font-bold uppercase bg-slate-800 text-slate-400">Cargando...</span>
+                                </div>
+                                <p class="text-xs text-slate-400">Puerto 18011 | CPU INT8 (0 VRAM)</p>
+                            </div>
+                            <div class="flex gap-2 mt-4 pt-4 border-t border-slate-800/50">
+                                <button onclick="controlService('fallback_stt', 'start')" class="flex-1 py-1.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600 text-emerald-300 hover:text-white text-xs font-medium transition-all">Start</button>
+                                <button onclick="controlService('fallback_stt', 'stop')" class="flex-1 py-1.5 rounded-lg bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white text-xs font-medium transition-all">Stop</button>
+                                <button onclick="controlService('fallback_stt', 'restart')" class="flex-1 py-1.5 rounded-lg bg-indigo-600/20 hover:bg-indigo-600 text-indigo-300 hover:text-white text-xs font-medium transition-all">Restart</button>
                             </div>
                         </div>
 
@@ -265,12 +281,28 @@
                                     <span class="font-bold text-slate-200">F5-TTS Voice</span>
                                     <span id="status-tts" class="px-2 py-0.5 rounded text-xs font-mono font-bold uppercase bg-slate-800 text-slate-400">Cargando...</span>
                                 </div>
-                                <p class="text-xs text-slate-400">Puerto 8002 | Texto a Voz</p>
+                                <p class="text-xs text-slate-400">Puerto 8002 (18002) | GPU Clonación</p>
                             </div>
                             <div class="flex gap-2 mt-4 pt-4 border-t border-slate-800/50">
                                 <button onclick="controlService('tts', 'start')" class="flex-1 py-1.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600 text-emerald-300 hover:text-white text-xs font-medium transition-all">Start</button>
                                 <button onclick="controlService('tts', 'stop')" class="flex-1 py-1.5 rounded-lg bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white text-xs font-medium transition-all">Stop</button>
                                 <button onclick="controlService('tts', 'restart')" class="flex-1 py-1.5 rounded-lg bg-indigo-600/20 hover:bg-indigo-600 text-indigo-300 hover:text-white text-xs font-medium transition-all">Restart</button>
+                            </div>
+                        </div>
+
+                        <!-- Service Card: Fallback TTS -->
+                        <div class="bg-slate-900/60 border border-slate-800/80 p-5 rounded-xl flex flex-col justify-between">
+                            <div>
+                                <div class="flex justify-between items-center mb-2">
+                                    <span class="font-bold text-slate-200">Fallback TTS</span>
+                                    <span id="status-fallback_tts" class="px-2 py-0.5 rounded text-xs font-mono font-bold uppercase bg-slate-800 text-slate-400">Cargando...</span>
+                                </div>
+                                <p class="text-xs text-slate-400">Puerto 18012 | Edge CPU (0 VRAM)</p>
+                            </div>
+                            <div class="flex gap-2 mt-4 pt-4 border-t border-slate-800/50">
+                                <button onclick="controlService('fallback_tts', 'start')" class="flex-1 py-1.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600 text-emerald-300 hover:text-white text-xs font-medium transition-all">Start</button>
+                                <button onclick="controlService('fallback_tts', 'stop')" class="flex-1 py-1.5 rounded-lg bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white text-xs font-medium transition-all">Stop</button>
+                                <button onclick="controlService('fallback_tts', 'restart')" class="flex-1 py-1.5 rounded-lg bg-indigo-600/20 hover:bg-indigo-600 text-indigo-300 hover:text-white text-xs font-medium transition-all">Restart</button>
                             </div>
                         </div>
 
@@ -1352,7 +1384,9 @@
                 // Actualizar estado de servicios
                 updateServiceBadge('status-gemma', data.services?.gemma?.status || 'inactive');
                 updateServiceBadge('status-whisper', data.services?.whisper?.status || 'inactive');
+                updateServiceBadge('status-fallback_stt', data.services?.fallback_stt?.status || 'inactive');
                 updateServiceBadge('status-tts', data.services?.tts?.status || 'inactive');
+                updateServiceBadge('status-fallback_tts', data.services?.fallback_tts?.status || 'inactive');
                 updateServiceBadge('status-diarization', data.services?.diarization?.status || 'inactive');
                 updateServiceBadge('status-docling', data.services?.docling?.status || 'inactive');
                 updateServiceBadge('status-gateway', data.services?.gateway?.status || 'inactive');
