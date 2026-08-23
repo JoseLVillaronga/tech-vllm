@@ -690,6 +690,9 @@
                                 </div>
                             </div>
                         </div>
+                        <button onclick="testDiarize()" class="w-full py-2 bg-amber-600 hover:bg-amber-500 rounded-lg text-sm font-semibold transition-all">Subir y Diarizar</button>
+                    </div>
+
                     <!-- Image Generation Test (Diffusion / SDXL-Turbo / FLUX) -->
                     <div class="glass-panel p-6 rounded-2xl flex flex-col justify-between min-h-[300px] lg:col-span-2">
                         <div>
@@ -1690,6 +1693,8 @@
                 updateServiceBadge('status-fallback_tts', data.services?.fallback_tts?.status || 'inactive');
                 updateServiceBadge('status-diarization', data.services?.diarization?.status || 'inactive');
                 updateServiceBadge('status-embeddings', data.services?.embeddings?.status || 'inactive');
+                updateServiceBadge('status-image', data.services?.image?.status || 'inactive');
+                updateServiceBadge('status-rag_sync', data.services?.rag_sync?.status || 'inactive');
                 updateServiceBadge('status-docling', data.services?.docling?.status || 'inactive');
                 updateServiceBadge('status-gateway', data.services?.gateway?.status || 'inactive');
                 
@@ -1703,6 +1708,7 @@
 
         function updateServiceBadge(elementId, status) {
             const badge = document.getElementById(elementId);
+            if (!badge) return;
             badge.innerText = status;
             badge.className = "px-2 py-0.5 rounded text-xs font-mono font-bold uppercase ";
             if (status === 'active') {
