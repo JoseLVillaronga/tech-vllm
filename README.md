@@ -374,6 +374,43 @@ Para que Open-WebUI utilice este motor de embeddings de alta resolución al proc
 
 > **💡 Impacto en la Práctica:** Al subir el mismo documento PDF en Open-WebUI, la búsqueda semántica con Qwen3 recupera los fragmentos exactos y relevantes del texto en español con mucha mayor precisión, reduciendo drásticamente las alucinaciones del LLM al responder preguntas sobre documentos.
 
+### 7. Opciones de Configuración y Alternancia de Hardware (`.env`)
+
+El microservicio permite alternar libremente entre aceleración por GPU CUDA (máxima velocidad) y cálculo en memoria RAM (0 MB de VRAM) editando las variables en el archivo `.env`:
+
+```ini
+# ==============================================================================
+# Modo 1: GPU CUDA (Predeterminado - Máxima Velocidad ~3ms/chunk | ~1.1 GB VRAM)
+# ==============================================================================
+EMBEDDINGS_MODEL=Qwen/Qwen3-Embedding-0.6B
+EMBEDDINGS_DEVICE=cuda
+EMBEDDINGS_CPU_THREADS=6
+EMBEDDINGS_BATCH_SIZE=64
+EMBEDDINGS_BACKEND_PORT=18005
+
+# ==============================================================================
+# Modo 2: RAM / CPU (Ahorro Total de VRAM | ~1.2 GB RAM - 0 MB VRAM)
+# ==============================================================================
+# EMBEDDINGS_MODEL=Qwen/Qwen3-Embedding-0.6B
+# EMBEDDINGS_DEVICE=cpu
+# EMBEDDINGS_CPU_THREADS=6
+# EMBEDDINGS_BATCH_SIZE=16
+# EMBEDDINGS_BACKEND_PORT=18005
+```
+
+#### 📌 Guía de Parámetros:
+
+* **`EMBEDDINGS_DEVICE` (`cuda` | `cpu`):**
+  * `cuda`: Activa la inferencia acelerada en la GPU con precisión `bfloat16` y Tensor Cores. Ideal para ingesta rápida de documentos en Open-WebUI.
+  * `cpu`: Deriva todo el cómputo a la memoria RAM del sistema con precisión `float32` y **0 MB de consumo en la VRAM de la GPU**.
+* **`EMBEDDINGS_BATCH_SIZE`:**
+  * En `cuda`: Se recomienda **`64`** para aprovechar el paralelismo masivo de la GPU.
+  * En `cpu`: Se recomienda **`16`** o **`32`** para evitar saturación del bus de memoria RAM.
+* **`EMBEDDINGS_CPU_THREADS`:**
+  * Número de hilos paralelos para PyTorch en CPU (asignar el número de núcleos físicos, ej: `6` para Ryzen 5).
+  * ⚠️ **IMPORTANTE:** Nunca configurar en `0` (en PyTorch causaría un `RuntimeError`). Cuando se usa `cuda`, esta variable no afecta la velocidad de inferencia de la GPU pero mantiene la tokenización optimizada.
+* **`EMBEDDINGS_BACKEND_PORT`:** Puerto interno (`18005`) donde escucha el microservicio FastAPI.
+
 ---
 
 ## 🖥️ Dashboard Web de Administración: vLLM-Dashboard

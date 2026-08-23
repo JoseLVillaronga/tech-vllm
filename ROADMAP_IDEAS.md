@@ -138,8 +138,10 @@ Para evitar que el asistente quede "sordo" o "mudo" mientras la GPU está dedica
 
 ### 5.3. Estrategias de Despliegue en la Arquitectura
 
-1. **Despliegue Seleccionado y Operativo: Residente en RAM / CPU (`app_embeddings.py` - `:8005` -> `:18005`):**
-   * El modelo `Qwen/Qwen3-Embedding-0.6B` se encuentra cargado y en ejecución permanente en la RAM del sistema (~1.2 GB) a través del servicio `vllm-embeddings.service`, logrando **0 MB de VRAM ocupados** y tiempos de respuesta de milisegundos con cero retraso de carga en frío (*Zero Cold-Start*).
+1. **Despliegue Seleccionado y Operativo: Modo Híbrido GPU CUDA / RAM CPU (`app_embeddings.py` - `:8005` -> `:18005`):**
+   * **Modo GPU CUDA (`EMBEDDINGS_DEVICE=cuda`):** Ejecuta en `torch.bfloat16` con Tensor Cores en la RTX 3090, procesando lotes en **~2-3 ms por chunk** con apenas ~1.1 GB de VRAM.
+   * **Modo RAM / CPU (`EMBEDDINGS_DEVICE=cpu`):** Deriva todo el cómputo a la memoria RAM (~1.2 GB) con **0 MB de VRAM**, ideal para liberar memoria de GPU cuando se ejecuten modelos multimodales masivos.
+   * **Variables de control en `.env`:** `EMBEDDINGS_DEVICE` (`cuda` | `cpu`), `EMBEDDINGS_BATCH_SIZE` (`64` en GPU | `16` en CPU), `EMBEDDINGS_CPU_THREADS=6` (nunca asignar `0`).
 2. **Casos de Uso en el Ecosistema:**
    * **Memoria y RAG Local:** Indexar transcripciones de Whisper, historial de conversaciones y biblioteca documental de Teccam PDF.
    * **Búsqueda Vectorial:** Alimentar la base de datos vectorial embebida LanceDB.
