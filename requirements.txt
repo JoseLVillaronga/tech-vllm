@@ -1,12 +1,20 @@
 # ==============================================================================
-# vLLM Local Suite - Dependencias del Proyecto
+# vLLM Local Suite - Dependencias Completas del Proyecto
 # ==============================================================================
 
-# Núcleo vLLM e Inferencia
+# Núcleo vLLM, PyTorch e Inferencia
 vllm
 torch
+torchaudio
+torchvision
+transformers
+accelerate
 
-# Servidores Web y APIs
+# Generación de Imágenes (Diffusion / SDXL-Turbo / FLUX)
+diffusers
+Pillow
+
+# Servidores Web, APIs y Dashboard
 fastapi
 uvicorn
 httpx
@@ -15,9 +23,18 @@ requests
 pydantic
 python-dotenv
 psutil
+python-multipart
+sse-starlette
+tqdm
 
-# Base de Datos
+# Base de Datos y Persistencia
 pymongo
+
+# Base Vectorial & Motor RAG
+lancedb
+pyarrow
+sentence-transformers
+pypdf
 
 # Transcripción (STT) y Diarización de Audio
 faster-whisper
@@ -28,7 +45,7 @@ scipy
 soundfile
 pydub
 
-# Síntesis de Voz (TTS) y Clonación
+# Síntesis de Voz (TTS) y Clonación Dinámica
 f5-tts
 edge-tts
 huggingface_hub
