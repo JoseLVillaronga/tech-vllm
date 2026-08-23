@@ -1609,14 +1609,16 @@ def api_rag_sync():
 
 @app.route("/api/rag/settings", methods=["GET", "POST"])
 def api_rag_settings():
-    """Lee o actualiza la configuración global de RAG (dominios/temas activos)."""
+    """Lee o actualiza la configuración global de RAG (estado y dominios/temas activos)."""
     try:
         from rag_engine import get_rag_settings, save_rag_settings
         if request.method == "POST":
             data = request.get_json() or {}
-            active_topics = data.get("active_topics", [])
-            success = save_rag_settings(active_topics)
-            return jsonify({"success": success, "active_topics": active_topics})
+            active_topics = data.get("active_topics", None)
+            enabled = data.get("enabled", None)
+            success = save_rag_settings(active_topics=active_topics, enabled=enabled)
+            settings = get_rag_settings()
+            return jsonify({"success": success, **settings})
         else:
             settings = get_rag_settings()
             return jsonify(settings)

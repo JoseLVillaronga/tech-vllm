@@ -718,7 +718,15 @@ def create_proxy_app(service_name: str, target_port: int, fallback_port: Optiona
         if path.strip("/") in ["v1/rag/search", "rag/search", "api/tools/rag-search"] and request.method == "POST":
             try:
                 import json
-                from rag_engine import search_knowledge_base, format_rag_context_for_llm
+                from rag_engine import search_knowledge_base, format_rag_context_for_llm, get_rag_settings
+                
+                rag_sett = get_rag_settings()
+                if not rag_sett.get("enabled", True):
+                    raise HTTPException(
+                        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                        detail="El servicio de Base de Conocimiento RAG está desactivado globalmente en la suite."
+                    )
+                
                 body_data = json.loads(body) if body else {}
                 query = body_data.get("query", "").strip()
                 tema = body_data.get("tema") or None

@@ -1300,7 +1300,11 @@
                             Sincronizador diferencial conectado a Teccam PDF (<span class="font-mono text-purple-300">http://192.168.1.33:5022</span>) con chunking jerárquico y vectores 1024D (Qwen3).
                         </p>
                     </div>
-                    <div class="flex items-center gap-3">
+                    <div class="flex items-center gap-3 flex-wrap">
+                        <button onclick="toggleRagMasterPower()" id="btn-toggle-rag-power" class="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all border bg-emerald-950/60 border-emerald-500/40 text-emerald-300 hover:bg-emerald-900/60" title="Activar o desactivar globalmente el acceso al RAG para el Gateway y LLM">
+                            <span id="badge-rag-power" class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                            <span id="text-rag-power">Servicio RAG: ACTIVO</span>
+                        </button>
                         <button onclick="triggerRagSync(false)" id="btn-sync-rag" class="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white rounded-xl text-sm font-semibold shadow-lg shadow-purple-900/30 transition-all">
                             <svg id="icon-sync-rag" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                                 <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -1308,6 +1312,20 @@
                             <span id="text-sync-rag">Sincronizar Base RAG Ahora</span>
                         </button>
                     </div>
+                </div>
+
+                <!-- Banner de RAG Desactivado (si aplica) -->
+                <div id="rag-disabled-banner" class="hidden p-4 rounded-2xl bg-amber-950/40 border border-amber-500/40 flex items-center justify-between gap-4">
+                    <div class="flex items-center gap-3">
+                        <span class="text-xl">⏸️</span>
+                        <div>
+                            <div class="text-sm font-bold text-amber-200">El servicio RAG está desactivado globalmente</div>
+                            <div class="text-xs text-amber-300/80">El API Gateway en el puerto 8000 rechazará las consultas al RAG y Gemma 4 responderá sin consultar LanceDB.</div>
+                        </div>
+                    </div>
+                    <button onclick="toggleRagMasterPower(true)" class="px-3.5 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-xs font-bold text-white transition-all shadow-md">
+                        Reactivar RAG
+                    </button>
                 </div>
 
                 <!-- Métricas Clave RAG -->
@@ -1787,6 +1805,7 @@
         // ==============================================================================
         let availableRagTopics = [];
         let selectedRagTopics = []; // Vacío significa TODOS los temas activos
+        let isRagGloballyEnabled = true;
 
         async function loadRagStats() {
             try {
@@ -1811,6 +1830,27 @@
                 } else {
                     if (lastSyncEl) lastSyncEl.innerText = 'LanceDB Activo';
                     if (lastDurEl) lastDurEl.innerText = 'Sincronizado';
+                }
+                
+                // Actualizar estado de encendido/apagado global del RAG
+                isRagGloballyEnabled = (data.enabled !== false);
+                const btnPower = document.getElementById('btn-toggle-rag-power');
+                const badgePower = document.getElementById('badge-rag-power');
+                const textPower = document.getElementById('text-rag-power');
+                const bannerDisabled = document.getElementById('rag-disabled-banner');
+                
+                if (btnPower && badgePower && textPower) {
+                    if (isRagGloballyEnabled) {
+                        btnPower.className = "flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all border bg-emerald-950/60 border-emerald-500/40 text-emerald-300 hover:bg-emerald-900/60 cursor-pointer";
+                        badgePower.className = "w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse";
+                        textPower.innerText = "Servicio RAG: ACTIVO";
+                        if (bannerDisabled) bannerDisabled.classList.add('hidden');
+                    } else {
+                        btnPower.className = "flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all border bg-rose-950/70 border-rose-500/50 text-rose-300 hover:bg-rose-900/70 cursor-pointer";
+                        badgePower.className = "w-2.5 h-2.5 rounded-full bg-rose-500";
+                        textPower.innerText = "Servicio RAG: INACTIVO";
+                        if (bannerDisabled) bannerDisabled.classList.remove('hidden');
+                    }
                 }
                 
                 // Actualizar temas disponibles
@@ -1951,6 +1991,30 @@
         function toggleAllRagTopics() {
             selectedRagTopics = [];
             renderRagTopicChips();
+        }
+
+        async function toggleRagMasterPower(targetState = null) {
+            const newState = (targetState !== null) ? Boolean(targetState) : !isRagGloballyEnabled;
+            const btnPower = document.getElementById('btn-toggle-rag-power');
+            if (btnPower) btnPower.style.opacity = '0.6';
+            
+            try {
+                const res = await fetch('/api/rag/settings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ enabled: newState })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    await loadRagStats();
+                } else {
+                    alert("Error cambiando estado del RAG: " + (data.error || "Desconocido"));
+                }
+            } catch (err) {
+                alert("Error de conexión: " + err.message);
+            } finally {
+                if (btnPower) btnPower.style.opacity = '1';
+            }
         }
 
         async function saveGlobalRagTopics() {

@@ -108,25 +108,35 @@ def get_mongo_db():
     return client[db_name]
 
 def get_rag_settings() -> Dict[str, Any]:
-    """Obtiene la configuración global de RAG (dominios/temas activos seleccionados)."""
+    """Obtiene la configuración global de RAG (estado encendido/apagado y dominios activos)."""
     try:
         db = get_mongo_db()
         doc = db.rag_settings.find_one({"_id": "global"})
         if doc:
             return {
+                "enabled": doc.get("enabled", True),
                 "active_topics": doc.get("active_topics", [])
             }
     except Exception:
         pass
-    return {"active_topics": []}
+    return {
+        "enabled": True,
+        "active_topics": []
+    }
 
-def save_rag_settings(active_topics: List[str]) -> bool:
-    """Guarda la configuración global de dominios/temas activos en MongoDB."""
+def save_rag_settings(active_topics: Optional[List[str]] = None, enabled: Optional[bool] = None) -> bool:
+    """Guarda la configuración global de dominios/temas activos y estado de activación en MongoDB."""
     try:
         db = get_mongo_db()
+        update_fields = {"updated_at": time.time()}
+        if active_topics is not None:
+            update_fields["active_topics"] = active_topics
+        if enabled is not None:
+            update_fields["enabled"] = bool(enabled)
+            
         db.rag_settings.update_one(
             {"_id": "global"},
-            {"$set": {"active_topics": active_topics, "updated_at": time.time()}},
+            {"$set": update_fields},
             upsert=True
         )
         return True
@@ -344,13 +354,15 @@ def get_rag_stats() -> Dict[str, Any]:
                 
         topics_list = [{"name": k, "chunks_count": v} for k, v in topics_count.items()]
         
+        rag_sett = get_rag_settings()
         return {
             "is_initialized": True,
+            "enabled": rag_sett.get("enabled", True),
             "total_chunks": total_chunks,
             "total_documents": len(docs_map),
             "documents": list(docs_map.values()),
             "topics": topics_list,
-            "active_topics": get_rag_settings().get("active_topics", []),
+            "active_topics": rag_sett.get("active_topics", []),
             "lancedb_path": LANCEDB_DIR,
             "table_name": TABLE_NAME
         }
