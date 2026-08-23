@@ -10,7 +10,7 @@ import threading
 import time
 import ipaddress
 from datetime import datetime, timedelta
-from flask import Flask, render_template, request, jsonify, Response
+from flask import Flask, render_template, request, jsonify, Response, send_from_directory
 from dotenv import load_dotenv
 from pymongo import MongoClient
 from bson import ObjectId
@@ -310,6 +310,11 @@ def index():
 @app.route("/favicon.ico")
 def favicon():
     return app.send_static_file("favicon.svg")
+
+@app.route("/outputs/images/<path:filename>")
+def serve_output_image(filename):
+    image_dir = os.getenv("IMAGE_OUTPUT_DIR", os.path.join(os.path.dirname(__file__), "outputs", "images"))
+    return send_from_directory(image_dir, filename)
 
 # --- Rutas de API ---
 
