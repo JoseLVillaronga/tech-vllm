@@ -36,14 +36,24 @@ def main():
         "--max-model-len", str(max_model_len),
         "--max-num-seqs", str(max_num_seqs),
         "--kv-cache-dtype", kv_cache_dtype,
-        "--tool-call-parser", "gemma4",
-        "--reasoning-parser", "gemma4",
-        "--enable-auto-tool-choice",
         "--trust-remote-code",
         "--enable-chunked-prefill",
         "--max-num-batched-tokens", str(max_num_batched_tokens),
         "--api-key", api_key
     ]
+
+    # Parsers específicos según la familia del modelo
+    model_lower = model.lower()
+    if "gemma" in model_lower:
+        cmd.extend([
+            "--tool-call-parser", "gemma4",
+            "--reasoning-parser", "gemma4",
+            "--enable-auto-tool-choice"
+        ])
+    elif "deepseek" in model_lower and ("r1" in model_lower or "reasoner" in model_lower):
+        cmd.extend([
+            "--reasoning-parser", "deepseek_r1"
+        ])
 
     # Configurar LoRA si está habilitado en .env, el adaptador está completamente descargado y el modelo es compatible (Gemma)
     lora_env = os.getenv("LORA", "True").strip().lower() in ("true", "1", "yes")
