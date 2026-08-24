@@ -108,24 +108,36 @@ def get_mongo_db():
     return client[db_name]
 
 def get_rag_settings() -> Dict[str, Any]:
-    """Obtiene la configuración global de RAG (estado encendido/apagado y dominios activos)."""
+    """Obtiene la configuración global de RAG (estado encendido/apagado, dominios activos y modelo cloud para RAG)."""
     try:
         db = get_mongo_db()
         doc = db.rag_settings.find_one({"_id": "global"})
         if doc:
             return {
                 "enabled": doc.get("enabled", True),
-                "active_topics": doc.get("active_topics", [])
+                "active_topics": doc.get("active_topics", []),
+                "cloud_rag_provider_id": doc.get("cloud_rag_provider_id", ""),
+                "cloud_rag_provider_name": doc.get("cloud_rag_provider_name", ""),
+                "cloud_rag_model_id": doc.get("cloud_rag_model_id", "")
             }
     except Exception:
         pass
     return {
         "enabled": True,
-        "active_topics": []
+        "active_topics": [],
+        "cloud_rag_provider_id": "",
+        "cloud_rag_provider_name": "",
+        "cloud_rag_model_id": ""
     }
 
-def save_rag_settings(active_topics: Optional[List[str]] = None, enabled: Optional[bool] = None) -> bool:
-    """Guarda la configuración global de dominios/temas activos y estado de activación en MongoDB."""
+def save_rag_settings(
+    active_topics: Optional[List[str]] = None,
+    enabled: Optional[bool] = None,
+    cloud_rag_provider_id: Optional[str] = None,
+    cloud_rag_provider_name: Optional[str] = None,
+    cloud_rag_model_id: Optional[str] = None
+) -> bool:
+    """Guarda la configuración global de dominios/temas activos, estado de activación y modelo cloud para RAG en MongoDB."""
     try:
         db = get_mongo_db()
         update_fields = {"updated_at": time.time()}
@@ -133,6 +145,12 @@ def save_rag_settings(active_topics: Optional[List[str]] = None, enabled: Option
             update_fields["active_topics"] = active_topics
         if enabled is not None:
             update_fields["enabled"] = bool(enabled)
+        if cloud_rag_provider_id is not None:
+            update_fields["cloud_rag_provider_id"] = str(cloud_rag_provider_id).strip()
+        if cloud_rag_provider_name is not None:
+            update_fields["cloud_rag_provider_name"] = str(cloud_rag_provider_name).strip()
+        if cloud_rag_model_id is not None:
+            update_fields["cloud_rag_model_id"] = str(cloud_rag_model_id).strip()
             
         db.rag_settings.update_one(
             {"_id": "global"},

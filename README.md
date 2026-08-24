@@ -628,17 +628,19 @@ graph TD
 * **Ejecutar sincronización manual por terminal:** `/home/jose/vllm/venv/bin/python app_rag_sync.py`
 * **Ver historial de ejecuciones:** Disponible en el Dashboard (`:8004`) o vía MongoDB en `vllm.rag_sync_logs`.
 
-### 4. Modelo Virtual con RAG Integrado: `local/gemma-4-rag` (Cero Configuración)
+### 4. Modelos Virtuales con RAG Integrado: `local/gemma-4-rag` y `cloud-rag` (Cero Configuración)
 
-El API Gateway expone automáticamente el modelo virtual **`local/gemma-4-rag`** en `/v1/models`.
+El API Gateway expone automáticamente los modelos virtuales **`local/gemma-4-rag`** y **`cloud-rag`** (también como `local/cloud-rag`) en el endpoint `/v1/models`.
 
-* Al seleccionar **`local/gemma-4-rag`** en Open-WebUI o en cualquier cliente OpenAI:
-  1. El Gateway intercepta la consulta del usuario.
-  2. Ejecuta la búsqueda híbrida en LanceDB en ~50ms respetando los dominios de conocimiento activos.
-  3. Inyecta el contexto enriquecido con citas y fuentes en el prompt de Gemma 4.
-  4. Gemma 4 responde de forma fundamentada y rigurosa citando los artículos y libros.
+#### A. ¿Por qué RAG Server-Side a nivel de Gateway en lugar de *Tool Calling*?
+* **100% Determinista:** No depende de que el LLM decida estocásticamente si invoca o no una herramienta externa según la redacción del mensaje.
+* **1 Sola Pasada (<80 ms de búsqueda):** El Gateway intercepta la consulta, busca en LanceDB e inyecta el contexto en el *System Prompt* de inmediato, devolviendo la respuesta final en streaming sin la doble latencia del *Function Calling*.
+* **Compatibilidad Universal:** Funciona sin configurar plugins ni scripts en Open-WebUI, LibreChat, Cursor, terminales, curl o clientes OpenAI.
 
-#### Ejemplo con `curl` utilizando el modelo virtual `local/gemma-4-rag`:
+---
+
+#### B. Modelo Local: `local/gemma-4-rag`
+Utiliza el motor local vLLM (Gemma 4) con inferencia acelerada en GPU.
 
 ```bash
 curl -X POST http://localhost:8000/v1/chat/completions \
@@ -653,12 +655,42 @@ curl -X POST http://localhost:8000/v1/chat/completions \
   }'
 ```
 
+---
+
+#### C. Modelo en la Nube: `cloud-rag`
+Aplica la misma técnica de búsqueda e inyección sobre LanceDB, pero enviando la consulta enriquecida al **modelo de proveedor en la nube que elijas en el Dashboard** (OpenRouter, Claude 3.5 Sonnet, GPT-4o, DeepSeek, etc.):
+
+1. **Configuración en el Dashboard:** En la pestaña **Base RAG (LanceDB)**, dentro del bloque *"Modelo Cloud para RAG (Alias: `cloud-rag`)"*, selecciona el proveedor y el modelo destino y haz clic en **Guardar Modelo Cloud RAG**.
+2. **Uso directo:** En Open-WebUI o en tu cliente, selecciona el modelo **`cloud-rag`**.
+3. **Sufijo Dinámico `-rag`:** También puedes invocar cualquier modelo cloud activo agregándole `-rag` (ejemplo: `openrouter/anthropic/claude-3.5-sonnet-rag`) para activar la inyección de LanceDB sobre la marcha.
+
+```bash
+curl -X POST http://localhost:8000/v1/chat/completions \
+  -H "Authorization: Bearer TU_CLAVE_API_VLLM" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "cloud-rag",
+    "messages": [
+      {"role": "user", "content": "Háblame del alcance del procedimiento de soporte en Teccam"}
+    ],
+    "temperature": 0.2
+  }'
+```
+
+---
+
 #### Capturas de Verificación en Open-WebUI:
 
-* **Consulta Jurídica (Constitución Nacional Argentina):**
+* **Listado de Modelos con `cloud-rag` y `local/gemma-4-rag`:**
+![Modelos RAG en Open-WebUI](screenshots/openwebui_models_cloud_rag.png)
+
+* **Respuesta RAG con `cloud-rag` (Inferencia Cloud + LanceDB):**
+![Respuesta RAG en Open-WebUI con cloud-rag](screenshots/openwebui_cloud_rag_response.png)
+
+* **Consulta Jurídica con `local/gemma-4-rag` (Constitución Nacional Argentina):**
 ![Respuesta RAG en Open-WebUI con local/gemma-4-rag](screenshots/openwebui_gemma_rag.png)
 
-* **Consulta de Manual Interno (Procedimiento General de Soporte en Puestos Teccam):**
+* **Consulta de Manual Interno con `local/gemma-4-rag` (Procedimiento General de Soporte en Puestos Teccam):**
 ![Respuesta RAG en Open-WebUI para Procedimientos Teccam](screenshots/openwebui_gemma_rag_teccam.png)
 
 ### 5. Integración como Herramienta Nativa en Open-WebUI (*Function Calling / Tool Calling*)

@@ -619,6 +619,20 @@ def create_proxy_app(service_name: str, target_port: int, fallback_port: Optiona
                                     "owned_by": "local-rag-lancedb"
                                 })
                                 
+                                # Exponer modelo virtual cloud-rag (Base de Conocimiento LanceDB + Proveedor en la Nube)
+                                combined_models.append({
+                                    "id": "cloud-rag",
+                                    "object": "model",
+                                    "created": int(time.time()),
+                                    "owned_by": "cloud-rag-lancedb"
+                                })
+                                combined_models.append({
+                                    "id": "local/cloud-rag",
+                                    "object": "model",
+                                    "created": int(time.time()),
+                                    "owned_by": "cloud-rag-lancedb"
+                                })
+                                
                                 # Si tiene permiso de embeddings, exponer también el modelo de embeddings
                                 if is_master or ("embeddings" in allowed_services):
                                     combined_models.append({
@@ -816,6 +830,7 @@ def create_proxy_app(service_name: str, target_port: int, fallback_port: Optiona
                 key_allowed_providers = key_doc.get("allowed_providers", []) if key_doc else []
                 
                 actual_model = req_model
+                apply_rag_injection = False
                 
                 if req_model in ["local/gemma-4-web", "gemma-4-web"]:
                     # Caso Especial: Modelo virtual con Búsqueda Web Integrada
@@ -827,14 +842,63 @@ def create_proxy_app(service_name: str, target_port: int, fallback_port: Optiona
                     # Caso Especial: Modelo virtual con Base de Conocimiento RAG LanceDB Integrada
                     is_cloud_request = False
                     actual_model = "gemma-4-rag"
+                    apply_rag_injection = True
                     base_vllm_model = os.getenv("MODEL", "google/gemma-4-E4B-it").strip('"').strip("'")
                     data["model"] = base_vllm_model
+                elif req_model in ["cloud-rag", "local/cloud-rag", "cloud/rag"]:
+                    # Caso Especial: Alias virtual Cloud RAG (LanceDB + Proveedor en la Nube)
+                    from rag_engine import get_rag_settings
+                    rag_sett = get_rag_settings()
+                    c_prov_id = rag_sett.get("cloud_rag_provider_id")
+                    c_model_id = rag_sett.get("cloud_rag_model_id")
+                    
+                    db = get_db()
+                    prov_obj = None
+                    if c_prov_id:
+                        try:
+                            from bson import ObjectId
+                            prov_obj = db.cloud_providers.find_one({"_id": ObjectId(c_prov_id), "is_active": True})
+                        except Exception:
+                            prov_obj = db.cloud_providers.find_one({"_id": c_prov_id, "is_active": True})
+                    
+                    if not prov_obj:
+                        prov_obj = db.cloud_providers.find_one({"is_active": True})
+                        
+                    if not prov_obj:
+                        raise HTTPException(
+                            status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="No hay ningún proveedor en la nube configurado o activo en la suite para 'cloud-rag'. Configúralo en la pestaña Base RAG del Dashboard."
+                        )
+                        
+                    p_slug = slugify_provider_name(prov_obj.get("name", "cloud"))
+                    target_cloud_model = c_model_id or "default"
+                    
+                    is_cloud_request = True
+                    cloud_provider = {
+                        "provider_id": str(prov_obj["_id"]),
+                        "provider_name": prov_obj.get("name", ""),
+                        "provider_slug": p_slug,
+                        "base_url": prov_obj.get("base_url", ""),
+                        "api_key": prov_obj.get("api_key", ""),
+                        "raw_model_id": target_cloud_model
+                    }
+                    actual_model = target_cloud_model
+                    data["model"] = actual_model
+                    apply_rag_injection = True
                 elif req_model.startswith("local/"):
                     # Caso 1: Modelo local con prefijo explícito 'local/'
                     is_cloud_request = False
                     actual_model = req_model[6:] # Despojar 'local/'
                     data["model"] = actual_model
                 else:
+                    clean_req_model = req_model
+                    if req_model.endswith("-rag") and req_model not in ["gemma-4-rag", "cloud-rag"]:
+                        clean_req_model = req_model[:-4]
+                        apply_rag_injection = True
+                    elif req_model.endswith(":rag"):
+                        clean_req_model = req_model[:-4]
+                        apply_rag_injection = True
+                        
                     matched_cloud = False
                     if not is_master and key_doc:
                         # 1. Consultar modelos granulares autorizados en MongoDB para esta clave
@@ -843,8 +907,8 @@ def create_proxy_app(service_name: str, target_port: int, fallback_port: Optiona
                             matched_km = db.api_key_models.find_one({
                                 "key_id": key_doc["_id"],
                                 "$or": [
-                                    {"prefixed_id": req_model},
-                                    {"model_id": req_model}
+                                    {"prefixed_id": clean_req_model},
+                                    {"model_id": clean_req_model}
                                 ]
                             })
                             if matched_km:
@@ -858,9 +922,9 @@ def create_proxy_app(service_name: str, target_port: int, fallback_port: Optiona
                                         "provider_slug": matched_km.get("provider_slug") or slugify_provider_name(prov_obj.get("name", "")),
                                         "base_url": prov_obj.get("base_url", ""),
                                         "api_key": prov_obj.get("api_key", ""),
-                                        "raw_model_id": matched_km.get("model_id", req_model)
+                                        "raw_model_id": matched_km.get("model_id", clean_req_model)
                                     }
-                                    actual_model = matched_km.get("model_id", req_model)
+                                    actual_model = matched_km.get("model_id", clean_req_model)
                                     data["model"] = actual_model
                                     matched_cloud = True
                         except Exception as m_err:
@@ -868,15 +932,15 @@ def create_proxy_app(service_name: str, target_port: int, fallback_port: Optiona
                     
                     if not matched_cloud:
                         async with cached_cloud_models_lock:
-                            if req_model in cached_cloud_models:
+                            if clean_req_model in cached_cloud_models:
                                 # Caso 2: Modelo en la nube con prefijo de proveedor exacto (ej: 'openrouter/anthropic/claude-3.5-sonnet')
                                 is_cloud_request = True
-                                cloud_provider = cached_cloud_models[req_model]
-                                actual_model = cloud_provider.get("raw_model_id", req_model)
+                                cloud_provider = cached_cloud_models[clean_req_model]
+                                actual_model = cloud_provider.get("raw_model_id", clean_req_model)
                                 data["model"] = actual_model # Despojar prefijo de proveedor antes de enviar a la nube
-                            elif req_model in cached_cloud_models_by_raw:
+                            elif clean_req_model in cached_cloud_models_by_raw:
                                 # Caso 3: Modelo enviado por nombre nativo (sin prefijo).
-                                candidate_providers = cached_cloud_models_by_raw[req_model]
+                                candidate_providers = cached_cloud_models_by_raw[clean_req_model]
                                 authorized_candidate = None
                                 for cp in candidate_providers:
                                     p_id = cp.get("provider_id", "")
@@ -886,23 +950,23 @@ def create_proxy_app(service_name: str, target_port: int, fallback_port: Optiona
                                         authorized_candidate = cp
                                         break
                                 
-                                if ("gemma" in allowed_services or is_master) and (req_model in ["gemma-4-reasoning", "gemma-4-web", "gemma-4-rag", "google/gemma-4-E4B-it"] or not authorized_candidate):
+                                if ("gemma" in allowed_services or is_master) and (clean_req_model in ["gemma-4-reasoning", "gemma-4-web", "gemma-4-rag", "google/gemma-4-E4B-it"] or not authorized_candidate):
                                     is_cloud_request = False
-                                    actual_model = req_model
-                                    if req_model in ["gemma-4-web", "gemma-4-rag"]:
+                                    actual_model = clean_req_model
+                                    if clean_req_model in ["gemma-4-web", "gemma-4-rag"]:
                                         data["model"] = os.getenv("MODEL", "google/gemma-4-E4B-it").strip('"').strip("'")
                                 elif authorized_candidate:
                                     is_cloud_request = True
                                     cloud_provider = authorized_candidate
-                                    actual_model = req_model
+                                    actual_model = clean_req_model
                                     data["model"] = actual_model
                                 else:
                                     is_cloud_request = True
                                     cloud_provider = candidate_providers[0]
-                                    actual_model = req_model
+                                    actual_model = clean_req_model
                             else:
                                 is_cloud_request = False
-                                actual_model = req_model
+                                actual_model = clean_req_model
 
                 model_name = actual_model or service_name
                 
@@ -979,8 +1043,8 @@ def create_proxy_app(service_name: str, target_port: int, fallback_port: Optiona
                             else:
                                 messages.insert(0, {"role": "system", "content": search_prompt.strip()})
                 
-                # Inyectar contexto de Base de Conocimiento RAG (LanceDB) para el modelo virtual gemma-4-rag
-                if not is_cloud_request and actual_model == "gemma-4-rag" and path.strip("/") == "v1/chat/completions" and "messages" in data:
+                # Inyectar contexto de Base de Conocimiento RAG (LanceDB) para modelos con RAG (gemma-4-rag, cloud-rag o sufijo -rag)
+                if (apply_rag_injection or actual_model == "gemma-4-rag") and path.strip("/") == "v1/chat/completions" and "messages" in data:
                     try:
                         from rag_engine import search_knowledge_base, format_rag_context_for_llm, get_rag_settings
                         rag_sett = get_rag_settings()
@@ -1012,7 +1076,7 @@ def create_proxy_app(service_name: str, target_port: int, fallback_port: Optiona
                                     else:
                                         messages.insert(0, {"role": "system", "content": rag_prompt.strip()})
                     except Exception as re:
-                        print(f"⚠️ Error en contextualización RAG para gemma-4-rag: {re}", file=sys.stderr, flush=True)
+                        print(f"⚠️ Error en contextualización RAG: {re}", file=sys.stderr, flush=True)
 
                 body = json.dumps(data).encode("utf-8")
             except Exception as json_err:

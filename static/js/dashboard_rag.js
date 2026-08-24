@@ -61,6 +61,9 @@
                 
                 renderRagTopicChips();
                 
+                // Cargar configuración de modelo Cloud RAG
+                loadCloudRagSettings();
+                
                 // Actualizar tabla de documentos
                 const tbody = document.getElementById('rag-docs-table-body');
                 if (tbody) {
@@ -374,6 +377,158 @@
             } finally {
                 btn.disabled = false;
                 btn.innerText = "Buscar";
+            }
+        }
+
+        // ==============================================================================
+        // Configuración de Modelo Cloud para RAG (Alias: cloud-rag)
+        // ==============================================================================
+        let activeCloudProvidersList = [];
+        let currentCloudRagProviderId = "";
+        let currentCloudRagModelId = "";
+
+        async function loadCloudRagSettings() {
+            const provSelect = document.getElementById('cloud-rag-provider-select');
+            const modelSelect = document.getElementById('cloud-rag-model-select');
+            const badgeEl = document.getElementById('cloud-rag-current-badge');
+            if (!provSelect || !modelSelect) return;
+
+            try {
+                // 1. Obtener configuración actual de RAG
+                const ragRes = await fetch('/api/rag/settings');
+                const ragData = await ragRes.json();
+                currentCloudRagProviderId = ragData.cloud_rag_provider_id || "";
+                currentCloudRagModelId = ragData.cloud_rag_model_id || "";
+                const currentProvName = ragData.cloud_rag_provider_name || "";
+
+                // 2. Obtener lista de proveedores cloud
+                const provRes = await fetch('/api/cloud-providers');
+                const provData = await provRes.json();
+                activeCloudProvidersList = (Array.isArray(provData) ? provData : []).filter(p => p.is_active);
+
+                if (activeCloudProvidersList.length === 0) {
+                    provSelect.innerHTML = '<option value="">No hay proveedores en la nube activos</option>';
+                    modelSelect.innerHTML = '<option value="">Sin modelos disponibles</option>';
+                    if (badgeEl) badgeEl.innerText = 'Sin proveedor configurado';
+                    return;
+                }
+
+                // Poblar select de proveedores
+                provSelect.innerHTML = activeCloudProvidersList.map(p => {
+                    const isSel = (p.id === currentCloudRagProviderId) ? 'selected' : '';
+                    return `<option value="${p.id}" ${isSel}>${escapeHtml(p.name)} (${escapeHtml(p.base_url)})</option>`;
+                }).join('');
+
+                // Si no había proveedor guardado, seleccionar el primero
+                if (!currentCloudRagProviderId && activeCloudProvidersList.length > 0) {
+                    currentCloudRagProviderId = activeCloudProvidersList[0].id;
+                }
+
+                // Cargar modelos del proveedor seleccionado
+                await populateCloudRagModels(currentCloudRagProviderId, currentCloudRagModelId);
+
+                // Actualizar badge
+                if (badgeEl) {
+                    if (currentCloudRagProviderId && currentCloudRagModelId) {
+                        const pFound = activeCloudProvidersList.find(p => p.id === currentCloudRagProviderId);
+                        const pName = pFound ? pFound.name : currentProvName || 'Cloud';
+                        badgeEl.innerText = `${pName} ➔ ${currentCloudRagModelId}`;
+                        badgeEl.className = "font-mono text-xs text-emerald-400 bg-emerald-950/40 border border-emerald-500/30 px-2.5 py-0.5 rounded-lg";
+                    } else {
+                        badgeEl.innerText = 'No configurado (se usará el primer proveedor activo)';
+                        badgeEl.className = "font-mono text-xs text-amber-400 bg-amber-950/40 border border-amber-500/30 px-2.5 py-0.5 rounded-lg";
+                    }
+                }
+            } catch (err) {
+                console.error("Error cargando configuración de Cloud RAG:", err);
+            }
+        }
+
+        async function populateCloudRagModels(providerId, targetModelId = "") {
+            const modelSelect = document.getElementById('cloud-rag-model-select');
+            if (!modelSelect || !providerId) return;
+
+            modelSelect.innerHTML = '<option value="">Cargando modelos del proveedor...</option>';
+            try {
+                const res = await fetch(`/api/cloud-providers/${providerId}/models`);
+                const data = await res.json();
+                const models = data.models || [];
+
+                if (models.length === 0) {
+                    modelSelect.innerHTML = '<option value="">No se encontraron modelos para este proveedor</option>';
+                    return;
+                }
+
+                modelSelect.innerHTML = models.map(m => {
+                    const isSel = (m.id === targetModelId || m.prefixed_id === targetModelId) ? 'selected' : '';
+                    return `<option value="${m.id}" ${isSel}>${escapeHtml(m.name || m.id)}</option>`;
+                }).join('');
+            } catch (err) {
+                modelSelect.innerHTML = `<option value="">Error cargando modelos: ${escapeHtml(err.message)}</option>`;
+            }
+        }
+
+        async function onCloudRagProviderChange() {
+            const provSelect = document.getElementById('cloud-rag-provider-select');
+            if (!provSelect) return;
+            const selectedProvId = provSelect.value;
+            await populateCloudRagModels(selectedProvId, "");
+        }
+
+        async function saveCloudRagModelSelection() {
+            const provSelect = document.getElementById('cloud-rag-provider-select');
+            const modelSelect = document.getElementById('cloud-rag-model-select');
+            const btn = document.getElementById('btn-save-cloud-rag');
+            const badgeEl = document.getElementById('cloud-rag-current-badge');
+            if (!provSelect || !modelSelect || !btn) return;
+
+            const provId = provSelect.value;
+            const modelId = modelSelect.value;
+
+            if (!provId || !modelId) {
+                alert("Debes seleccionar un proveedor y un modelo destino válido.");
+                return;
+            }
+
+            const pFound = activeCloudProvidersList.find(p => p.id === provId);
+            const provName = pFound ? pFound.name : "";
+
+            const origHtml = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<span>⏳</span> Guardando...';
+
+            try {
+                const res = await fetch('/api/rag/settings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        cloud_rag_provider_id: provId,
+                        cloud_rag_provider_name: provName,
+                        cloud_rag_model_id: modelId
+                    })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    currentCloudRagProviderId = provId;
+                    currentCloudRagModelId = modelId;
+                    btn.innerHTML = '<span>✅</span> ¡Guardado!';
+                    if (badgeEl) {
+                        badgeEl.innerText = `${provName} ➔ ${modelId}`;
+                        badgeEl.className = "font-mono text-xs text-emerald-400 bg-emerald-950/40 border border-emerald-500/30 px-2.5 py-0.5 rounded-lg";
+                    }
+                    setTimeout(() => {
+                        btn.disabled = false;
+                        btn.innerHTML = origHtml;
+                    }, 2000);
+                } else {
+                    alert("Error guardando modelo Cloud RAG: " + (data.error || "Desconocido"));
+                    btn.disabled = false;
+                    btn.innerHTML = origHtml;
+                }
+            } catch (err) {
+                alert("Error de conexión: " + err.message);
+                btn.disabled = false;
+                btn.innerHTML = origHtml;
             }
         }
 

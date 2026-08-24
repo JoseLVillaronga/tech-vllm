@@ -34,4 +34,5 @@ data/
 # Salidas de modelos e imágenes generadas
 outputs/
 *.png
+!screenshots/*.png
 
