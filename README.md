@@ -105,6 +105,55 @@ Gracias a la arquitectura desacoplada de la suite, los **Fallbacks automáticos 
 
 ---
 
+## 🧬 Adaptación Multi-Modelo Inteligente y Dimensionamiento Dinámico de VRAM
+
+Uno de los saltos cualitativos más importantes de esta suite es la **abstracción e interoperabilidad multi-modelo universal**. Anteriormente, cambiar el modelo en `.env` requería reescribir manualmente comandos de terminal para adaptar flags de llamadas a herramientas (*tool calling*), parsers de razonamiento (*reasoning/thinking*), adaptadores LoRA y límites de memoria gráfica.
+
+Ahora, el iniciador [`app.py`](app.py) analiza dinámicamente el nombre y la arquitectura del modelo seleccionado al arrancar, aplicando la configuración nativa óptima para cada familia sin intervención manual.
+
+---
+
+### 1. 🎯 Matriz Universal de Parsers y Familias de Modelos
+
+Cada familia de IA utiliza formatos sintácticos distintos para invocar herramientas (etiquetas XML, JSON schemas, bloques de control) y estructurar el flujo de pensamiento (*reasoning tokens*). La suite mapea automáticamente:
+
+| Familia de Modelo | Identificador en Nombre | Parser de Herramientas (`--tool-call-parser`) | Parser de Razonamiento (`--reasoning-parser`) | Modos y Adaptadores Especiales |
+| :--- | :--- | :--- | :--- | :--- |
+| **Google Gemma 4** | `gemma` (ej: `Gemma-4-E4B-it`, `Gemma-4-26B`) | `gemma4` | `gemma4` | Auto Tool Choice + Soporte LoRA adaptativo |
+| **Alibaba Qwen 2.5 / 3** | `qwen` (ej: `Qwen3-14B`, `Qwen2.5-Coder`) | `hermes` *(ChatML nativo)* | - | Auto Tool Choice universal en Open-WebUI |
+| **DeepSeek V3 / R1 / Distill** | `deepseek` (ej: `Qwen3-14B-DeepSeek-v3.2`, `R1-Distill`) | `hermes` | `deepseek_r1` *(si contiene `r1` o `reasoner`)* | Parser de pensamiento `<think>...</think>` |
+| **Mistral / Mixtral** | `mistral` (ej: `Mistral-Small-24B`, `Nemo`) | `mistral` | - | Formato nativo de funciones Mistral |
+| **Meta Llama 3 / 3.1 / 3.3** | `llama` (ej: `Llama-3.1-8B-Instruct`) | `llama3_json` | - | Esquema JSON estricto de Llama 3 |
+| **Genéricos / Fine-tunes** | Cualquier otro modelo compatible | `hermes` *(Fallback estándar)* | - | Compatibilidad completa con Function Calling |
+
+---
+
+### 2. 🧮 Dimensionamiento Físico de VRAM: Memoria de Pesos vs KV Cache
+
+Un error frecuente al probar modelos más grandes (como pasar de 8B a 14B o 32B) es el desbordamiento de memoria del **KV Cache** (*Key-Value Cache*):
+
+$$\text{VRAM Total Requerida} = \text{Pesos del Modelo} + \text{Runtime CUDA / Búferes} + \text{KV Cache Contexto}$$
+
+* **Pesos del Modelo:** Dependen de la cantidad de parámetros y la cuantización (`bitsandbytes`, `FP8`, `AWQ`, `NVFP4`).
+* **KV Cache:** Es la memoria dinámica reservada para recordar la conversación. Crece linealmente con el largo de la ventana de contexto (`MAX_MODEL_LEN`) y la cantidad de capas y cabezales de atención de la red.
+
+#### ⚠️ ¿Por qué falla si `GPU_MEMORY_UTILIZATION` es muy bajo en un modelo grande?
+Si un modelo 14B pesa ~10 GB en VRAM y se fija `GPU_MEMORY_UTILIZATION=0.52` (12.5 GB asignados a vLLM), solo quedan **1.47 GB** libres para el KV Cache. Si se solicitan **16.384 tokens (`MAX_MODEL_LEN=16384`)**, el modelo exige **2.50 GB** de KV Cache para una petición completa $\rightarrow$ `1.47 GB < 2.50 GB` $\rightarrow$ vLLM aborta por falta de memoria.
+
+---
+
+### 📊 Presets Recomendados para NVIDIA RTX 3090 (24 GB)
+
+Ajusta estas variables en tu archivo [`.env`](.env) según el tamaño del modelo que desees utilizar:
+
+| Categoría de Modelo | Modelos de Ejemplo | Cuantización Sugerida | `GPU_MEMORY_UTILIZATION` | `MAX_MODEL_LEN` | VRAM Libre para la Suite |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **Modelos ~8B (Ligeros / Rápidos)** | `google/gemma-4-E4B-it`<br>`Qwen/Qwen2.5-7B-Instruct`<br>`meta-llama/Llama-3.1-8B-Instruct` | `FP8` / `bitsandbytes` | **`0.52`** (~12.5 GB) | **`16384`** (16K tokens) | **~11.5 GB libres** *(Ideal para RAG + Audio + Imágenes simultáneos)* |
+| **Modelos ~14B (Intermedios / Razonamiento)** | `TeichAI/Qwen3-14B-DeepSeek-v3.2`<br>`Qwen/Qwen2.5-14B-Instruct` | `bitsandbytes` | **`0.58` - `0.62`** (~14.2 GB) | **`16384`** (16K tokens)<br>*(o `8192` con `0.52`)* | **~9.5 - 10.0 GB libres** *(Estabilidad total con RAG y Diffusion)* |
+| **Modelos ~26B / 32B (Grandes / Programación)** | `nvidia/Gemma-4-26B-A4B-NVFP4`<br>`Qwen/Qwen2.5-Coder-32B-Instruct-GPTQ` | `NVFP4` / `AWQ` / `bitsandbytes` | **`0.70` - `0.78`** (~17.5 GB) | **`8192`** (8K tokens) | **~6.5 GB libres** *(Recomendado: Embeddings en RAM / Fallbacks CPU)* |
+
+---
+
 ### 📋 Cuadro Comparativo de Perfiles Operativos (24 GB VRAM)
 
 | Perfil de Uso | LLM Principal | Embeddings (Qwen3) | Docling OCR GPU | RAG Sync Timer | Audio GPU (Whisper/F5/Diar) | Audio Fallback CPU | VRAM Ocupada |
