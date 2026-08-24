@@ -50,9 +50,33 @@ def main():
             "--reasoning-parser", "gemma4",
             "--enable-auto-tool-choice"
         ])
-    elif "deepseek" in model_lower and ("r1" in model_lower or "reasoner" in model_lower):
+    elif "qwen" in model_lower:
         cmd.extend([
-            "--reasoning-parser", "deepseek_r1"
+            "--tool-call-parser", "hermes",
+            "--enable-auto-tool-choice"
+        ])
+    elif "deepseek" in model_lower:
+        cmd.extend([
+            "--tool-call-parser", "hermes",
+            "--enable-auto-tool-choice"
+        ])
+        if "r1" in model_lower or "reasoner" in model_lower:
+            cmd.extend(["--reasoning-parser", "deepseek_r1"])
+    elif "mistral" in model_lower:
+        cmd.extend([
+            "--tool-call-parser", "mistral",
+            "--enable-auto-tool-choice"
+        ])
+    elif "llama" in model_lower:
+        cmd.extend([
+            "--tool-call-parser", "llama3_json",
+            "--enable-auto-tool-choice"
+        ])
+    else:
+        # Fallback estándar para modelos compatibles con OpenAI / Function Calling
+        cmd.extend([
+            "--tool-call-parser", "hermes",
+            "--enable-auto-tool-choice"
         ])
 
     # Configurar LoRA si está habilitado en .env, el adaptador está completamente descargado y el modelo es compatible (Gemma)
