@@ -333,3 +333,57 @@ La verdadera ventaja de incorporar una segunda RTX 3090 en esta arquitectura no 
 ```
 
 * **Cero tráfico entre GPUs por PCIe:** La interacción entre el LLM (`GPU 0`) y los satélites (`GPU 1`) se realiza exclusivamente a través de peticiones HTTP en loopback (`127.0.0.1`), preservando la máxima velocidad de inferencia en ambas placas.
+
+---
+
+## 8. Evolución y Optimización Avanzada del Motor RAG (LanceDB)
+
+A partir de la evaluación empírica de consultas reales sobre procedimientos internos y textos normativos (agosto 2026), se identificaron cuatro áreas de mejora arquitectónica para evolucionar el motor RAG de un esquema de **búsqueda puntual (*Fact Retrieval*)** hacia un sistema de **análisis normativo y síntesis exhaustiva (*Document-Level Synthesis*)**.
+
+```
++---------------------------------------------------------------------------------------------------+
+|                           HOJA DE RUTA DE OPTIMIZACIÓN DEL MOTOR RAG                               |
++---------------------------------------------------------------------------------------------------+
+|  1. LECTURA DE DOCUMENTO COMPLETO   --> Permite síntesis global sin pérdida de incisos/pasos.     |
+|  2. PARENT DOCUMENT RETRIEVER       --> Vector busca en fragmento fino, entrega sección padre.     |
+|  3. SENTENCE BOUNDARY + OVERLAP     --> Elimina cortes abruptos a mitad de oración.               |
+|  4. NEIGHBOR WINDOW EXPANSION       --> Concatena fragmentos adyacentes (n-1, n, n+1) y deduplica. |
++---------------------------------------------------------------------------------------------------+
+```
+
+---
+
+### 8.1. Herramienta de Lectura de Documento Completo (`Document Synthesis Tool`)
+* **Problema identificado:** La búsqueda por similitud vectorial con `top_k` fijo (ej: 4–5 fragmentos) prioriza los bloques con mayor densidad de palabras clave respecto a la consulta, pero omite fragmentos intermedios en secciones largas. En un procedimiento de 12 pasos (de la A a la L), el modelo solo recibía los pasos finales (K y L), perdiendo las definiciones operativas iniciales (A a J).
+* **Solución propuesta:**
+  * Implementar en el Gateway y en la herramienta de Open-WebUI el endpoint/método `leer_documento_completo(doc_id)` o `obtener_estructura_secciones(doc_id)`.
+  * Cuando el usuario pida *"Describí todo el procedimiento X"* o *"Sintetizá la norma Y"*, el LLM puede solicitar la secuencia documental íntegra paginada en lugar de depender exclusivamente de vectores semánticos dispersos.
+
+---
+
+### 8.2. Estrategia *Parent Document Retriever* (Chunking Jerárquico Padre-Hijo)
+* **Problema identificado:** Los fragmentos pequeños (~200 tokens) son ideales para que el embedding vectorial capture la semántica exacta, pero pierden el marco global de la sección o artículo al que pertenecen.
+* **Solución propuesta:**
+  * **Ingesta dual en LanceDB / MongoDB:**
+    * **Chunks Hijos (200–300 tokens):** Utilizados exclusivamente para el cálculo de similitud vectorial y búsqueda densa 1024D (Qwen3).
+    * **Bloques Padre (800–1500 tokens):** Representan la sección, cláusula o artículo completo.
+  * **Comportamiento en recuperación:** Cuando un chunk hijo coincide con la consulta, el motor devuelve al LLM el bloque padre completo, garantizando coherencia contextual absoluta.
+
+---
+
+### 8.3. Delimitación por Fronteras de Oración y Solapamiento (*Sentence-Boundary Aware Splitter*)
+* **Problema identificado:** Fragmentos que inician o finalizan a mitad de frase (ejemplo: `"...mantener la producción si las inicia un colaborador..."`), truncando el sentido gramatical del inicio del párrafo.
+* **Solución propuesta:**
+  * Configurar la segmentación en `app_rag_sync.py` para respetar delimitadores de fin de oración (`.\n\n`, `.\n`, `. `, `;\n`).
+  * Aplicar un solapamiento deslizante (*chunk overlap*) de **150 a 200 caracteres** entre fragmentos adyacentes, asegurando que ninguna idea quede partida en el límite del chunk.
+
+---
+
+### 8.4. Expansión de Ventana Adyacente (*Neighbor Window Expansion*) y Deduplicación
+* **Problema identificado:** 
+  1. Falta de fluidez narrativa entre fragmentos recuperados.
+  2. Redundancia en sesiones multi-turno: cuando el LLM invoca la herramienta RAG varias veces en un mismo chat, el fragmento de mayor score se repite en cada llamada consumiendo tokens de contexto innecesarios.
+* **Solución propuesta:**
+  * **Neighbor Expansion:** Cuando un fragmento $n$ supera un umbral de similitud (ej. $>0.88$), el motor recupera automáticamente también sus vecinos inmediatos ($n-1$ y $n+1$) del mismo documento para dotar de contexto anterior y posterior.
+  * **Deduplicación por sesión:** Filtrar en memoria los identificadores de chunks ya inyectados en la conversación activa para que las llamadas subsecuentes traigan información nueva y complementaria.
+
