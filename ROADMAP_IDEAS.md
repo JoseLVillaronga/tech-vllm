@@ -476,4 +476,70 @@ os.environ["VLLM_ATTENTION_BACKEND"] = selected_backend
 2. **Blindaje de LoRAs:** Los modelos con adaptadores de razonamiento (`gemma-4-reasoning`) quedan automáticamente protegidos bajo FlashAttention-2.
 3. **Control Total:** Posibilidad de descomentar `ATTENTION_BACKEND=flash_attn` o `flashinfer` en `.env` en cualquier momento para pruebas comparativas.
 
+---
+
+## 10. Perfil Híbrido de Gran Capacidad: GLM-4.7-Flash 30B MoE (128K Contexto con CPU Offload)
+
+Este diseño técnico describe la configuración óptima para ejecutar un modelo de código de **30B parámetros (MoE)** con una ventana de contexto masiva de **128.000 tokens (128K)** en **`bfloat16` nativo**, utilizando la RAM del sistema (64 GB) como soporte y manteniendo **8.6 GB de VRAM libre** en la **NVIDIA GeForce RTX 3090**.
+
+```
++---------------------------------------------------------------------------------------------------+
+|                  ARQUITECTURA HÍBRIDA MoE: GLM-4.7-Flash (30B-A3B / 128K Context)                 |
++---------------------------------------------------------------------------------------------------+
+|  1. GPU VRAM (RTX 3090 - 24 GB):                                                                  |
+|     * Presupuesto vLLM (0.64):           15.36 GB (5.5 GB Pesos Base + 9.86 GB KV Cache BF16)     |
+|     * Colchón de Seguridad Libre en GPU:  8.64 GB (Para escritorio, activaciones y satélites)     |
+|                                                                                                   |
+|  2. CPU RAM (Ryzen 5 - 64 GB):                                                                    |
+|     * Swap Space (--cpu-offload-gb 24):  ~11.5 GB de capas de expertos en RAM                     |
+|     * RAM Libre del Sistema:             >45 GB                                                   |
+|                                                                                                   |
+|  3. RENDIMIENTO ESTIMADO:                                                                         |
+|     * Velocidad de Generación:           ~18 – 25 tok/s (MoE solo mueve ~3B activos por PCIe 4.0) |
+|     * Ventana de Contexto Real:          128.000 tokens (~400 páginas de código o documentación)  |
+|     * Formato de KV Cache:               bfloat16 nativo (Cero overhead de decuantización FP8)    |
+|     * Backend de Atención:               FLASHINFER (Aceleración GQA de contexto largo)           |
++---------------------------------------------------------------------------------------------------+
+```
+
+---
+
+### 10.1. Características del Modelo y Trade-offs
+
+* **Arquitectura:** `zai-org/GLM-4.7-Flash-AWQ` (Mixture of Experts: 30B totales, ~3B activos por token).
+* **Especialidad:** Programación avanzada, refactorización, debugging, scripting y flujos agénticos (LiveCodeBench ~64.0).
+* **Trade-off Multimodal:** Es un modelo **Language & Code Only** (no es multimodal/visión; para análisis visual o capturas se mantiene `Gemma 4-E4B-it`).
+
+---
+
+### 10.2. Justificación Técnica de `GPU_MEMORY_UTILIZATION=0.64` y `SWAP_SPACE=24`
+
+1. **Eficiencia del MoE en el Bus PCIe 4.0:**  
+   En modelos densos (como Qwen Coder 32B), el *CPU offload* penaliza gravemente la velocidad a 2–4 tok/s porque debe transferir los 32B de parámetros en cada paso. En `GLM-4.7-Flash`, al ser un MoE, la GPU solo transfiere a través del bus PCIe los **~3B de expertos activos requeridos para ese token**, manteniendo una tasa de generación fluida de **~18 a 25 tokens/s** (4x más rápido que la velocidad de lectura humana).
+2. **Colchón de VRAM Libre (8.64 GB):**  
+   Al fijar `0.64`, vLLM nunca sobrepasará los 15.36 GB de VRAM, asegurando que el sistema no sufra bloqueos de entorno gráfico ni picos de memoria.
+
+---
+
+### 10.3. Por qué `bfloat16` nativo es superior a `fp8` en la RTX 3090
+
+* **Límite de Hardware de Ampere (CC 8.6):** La RTX 3090 carece de Tensor Cores FP8 nativos (introducidos en la RTX 4090 / Ada Lovelace). Usar `KV_CACHE_DTYPE=fp8` fuerza una decuantización por software en cada paso de atención.
+* **Suficiencia de Memoria:** Con `0.64`, los **9.86 GB de VRAM dedicados al KV Cache** son suficientes para albergar **~123.250 tokens en `bfloat16` nativo**, alcanzando el límite nativo de 128K del modelo sin pérdida de precisión ni penalizaciones de kernel.
+
+---
+
+### 10.4. Configuración Lista para Probar en `.env`
+
+```bash
+# Perfil Híbrido GLM-4.7-Flash (Código 30B MoE + 128K Contexto)
+MODEL=zai-org/GLM-4.7-Flash-AWQ
+QUANTIZATION=awq
+SWAP_SPACE=24
+GPU_MEMORY_UTILIZATION=0.64
+MAX_MODEL_LEN=131072
+KV_CACHE_DTYPE=bfloat16
+ATTENTION_BACKEND=flashinfer
+```
+
+
 
