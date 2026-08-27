@@ -387,3 +387,93 @@ A partir de la evaluación empírica de consultas reales sobre procedimientos in
   * **Neighbor Expansion:** Cuando un fragmento $n$ supera un umbral de similitud (ej. $>0.88$), el motor recupera automáticamente también sus vecinos inmediatos ($n-1$ y $n+1$) del mismo documento para dotar de contexto anterior y posterior.
   * **Deduplicación por sesión:** Filtrar en memoria los identificadores de chunks ya inyectados en la conversación activa para que las llamadas subsecuentes traigan información nueva y complementaria.
 
+---
+
+## 9. Optimización de Inferencia y Atención: FlashInfer Condicional vs FlashAttention
+
+Este módulo define la estrategia técnica para maximizar los tokens por segundo y reducir el *Time To First Token (TTFT)* en la GPU **NVIDIA GeForce RTX 3090 (Ampere CC 8.6)**, combinando selección automática de kernels y control manual mediante variables de entorno.
+
+```
++---------------------------------------------------------------------------------------------------+
+|                     ESTRATEGIA CONDICIONAL DE KERNELS DE ATENCIÓN (vLLM)                          |
++---------------------------------------------------------------------------------------------------+
+|  1. MODELO BASE CON GQA (Gemma 4, Qwen3, Llama 3)  --> FLASHINFER (+8% a +15% tok/s en decode)    |
+|  2. MODELO CON LoRA ACTIVO (gemma-4-reasoning)     --> FLASH_ATTN (Estabilidad total con LoRA)    |
+|  3. CONTROL MANUAL EN .env (ATTENTION_BACKEND)     --> Prioridad absoluta sobre detección auto.   |
+|  4. TAMAÑO DE BLOQUE (Paged KV Cache)              --> Fijado en 16 (Óptimo para Warps Ampere)    |
++---------------------------------------------------------------------------------------------------+
+```
+
+---
+
+### 9.1. Análisis Técnico de Backends de Atención (`VLLM_ATTENTION_BACKEND`)
+
+| Backend | Arquitectura de Kernel | Comportamiento en RTX 3090 | Caso de Uso Ideal |
+| :--- | :--- | :--- | :--- |
+| **`FLASH_ATTN`** | FlashAttention-2 (C++/CUDA) | Muy estable, estándar probado con cuantizaciones y LoRAs dinámicos. | Modelos con adaptadores LoRA acoplados o arquitecturas no-GQA. |
+| **`FLASHINFER`** | FlashInfer (Ragged Tensor / GQA Decoupled) | **+8% a +15% tokens/s en decodificación**, menor TTFT en prompts largos (RAG) y menor jitter de latencia. Reserva ~128–200 MB de workspace VRAM. | Modelos base con *Grouped-Query Attention* (Gemma 4, Qwen 2.5/3, Mistral) con *Chunked Prefill*. |
+
+---
+
+### 9.2. Análisis del Tamaño de Bloque PagedAttention (`--block-size`)
+
+Se evaluó el impacto de reducir el tamaño de bloque a `--block-size 8` frente al estándar `--block-size 16`:
+
+* **Impacto en VRAM:** La reducción de fragmentación interna de memoria con bloques de 8 tokens solo ahorra entre **~20 MB y 40 MB de VRAM** en contextos normales de 4K–16K tokens.
+* **Impacto en Rendimiento:** 
+  * Los *Warps* de NVIDIA ejecutan en grupos de **32 hilos**. Bloques de 8 tokens rompen la coalescencia de memoria global y duplican las entradas en las tablas de páginas de *PagedAttention*, reduciendo el throughput entre un **10% y 25%**.
+  * Los kernels de `FLASH_ATTN` y `FLASHINFER` están optimizados para múltiplos de 16/32; forzar 8 puede degradar a kernels genéricos de Triton o emitir fallos de aserción en el arranque.
+* **Decisión:** Mantener estrictamente **`--block-size 16`** como valor predeterminado óptimo.
+
+---
+
+### 9.3. Propuesta de Implementación Condicional en `app.py`
+
+La lógica propuesta permite que el sistema opere a máxima velocidad de forma transparente, permitiendo forzar el comportamiento desde `.env`:
+
+#### A. Variables en `.env` / `.env.example`:
+```bash
+# Backend de Atención vLLM: auto (predeterminado), flashinfer, flash_attn
+# ATTENTION_BACKEND=auto
+```
+
+#### B. Algoritmo de Resolución en `app.py`:
+```python
+# 1. Detectar si hay adaptadores LoRA activos
+has_active_lora = lora_env and "gemma" in model.lower() and os.path.exists(os.path.join(lora_dir, "adapter_config.json"))
+
+# 2. Familias de modelos con soporte y aceleración comprobada en FlashInfer
+flashinfer_families = ["gemma", "qwen", "llama", "mistral", "deepseek"]
+is_gqa_model = any(f in model.lower() for f in flashinfer_families)
+
+# 3. Leer preferencia manual de .env
+user_pref = os.getenv("ATTENTION_BACKEND", "auto").strip().lower()
+
+if user_pref == "flashinfer":
+    selected_backend = "FLASHINFER"
+    backend_reason = "Manual (.env)"
+elif user_pref in ["flash_attn", "flashattention"]:
+    selected_backend = "FLASH_ATTN"
+    backend_reason = "Manual (.env)"
+else:  # Modo 'auto'
+    if has_active_lora:
+        selected_backend = "FLASH_ATTN"
+        backend_reason = "LoRA activo -> FlashAttention seguro"
+    elif is_gqa_model:
+        selected_backend = "FLASHINFER"
+        backend_reason = "GQA sin LoRA -> FlashInfer acelerado"
+    else:
+        selected_backend = "FLASH_ATTN"
+        backend_reason = "Estándar -> FlashAttention"
+
+os.environ["VLLM_ATTENTION_BACKEND"] = selected_backend
+```
+
+---
+
+### 9.4. Beneficios Esperados
+1. **Aceleración Cero-Configuración:** Todo modelo base compatible se beneficia automáticamente de FlashInfer sin intervención del usuario.
+2. **Blindaje de LoRAs:** Los modelos con adaptadores de razonamiento (`gemma-4-reasoning`) quedan automáticamente protegidos bajo FlashAttention-2.
+3. **Control Total:** Posibilidad de descomentar `ATTENTION_BACKEND=flash_attn` o `flashinfer` en `.env` en cualquier momento para pruebas comparativas.
+
+
