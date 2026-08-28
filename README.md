@@ -832,6 +832,22 @@ curl -X POST http://localhost:8000/v1/rag/search \
   }'
 ```
 
+### 7. Diagnóstico y Auto-Reparación del Subsistema RAG (`check_rag_health.sh`)
+
+Para auditar y restablecer la operatividad de todo el stack RAG ante cualquier eventualidad o cuello de botella (ej. servicios de embeddings caídos tras un reinicio o cambio de modelo), la suite incluye el script interactivo [`check_rag_health.sh`](check_rag_health.sh):
+
+* **Ejecutar Diagnóstico Completo de 5 Capas:**
+  ```bash
+  ./check_rag_health.sh
+  ```
+  *Verifica en tiempo real: (1) Base LanceDB en disco, (2) Microservicio de Embeddings en `:18005`, (3) Generación de vector 1024D en vivo, (4) Endpoint del Dashboard en `:8004`, y (5) Tool Calling autenticado en Gateway `:8000`.*
+
+* **Ejecutar con Auto-Reparación Automática (`--fix`):**
+  ```bash
+  ./check_rag_health.sh --fix
+  ```
+  *Si detecta que algún microservicio está en error (ej. HTTP 503 o proceso caído), reinicia de forma segura los servicios afectados vía systemd y re-ejecuta la prueba hasta confirmar 100% de operatividad.*
+
 ---
 
 ## 📄 Procesamiento de Documentos y OCR: Docling Serve
