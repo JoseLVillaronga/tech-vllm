@@ -29,7 +29,7 @@
             }
         }
 
-        function selectQuickModel(modelName, gpuMem = '', maxLen = '', quantization = '', loraVal = null) {
+        function selectQuickModel(modelName, gpuMem = '', maxLen = '', quantization = '', loraVal = null, swapSpace = null) {
             const input = document.getElementById('model-input');
             if (input) {
                 input.value = modelName;
@@ -59,6 +59,10 @@
             const quantInput = document.querySelector('input[name="QUANTIZATION"]');
             if (quantInput && quantization !== undefined && quantization !== null) {
                 quantInput.value = quantization;
+            }
+            const swapInput = document.querySelector('input[name="SWAP_SPACE"]');
+            if (swapInput && swapSpace !== null && swapSpace !== undefined) {
+                swapInput.value = swapSpace;
             }
         }
 
