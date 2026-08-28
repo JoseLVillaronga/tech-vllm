@@ -72,6 +72,12 @@ def main():
             "--tool-call-parser", "llama3_json",
             "--enable-auto-tool-choice"
         ])
+    elif "glm" in model_lower:
+        cmd.extend([
+            "--tool-call-parser", "glm47_moe",
+            "--reasoning-parser", "glm47_moe",
+            "--enable-auto-tool-choice"
+        ])
     else:
         # Fallback estándar para modelos compatibles con OpenAI / Function Calling
         cmd.extend([
