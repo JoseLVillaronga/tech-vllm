@@ -769,28 +769,32 @@ class Tools:
 
     def buscar_en_base_de_conocimiento(
         self,
-        consulta: str = Field(
-            ...,
-            description="Pregunta o términos de búsqueda específicos para consultar en los libros y procedimientos (ej: 'artículo 14 bis constitución', 'funciones del responsable de soporte en Teccam', 'patrón de reingeniería código espagueti')."
-        ),
-        dominios: Optional[List[str]] = Field(
-            None,
-            description="Opcional: Lista de temas a filtrar. Opciones: ['Derecho Argentino', 'Procedimientos Teccam', 'Estrategia', 'Filosofía']. Dejar vacío para buscar en toda la base."
-        )
+        consulta: str,
+        dominios: Optional[str] = None
     ) -> str:
         """
         Consulta fragmentos relevantes en la base de datos documental y jurídica de Teccam en LanceDB.
         Utiliza esta herramienta siempre que el usuario haga preguntas puntuales sobre leyes argentinas, artículos de la Constitución, Código Civil, procedimientos internos de Teccam o patrones de arquitectura.
+        :param consulta: Pregunta o términos de búsqueda específicos para consultar en los libros y procedimientos.
+        :param dominios: Opcional: Tema o temas a filtrar separados por comas. Dejar vacío para buscar en toda la base.
         """
         url = f"{self.valves.GATEWAY_URL.rstrip('/')}/api/tools/rag-search"
         headers = {
             "Authorization": f"Bearer {self.valves.API_KEY}",
             "Content-Type": "application/json"
         }
+        
+        temas_list = None
+        if dominios and not str(type(dominios)).endswith("FieldInfo'>"):
+            if isinstance(dominios, list):
+                temas_list = [str(d).strip() for d in dominios if d]
+            elif isinstance(dominios, str):
+                temas_list = [d.strip() for d in dominios.split(",") if d.strip()]
+
         payload = {
-            "query": consulta,
-            "temas": dominios if dominios else None,
-            "top_k": self.valves.DEFAULT_TOP_K
+            "query": str(consulta).strip(),
+            "temas": temas_list,
+            "top_k": int(self.valves.DEFAULT_TOP_K)
         }
 
         try:
@@ -816,28 +820,33 @@ class Tools:
 
     def leer_documento_completo(
         self,
-        doc_id: str = Field(
-            ...,
-            description="ID único del documento (ej: '67b2111008223c9b3c3e5608') o el título del documento (ej: 'Procedimiento General de Soporte en Puestos de Trabajo')."
-        ),
-        parte: int = Field(
-            default=1,
-            description="Número de parte a recuperar si es un libro extenso paginado (1 para la primera parte, 2 para la siguiente, etc.)."
-        )
+        doc_id: str,
+        parte: int = 1
     ) -> str:
         """
-        Obtiene el texto completo o una parte masiva de un documento, procedimiento o libro oficial para redactar resúmenes integrales, síntesis ejecutivas o análisis normativos exhaustivos sin omitir pasos ni incisos.
+        Obtiene el texto completo o una parte masiva de un documento, procedimiento o libro oficial de Teccam para redactar resúmenes integrales, síntesis ejecutivas o análisis normativos exhaustivos sin omitir pasos ni incisos.
         Acepta tanto el doc_id hexadecimal como el título exacto o parcial del procedimiento/libro.
         Si el documento tiene hasta 275 fragmentos (~15-20 páginas), entrega el texto original íntegro 1:1. Si es más extenso, entrega la parte solicitada con aviso de paginación.
+        :param doc_id: ID único del documento (ej: '67b2111008223c9b3c3e5608') o el título del documento (ej: 'Procedimiento General de Soporte en Puestos de Trabajo').
+        :param parte: Número de parte a recuperar si es un libro extenso paginado (1 para la primera parte, 2 para la siguiente, etc.).
         """
         url = f"{self.valves.GATEWAY_URL.rstrip('/')}/api/tools/rag-document"
         headers = {
             "Authorization": f"Bearer {self.valves.API_KEY}",
             "Content-Type": "application/json"
         }
+        
+        clean_doc_id = str(doc_id).strip() if doc_id and not str(type(doc_id)).endswith("FieldInfo'>") else ""
+        clean_parte = 1
+        if parte is not None and not str(type(parte)).endswith("FieldInfo'>"):
+            try:
+                clean_parte = int(parte)
+            except Exception:
+                clean_parte = 1
+
         payload = {
-            "doc_id": doc_id,
-            "parte": parte,
+            "doc_id": clean_doc_id,
+            "parte": clean_parte,
             "chunk_threshold": 275
         }
 
