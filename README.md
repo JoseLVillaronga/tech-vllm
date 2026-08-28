@@ -61,16 +61,24 @@ Gracias a la arquitectura desacoplada de la suite, los **Fallbacks automáticos 
 
 ---
 
-### 2. 💻 Perfil B: "Asistente de Código / Modelo Grande" *(Qwen3-Coder 30B / Gemma 4 26B)*
+### 2. 💻 Perfil B: "Asistente de Código / Modelo Grande" *(GLM-4.7-Flash 30B MoE 128K / Qwen3-Coder 30B)*
 
-* **Objetivo:** Máxima capacidad de razonamiento lógico, refactorización y programación asistida en el modelo principal de vLLM.
-* **Distribución de VRAM (~22.0 GB - 23.5 GB):**
-  - **LLM Principal 26B/30B (FP8 / AWQ / NVFP4):** `~20.5 GB - 22.0 GB` (`gpu_memory_utilization=0.88 - 0.92`).
+* **Objetivo:** Máxima capacidad de razonamiento lógico, refactorización, debugging agéntico y análisis de repositorios completos con ventana de contexto de **128.000 tokens (128K)** en `bfloat16`.
+* **Distribución de VRAM (~22.0 GB / 24.0 GB - 91.76% | ~2.0 GB libres de colchón):**
+  - **LLM Principal 30B MoE (`QuantTrio/GLM-4.7-Flash-AWQ`):** `~16.96 GB` (`gpu_memory_utilization=0.72 - 0.80`, `swap_space=10`, `kv_cache_dtype=bfloat16`).
+  - **Docling OCR (GPU en `:5020`):** `~800 MB - 884 MB` *(¡Mantenido ACTIVO en GPU para extracción y escaneo de documentos!)*.
+  - **CUDAGraphs / Activaciones:** `~0.46 GB`.
   - **Sistema / Gnome:** `~1.1 GB`.
-* **Ajustes Críticos de la Suite:**
-  - **Embeddings en RAM del Sistema:** Configurar `EMBEDDINGS_DEVICE=cpu` y `EMBEDDINGS_CPU_THREADS=8` en `.env`. Esto libera **4.0 GB de VRAM completa** transfiriendo la inferencia vectorial a los 64 GB de RAM del sistema.
-  - **Pausar Sincronización Automática:** Desactivar temporalmente el timer (`sudo systemctl stop vllm-rag-sync.timer`) para evitar que una indexación diferencial a medianoche o mediodía provoque un pico de memoria y un *Out Of Memory (OOM)* en vLLM.
-  - **Audio:** Todos los servicios GPU apagados, delegando voz a los fallbacks de CPU o desactivándolos.
+* **Distribución de RAM del Sistema (47.8% utilizado | >33 GB libres de 64 GB):**
+  - **Capas derivadas a RAM (UVA Offload):** `10.0 GB`.
+  - **Qwen3-Embedding en RAM (`:18005`):** `~1.2 GB` (`EMBEDDINGS_DEVICE=cpu`, `EMBEDDINGS_CPU_THREADS=8`).
+  - **Fallbacks de Audio en CPU (`:18011` y `:18012`):** `ACTIVE (0 VRAM)`.
+  - **PyAnnote Diarization (`:8003`):** **`INACTIVE`** *(Único servicio satélite totalmente apagado)*.
+* **Comportamiento en Producción:**
+  - Ingesta probada de **+43.4K tokens de input continuo** en DeepSeek Harness sin degradación.
+  - Velocidad de generación estable de **~5.2 a 9.0 tokens/s**.
+  - Parsers oficiales integrados en `app.py`: `--tool-call-parser glm47` y `--reasoning-parser deepseek_r1`.
+  - Botón de activación de 1 clic disponible en el Dashboard (pestaña **Variables**).
 
 ---
 

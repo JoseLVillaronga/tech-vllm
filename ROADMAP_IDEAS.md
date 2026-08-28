@@ -480,66 +480,92 @@ os.environ["VLLM_ATTENTION_BACKEND"] = selected_backend
 
 ## 10. Perfil Híbrido de Gran Capacidad: GLM-4.7-Flash 30B MoE (128K Contexto con CPU Offload)
 
-Este diseño técnico describe la configuración óptima para ejecutar un modelo de código de **30B parámetros (MoE)** con una ventana de contexto masiva de **128.000 tokens (128K)** en **`bfloat16` nativo**, utilizando la RAM del sistema (64 GB) como soporte y manteniendo **8.6 GB de VRAM libre** en la **NVIDIA GeForce RTX 3090**.
+Este diseño técnico y caso de estudio documenta la configuración calibrada y verificada empíricamente en producción (agosto 2026) para ejecutar un modelo de código y razonamiento de **30B parámetros (MoE)** con una ventana de contexto masiva de **128.000 tokens (128K)** en **`bfloat16` nativo** sobre una única **NVIDIA GeForce RTX 3090 (24 GB)** apoyada en la RAM del sistema (64 GB).
 
 ```
 +---------------------------------------------------------------------------------------------------+
 |                  ARQUITECTURA HÍBRIDA MoE: GLM-4.7-Flash (30B-A3B / 128K Context)                 |
 +---------------------------------------------------------------------------------------------------+
-|  1. GPU VRAM (RTX 3090 - 24 GB):                                                                  |
-|     * Presupuesto vLLM (0.64):           15.36 GB (5.5 GB Pesos Base + 9.86 GB KV Cache BF16)     |
-|     * Colchón de Seguridad Libre en GPU:  8.64 GB (Para escritorio, activaciones y satélites)     |
+|  1. GPU VRAM (RTX 3090 - 24 GB) -> Total Usado: 22.0 GB (91.76%) | Libre: ~2.0 GB de colchón      |
+|     * LLM vLLM (0.72 - 0.80):            16.96 GB (6.92 GB Pesos + 8.23 GB KV Cache BF16)         |
+|     * Docling OCR (GPU en :5020):        ~0.88 GB (¡Activo en GPU para escaneo documental!)       |
+|     * Activaciones / CUDA Graph Pool:    ~0.46 GB                                                 |
+|     * Sistema Operativo / Gnome:         ~1.10 GB                                                 |
 |                                                                                                   |
-|  2. CPU RAM (Ryzen 5 - 64 GB):                                                                    |
-|     * Swap Space (--cpu-offload-gb 24):  ~11.5 GB de capas de expertos en RAM                     |
-|     * RAM Libre del Sistema:             >45 GB                                                   |
+|  2. CPU RAM (Ryzen 5 - 64 GB) -> Total Usado: 47.8% (~30.5 GB) | Libre: >33 GB                     |
+|     * Swap Space (--cpu-offload-gb 10):  10.0 GB de capas de expertos derivadas a RAM            |
+|     * Embeddings Qwen3 (CPU en :18005):  ~1.2 GB (8 hilos en Ryzen 5)                             |
+|     * Fallback STT / TTS (:18011/:18012): Activos en CPU (0 VRAM)                                 |
 |                                                                                                   |
-|  3. RENDIMIENTO ESTIMADO:                                                                         |
-|     * Velocidad de Generación:           ~18 – 25 tok/s (MoE solo mueve ~3B activos por PCIe 4.0) |
-|     * Ventana de Contexto Real:          128.000 tokens (~400 páginas de código o documentación)  |
-|     * Formato de KV Cache:               bfloat16 nativo (Cero overhead de decuantización FP8)    |
-|     * Backend de Atención:               FLASHINFER (Aceleración GQA de contexto largo)           |
+|  3. SERVICIOS APAGADOS (Para preservar VRAM):                                                     |
+|     * PyAnnote Diarization (:8003):      INACTIVE (Único servicio apagado del todo)               |
+|                                                                                                   |
+|  4. RENDIMIENTO EMPÍRICO EN PRODUCCIÓN:                                                           |
+|     * Velocidad de Generación:           5.2 a 9.0 tok/s (Estable y constante a lo largo de 43K)  |
+|     * Ventana de Contexto:               128.000 tokens (Probada con 43.4K tokens de input real)   |
+|     * Prefix Cache Hit Rate:             40.0% a 44.6%                                            |
+|     * Parsers Oficiales:                 --tool-call-parser glm47  --reasoning-parser deepseek_r1  |
 +---------------------------------------------------------------------------------------------------+
 ```
 
 ---
 
-### 10.1. Características del Modelo y Trade-offs
+### 10.1. Razón de la Prueba y Justificación Técnica
 
-* **Arquitectura:** `zai-org/GLM-4.7-Flash-AWQ` (Mixture of Experts: 30B totales, ~3B activos por token).
-* **Especialidad:** Programación avanzada, refactorización, debugging, scripting y flujos agénticos (LiveCodeBench ~64.0).
-* **Trade-off Multimodal:** Es un modelo **Language & Code Only** (no es multimodal/visión; para análisis visual o capturas se mantiene `Gemma 4-E4B-it`).
-
----
-
-### 10.2. Justificación Técnica de `GPU_MEMORY_UTILIZATION=0.64` y `SWAP_SPACE=24`
-
-1. **Eficiencia del MoE en el Bus PCIe 4.0:**  
-   En modelos densos (como Qwen Coder 32B), el *CPU offload* penaliza gravemente la velocidad a 2–4 tok/s porque debe transferir los 32B de parámetros en cada paso. En `GLM-4.7-Flash`, al ser un MoE, la GPU solo transfiere a través del bus PCIe los **~3B de expertos activos requeridos para ese token**, manteniendo una tasa de generación fluida de **~18 a 25 tokens/s** (4x más rápido que la velocidad de lectura humana).
-2. **Colchón de VRAM Libre (8.64 GB):**  
-   Al fijar `0.64`, vLLM nunca sobrepasará los 15.36 GB de VRAM, asegurando que el sistema no sufra bloqueos de entorno gráfico ni picos de memoria.
+1. **El reto:** Ejecutar localmente un modelo de 30B con razonamiento reflexivo nativo (`<think>`) y 128K de ventana de contexto sin colapsar los 24 GB de la RTX 3090.
+2. **La solución de offloading calibrado:**  
+   * Con `SWAP_SPACE=24`, vLLM mandaba 15.7 GB a RAM y dejaba solo 1.2 GB en VRAM (~5.6 tok/s).
+   * Con `SWAP_SPACE=8`, desbordaba el presupuesto inicial de KV Cache a `0.72`.
+   * Con **`SWAP_SPACE=10` y `GPU_MEMORY_UTILIZATION=0.80`**, se encontró el punto dulce perfecto: **6.92 GiB de pesos en VRAM**, **8.23 GiB de KV Cache en `bfloat16`** (163.184 tokens disponibles) y **10.0 GB de capas en RAM**.
+3. **Coexistencia de Satélites:**  
+   A diferencia de otros perfiles pesados donde se apaga todo, en esta configuración **Docling OCR permaneció activo en la GPU (`:5020`)**, los **Embeddings de Qwen3 operaron en la RAM/CPU (`:18005`)**, y la voz estuvo disponible mediante los fallbacks de CPU (`:18011` y `:18012`). El único servicio apagado por completo fue la diarización de hablantes.
 
 ---
 
-### 10.3. Por qué `bfloat16` nativo es superior a `fp8` en la RTX 3090
+### 10.2. Resultados Empíricos en Tareas Agénticas Reales (DeepSeek Harness)
 
-* **Límite de Hardware de Ampere (CC 8.6):** La RTX 3090 carece de Tensor Cores FP8 nativos (introducidos en la RTX 4090 / Ada Lovelace). Usar `KV_CACHE_DTYPE=fp8` fuerza una decuantización por software en cada paso de atención.
-* **Suficiencia de Memoria:** Con `0.64`, los **9.86 GB de VRAM dedicados al KV Cache** son suficientes para albergar **~123.250 tokens en `bfloat16` nativo**, alcanzando el límite nativo de 128K del modelo sin pérdida de precisión ni penalizaciones de kernel.
+Se ejecutó una prueba agéntica desatendida en **DeepSeek Harness** sobre un repositorio de 4 archivos de código Python (~1.084 líneas en total):
+
+* **Comportamiento Agéntico:** El modelo ejecutó de forma autónoma 4 llamadas a herramientas consecutivas (`glob`, inspección y lectura de archivos) integrando el proceso de pensamiento `<think>` con el parser oficial `glm47`.
+* **Carga de Contexto:** Procesó **43.4K tokens de entrada acumulados** sin degradar su velocidad ni perder coherencia lógica.
+* **Calidad de Análisis:**
+  * Detectó que en `moon_patrol.py` la función de dado (`get_roll_value()`) devolvía un valor estático (*"¡Moon Rock!"*) y sugirió aleatorizarlo.
+  * Identificó la dependencia directa de pruebas unitarias entre `test_script.py` y `reporte_espacio_corregido.py`.
+  * Evaluó la eficiencia del uso de generadores y estructuras de datos *Min-Heap* (`heapq`) para el reporte de espacio en disco.
+* **Tiempo Total:** 7 minutos y 53 segundos para completar el análisis completo y estructurado de forma 100% autónoma.
 
 ---
 
-### 10.4. Configuración Lista para Probar en `.env`
+### 10.3. Capturas de Verificación en Producción
 
-```bash
-# Perfil Híbrido GLM-4.7-Flash (Código 30B MoE + 128K Contexto)
-MODEL=zai-org/GLM-4.7-Flash-AWQ
-QUANTIZATION=awq
-SWAP_SPACE=24
-GPU_MEMORY_UTILIZATION=0.64
-MAX_MODEL_LEN=131072
-KV_CACHE_DTYPE=bfloat16
-ATTENTION_BACKEND=flashinfer
-```
+* **Distribución de Recursos en el Dashboard de la Suite (VRAM: 22.0 / 24.0 GB | Temp: 42°C | RAM: 47.8%):**
+![Distribución de Memoria y GPU en Dashboard](screenshots/dashboard_glm47_vram_distribution.png)
+
+* **Ejecución y Análisis Agéntico Completo en DeepSeek Harness (43.4K Tokens Ingestados):**
+![Análisis Agéntico en DeepSeek Harness con GLM-4.7-Flash](screenshots/deepseek_harness_glm47_analysis.png)
+
+---
+
+### 10.4. Conclusiones Estratégicas para el Desarrollador
+
+1. **Soberanía y Costo Cero ($0.00):**  
+   Permite a un desarrollador solitario auditar, refactorizar y documentar proyectos enteros localmente sin consumir cuota de API ni preocuparse por límites de tasa (*rate limits*) o caídas de proveedores externos.
+2. **Estrategia Híbrida Recomendada:**  
+   * **Nube Rápida (`deepseek-v4-flash-vision-exp` / `Claude 3.5`):** Para diálogo interactivo de 2 segundos, diseño visual y prototipado rápido.
+   * **Local Pesado (`QuantTrio/GLM-4.7-Flash-AWQ`):** Para análisis masivo de repositorios, tareas nocturnas desatendidas, generación de suites de testing y código confidencial.
+3. **Configuración de un solo clic:**  
+   Disponible en el Dashboard de la Suite (pestaña **Variables**) mediante el botón de carga rápida:
+   ```bash
+   MODEL="QuantTrio/GLM-4.7-Flash-AWQ"
+   GPU_MEMORY_UTILIZATION=0.80
+   SWAP_SPACE=10
+   MAX_MODEL_LEN=131072
+   QUANTIZATION=awq
+   KV_CACHE_DTYPE=bfloat16
+   LORA=False
+   EMBEDDINGS_DEVICE=cpu
+   EMBEDDINGS_CPU_THREADS=8
+   ```
 
 
 
