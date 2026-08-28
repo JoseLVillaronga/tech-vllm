@@ -238,6 +238,28 @@ class PDFDocumentBuilder:
         return out.getvalue()
 
 
+def cleanup_old_pdfs(max_age_hours: int = 24):
+    """Elimina automáticamente archivos PDF temporales que tengan más de max_age_hours de antigüedad."""
+    try:
+        import time
+        now = time.time()
+        max_age_sec = max_age_hours * 3600
+        if os.path.exists(PDF_STORAGE_DIR):
+            for fname in os.listdir(PDF_STORAGE_DIR):
+                if fname.endswith(".pdf"):
+                    fpath = os.path.join(PDF_STORAGE_DIR, fname)
+                    if os.path.isfile(fpath):
+                        file_age = now - os.path.getmtime(fpath)
+                        if file_age > max_age_sec:
+                            try:
+                                os.remove(fpath)
+                            except Exception:
+                                pass
+    except Exception as e:
+        import sys
+        print(f"⚠️ Error limpiando PDFs antiguos: {e}", file=sys.stderr)
+
+
 def create_pdf_from_markdown(
     title: str,
     markdown_content: str,
@@ -246,6 +268,9 @@ def create_pdf_from_markdown(
     base_url: str = "http://127.0.0.1:8000"
 ) -> Dict[str, Any]:
     """Genera un archivo PDF, lo guarda en disco para descarga directa y devuelve metadata + URL."""
+    # Limpieza preventiva de archivos con más de 24 hs de antigüedad
+    cleanup_old_pdfs(max_age_hours=24)
+
     clean_title = (title or "").strip()
     if not clean_title and markdown_content:
         for line in markdown_content.strip().split("\n"):
