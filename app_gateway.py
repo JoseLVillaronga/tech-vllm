@@ -919,6 +919,53 @@ def create_proxy_app(service_name: str, target_port: int, fallback_port: Optiona
             except Exception as re:
                 raise HTTPException(status_code=500, detail=f"Error en búsqueda RAG: {str(re)}")
 
+        # Interceptar /v1/rag/document o /api/tools/rag-document para síntesis y lectura de documento completo
+        if path.strip("/") in ["v1/rag/document", "rag/document", "api/tools/rag-document", "api/tools/read-document"] and request.method == "POST":
+            try:
+                import json
+                from rag_engine import get_document_full_content, get_rag_settings
+                
+                rag_sett = get_rag_settings()
+                if not rag_sett.get("enabled", True):
+                    raise HTTPException(
+                        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                        detail="El servicio de Base de Conocimiento RAG está desactivado globalmente en la suite."
+                    )
+                
+                body_data = json.loads(body) if body else {}
+                doc_id = body_data.get("doc_id", "").strip()
+                parte = int(body_data.get("parte", 1))
+                chunk_threshold = int(body_data.get("chunk_threshold", 275))
+                
+                if not doc_id:
+                    raise HTTPException(status_code=400, detail="El parámetro 'doc_id' es obligatorio para leer el documento.")
+                    
+                t_doc_0 = time.time()
+                res = get_document_full_content(doc_id=doc_id, parte=parte, chunk_threshold=chunk_threshold)
+                dur_doc_ms = round((time.time() - t_doc_0) * 1000, 2)
+                
+                if not res.get("success", False):
+                    raise HTTPException(status_code=404, detail=res.get("error", "Error recuperando documento."))
+                    
+                return JSONResponse(content={
+                    "success": True,
+                    "doc_id": res.get("doc_id"),
+                    "titulo": res.get("titulo"),
+                    "tema": res.get("tema"),
+                    "autor": res.get("autor"),
+                    "total_chunks": res.get("total_chunks"),
+                    "modo": res.get("modo"),
+                    "parte_actual": res.get("parte_actual", 1),
+                    "total_partes": res.get("total_partes", 1),
+                    "chunks_en_esta_parte": res.get("chunks_en_esta_parte", res.get("total_chunks")),
+                    "latency_ms": dur_doc_ms,
+                    "content": res.get("content", "")
+                })
+            except HTTPException:
+                raise
+            except Exception as de:
+                raise HTTPException(status_code=500, detail=f"Error en lectura de documento RAG: {str(de)}")
+
         # Determinar si es una petición a un modelo en la nube o local
         is_cloud_request = False
         cloud_provider = None

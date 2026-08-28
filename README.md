@@ -737,10 +737,10 @@ Permite que tanto los modelos locales (Gemma 4) como los modelos de proveedores 
 """
 title: Búsqueda RAG Teccam (LanceDB)
 author: Jose Luis Villaronga
-description: Consulta la base de conocimiento documental de Teccam indexada en LanceDB con vectores 1024D (Qwen3) y BM25 híbrido.
+description: Consulta la base de conocimiento documental de Teccam en LanceDB con búsqueda híbrida 1024D (Qwen3 + BM25) y lectura de documentos completos para síntesis y análisis normativo.
 required_open_webui_version: 0.3.0
 requirements: requests, pydantic
-version: 1.0.0
+version: 1.2.0
 """
 
 import os
@@ -752,8 +752,8 @@ from pydantic import BaseModel, Field
 class Tools:
     class Valves(BaseModel):
         GATEWAY_URL: str = Field(
-            default="http://192.168.1.47:8000/v1/rag/search",
-            description="URL del endpoint de búsqueda RAG en el Gateway de la suite vLLM (usar 192.168.1.47 si corre en Docker)."
+            default="http://192.168.1.47:8000",
+            description="URL base del Gateway de la suite vLLM (usar 192.168.1.47 si corre en Docker)."
         )
         API_KEY: str = Field(
             default="TU_CLAVE_API_VLLM_AQUI",
@@ -761,7 +761,7 @@ class Tools:
         )
         DEFAULT_TOP_K: int = Field(
             default=4,
-            description="Cantidad máxima de fragmentos relevantes a recuperar por búsqueda."
+            description="Cantidad máxima de fragmentos relevantes a recuperar por búsqueda puntual."
         )
 
     def __init__(self):
@@ -779,9 +779,10 @@ class Tools:
         )
     ) -> str:
         """
-        Consulta la base de datos documental y jurídica de Teccam en LanceDB.
-        Utiliza esta herramienta siempre que el usuario haga preguntas sobre leyes argentinas, artículos de la Constitución, Código Civil, procedimientos internos de Teccam, arquitectura de software o filosofía.
+        Consulta fragmentos relevantes en la base de datos documental y jurídica de Teccam en LanceDB.
+        Utiliza esta herramienta siempre que el usuario haga preguntas puntuales sobre leyes argentinas, artículos de la Constitución, Código Civil, procedimientos internos de Teccam o patrones de arquitectura.
         """
+        url = f"{self.valves.GATEWAY_URL.rstrip('/')}/api/tools/rag-search"
         headers = {
             "Authorization": f"Bearer {self.valves.API_KEY}",
             "Content-Type": "application/json"
@@ -793,12 +794,7 @@ class Tools:
         }
 
         try:
-            response = requests.post(
-                self.valves.GATEWAY_URL,
-                json=payload,
-                headers=headers,
-                timeout=12.0
-            )
+            response = requests.post(url, json=payload, headers=headers, timeout=15.0)
 
             if response.status_code == 503:
                 return "Aviso: El servicio de Base de Conocimiento RAG está temporalmente desactivado globalmente."
@@ -813,22 +809,80 @@ class Tools:
             if not context or results_count == 0:
                 return f"No se encontraron fragmentos relevantes en la base de conocimiento para la consulta: '{consulta}'."
 
-            return f"--- CONTEXTO RECUPERADO DE LA BASE DE CONOCIMIENTO LANCEDB ({results_count} fragmentos) ---\n\n{context}\n\n--- FIN DEL CONTEXTO RECUPERADO ---"
+            return f"--- CONTEXTO RECUPERADO DE LANCEDB ({results_count} fragmentos) ---\n\n{context}\n\n--- FIN DEL CONTEXTO RECUPERADO ---"
 
         except Exception as e:
-            return f"Error de conexión con el motor RAG local ({self.valves.GATEWAY_URL}): {str(e)}"
+            return f"Error de conexión con el Gateway RAG ({url}): {str(e)}"
+
+    def leer_documento_completo(
+        self,
+        doc_id: str = Field(
+            ...,
+            description="ID único del documento a leer (obtenido previamente en los metadatos de una búsqueda RAG, ej: '67b2111008223c9b3c3e5608')."
+        ),
+        parte: int = Field(
+            default=1,
+            description="Número de parte a recuperar si es un libro extenso paginado (1 para la primera parte, 2 para la siguiente, etc.)."
+        )
+    ) -> str:
+        """
+        Obtiene el texto completo o una parte masiva de un documento, procedimiento o libro oficial para redactar resúmenes integrales, síntesis ejecutivas o análisis normativos exhaustivos sin omitir pasos ni incisos.
+        Si el documento tiene hasta 275 fragmentos (~15-20 páginas), entrega el texto original íntegro 1:1. Si es más extenso, entrega la parte solicitada con aviso de paginación.
+        """
+        url = f"{self.valves.GATEWAY_URL.rstrip('/')}/api/tools/rag-document"
+        headers = {
+            "Authorization": f"Bearer {self.valves.API_KEY}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "doc_id": doc_id,
+            "parte": parte,
+            "chunk_threshold": 275
+        }
+
+        try:
+            response = requests.post(url, json=payload, headers=headers, timeout=25.0)
+
+            if response.status_code == 503:
+                return "Aviso: El servicio de Base de Conocimiento RAG está temporalmente desactivado globalmente."
+
+            if response.status_code != 200:
+                return f"Error al leer el documento (HTTP {response.status_code}): {response.text}"
+
+            data = response.json()
+            content = data.get("content", "")
+            if not content:
+                return f"El documento con ID '{doc_id}' no contiene texto disponible."
+
+            return content
+
+        except Exception as e:
+            return f"Error de conexión con el Gateway RAG ({url}): {str(e)}"
 ```
 
-### 6. Ejemplo de Consulta Directa de Búsqueda Vectorial (`/v1/rag/search`)
+### 6. Ejemplos de Consulta Directa por API (cURL)
 
+#### A. Búsqueda Vectorial Híbrida (`/api/tools/rag-search`):
 ```bash
-curl -X POST http://localhost:8000/v1/rag/search \
+curl -X POST http://localhost:8000/api/tools/rag-search \
   -H "Authorization: Bearer TU_CLAVE_API_VLLM" \
   -H "Content-Type: application/json" \
   -d '{
     "query": "tiempo maximo de accion de soporte en puesto",
     "temas": ["Procedimientos Teccam"],
     "top_k": 3
+  }'
+```
+
+#### B. Lectura de Documento Completo para Síntesis (`/api/tools/rag-document`):
+```bash
+curl -X POST http://localhost:8000/api/tools/rag-document \
+  -H "Authorization: Bearer TU_CLAVE_API_VLLM" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "doc_id": "67b2111008223c9b3c3e5608",
+    "parte": 1,
+    "chunk_threshold": 275
   }'
 ```
 

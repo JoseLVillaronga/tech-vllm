@@ -20,6 +20,8 @@ LANCEDB_DIR = os.getenv("LANCEDB_PATH", os.path.join(PROJECT_DIR, "data", "lance
 TABLE_NAME = os.getenv("LANCEDB_TABLE_NAME", "teccam_knowledge_base")
 EMBEDDINGS_BACKEND_PORT = int(os.getenv("EMBEDDINGS_BACKEND_PORT", "18005"))
 MASTER_KEY = os.getenv("API_KEY", "token-e68f0c0d4d4f4d04d70399323d411290b2bf938a81f26685602140c4f8617939")
+TECCAM_PDF_URL_BASE = os.getenv("TECCAM_PDF_URL_BASE", "http://192.168.1.33:5022").rstrip("/")
+TECCAM_PDF_API_KEY = os.getenv("TECCAM_PDF_API_KEY", "").strip()
 
 # Asegurar que el directorio de LanceDB existe
 os.makedirs(LANCEDB_DIR, exist_ok=True)
@@ -394,3 +396,144 @@ def get_rag_stats() -> Dict[str, Any]:
             "topics": [],
             "error": str(e)
         }
+
+def fetch_teccam_document_raw(doc_id: str) -> Optional[Dict[str, Any]]:
+    """Consulta la API de Teccam PDF (:5022) para obtener el Markdown íntegro original desde MongoDB."""
+    if not TECCAM_PDF_URL_BASE:
+        return None
+    url = f"{TECCAM_PDF_URL_BASE}/api/v1/rag/documentos/{doc_id}"
+    headers = {}
+    if TECCAM_PDF_API_KEY:
+        headers["Authorization"] = f"Bearer {TECCAM_PDF_API_KEY}"
+    try:
+        with httpx.Client(timeout=25.0) as client:
+            resp = client.get(url, headers=headers)
+            if resp.status_code == 200:
+                return resp.json()
+            else:
+                print(f"⚠️ [RAG Engine] Teccam PDF respondió HTTP {resp.status_code} para {doc_id}", file=sys.stderr)
+    except Exception as e:
+        print(f"⚠️ [RAG Engine] Error al consultar API de Teccam PDF ({url}): {e}", file=sys.stderr)
+    return None
+
+def get_document_full_content(
+    doc_id: str,
+    parte: int = 1,
+    chunk_threshold: int = 275
+) -> Dict[str, Any]:
+    """
+    Obtiene el contenido completo o paginado de un documento para síntesis exhaustiva por el LLM.
+    
+    Estrategia Híbrida:
+    - Si total_chunks <= 275: Recupera el Markdown original 1:1 desde la API de Teccam PDF (:5022).
+      Fallback: Si la API de Teccam no responde, concatena los fragmentos desde LanceDB.
+    - Si total_chunks > 275: Divide el documento en partes de hasta 275 fragmentos desde LanceDB.
+    """
+    clean_doc_id = doc_id.strip()
+    table = get_table()
+    if table is None or len(table) == 0:
+        return {
+            "success": False,
+            "error": "Base vectorial LanceDB no inicializada o vacía.",
+            "doc_id": clean_doc_id
+        }
+
+    # 1. Consultar todos los chunks de este documento en LanceDB
+    clean_sql_id = clean_doc_id.replace("'", "''")
+    results = table.search().where(f"doc_id = '{clean_sql_id}'").limit(10000).to_arrow()
+    
+    if len(results) == 0:
+        return {
+            "success": False,
+            "error": f"No se encontró ningún documento con ID '{clean_doc_id}' en la base de conocimiento.",
+            "doc_id": clean_doc_id
+        }
+        
+    doc_title = results["doc_title"][0].as_py() if "doc_title" in results.schema.names else "Documento"
+    doc_topic = results["doc_topic"][0].as_py() if "doc_topic" in results.schema.names else "General"
+    doc_author = results["doc_author"][0].as_py() if "doc_author" in results.schema.names else "Desconocido"
+    total_chunks = len(results)
+    
+    # 2. ESCENARIO A: Documentos Cortos/Medianos (<= 275 chunks) -> Fidelidad Total desde Teccam PDF
+    if total_chunks <= chunk_threshold:
+        raw_detail = fetch_teccam_document_raw(clean_doc_id)
+        if raw_detail and raw_detail.get("texto", "").strip():
+            raw_text = raw_detail.get("texto", "").strip()
+            header = (
+                f"# {doc_title}\n"
+                f"**Tema / Dominio:** {doc_topic} | **Autor:** {doc_author} | **Total Fragmentos:** {total_chunks}\n"
+                f"**Modo de Recuperación:** Documento Íntegro Oficial (Fidelidad 100% desde Teccam PDF)\n\n"
+                f"---\n\n"
+            )
+            return {
+                "success": True,
+                "doc_id": clean_doc_id,
+                "titulo": doc_title,
+                "tema": doc_topic,
+                "autor": doc_author,
+                "total_chunks": total_chunks,
+                "modo": "completo_directo",
+                "parte_actual": 1,
+                "total_partes": 1,
+                "content": header + raw_text
+            }
+            
+        # Fallback a concatenación desde LanceDB si la API de Teccam PDF no estaba disponible
+        print(f"ℹ️ [RAG Engine] Fallback a concatenación de LanceDB para '{doc_title}' ({clean_doc_id})", file=sys.stderr)
+        
+    # 3. ESCENARIO B: Libros/Códigos Masivos (> 275 chunks) o Fallback LanceDB
+    ids = results["id"].to_pylist() if "id" in results.schema.names else []
+    sections = results["section_path"].to_pylist() if "section_path" in results.schema.names else []
+    contents = results["content"].to_pylist() if "content" in results.schema.names else []
+    
+    # Ordenar chunks por ID secuencial (doc_id_0000, doc_id_0001, etc.)
+    sorted_items = sorted(zip(ids, sections, contents), key=lambda x: x[0])
+    
+    total_partes = max(1, (total_chunks + chunk_threshold - 1) // chunk_threshold)
+    parte = max(1, min(parte, total_partes))
+    
+    start_idx = (parte - 1) * chunk_threshold
+    end_idx = min(start_idx + chunk_threshold, total_chunks)
+    slice_items = sorted_items[start_idx:end_idx]
+    
+    body_parts = []
+    current_sec = None
+    for _, sec, cont in slice_items:
+        if sec != current_sec:
+            current_sec = sec
+            body_parts.append(f"\n\n### {sec}\n")
+        body_parts.append(cont)
+        
+    slice_text = "\n\n".join(body_parts).strip()
+    
+    if total_chunks <= chunk_threshold:
+        modo_str = "completo_lancedb"
+        header = (
+            f"# {doc_title}\n"
+            f"**Tema / Dominio:** {doc_topic} | **Autor:** {doc_author} | **Total Fragmentos:** {total_chunks}\n"
+            f"**Modo de Recuperación:** Documento Completo Reconstruido desde LanceDB\n\n"
+            f"---\n\n"
+        )
+    else:
+        modo_str = "paginado"
+        next_hint = f" (Para leer la siguiente parte use parte={parte+1})" if parte < total_partes else " (Fin del documento)"
+        header = (
+            f"# {doc_title} (Parte {parte} de {total_partes})\n"
+            f"**Tema / Dominio:** {doc_topic} | **Autor:** {doc_author} | **Fragmentos:** {start_idx + 1} al {end_idx} (de {total_chunks})\n"
+            f"**Aviso de Paginación:** Documento extenso dividido en bloques de {chunk_threshold} fragmentos.{next_hint}\n\n"
+            f"---\n\n"
+        )
+        
+    return {
+        "success": True,
+        "doc_id": clean_doc_id,
+        "titulo": doc_title,
+        "tema": doc_topic,
+        "autor": doc_author,
+        "total_chunks": total_chunks,
+        "modo": modo_str,
+        "parte_actual": parte,
+        "total_partes": total_partes,
+        "chunks_en_esta_parte": len(slice_items),
+        "content": header + slice_text
+    }
