@@ -1958,13 +1958,15 @@ class Tools:
         filename: Optional[str] = None
     ) -> str:
         """
-        Genera un archivo PDF profesional en formato A4 a partir de contenido en Markdown y devuelve el botón de descarga directa.
+        Genera un archivo PDF profesional en formato A4 a partir de contenido en Markdown y devuelve el enlace de descarga directa.
         Úsalo cada vez que el usuario te pida crear, redactar o exportar contratos, acuerdos, informes, cartas formales o documentos en PDF.
+        
+        INSTRUCCIÓN OBLIGATORIA: En tu respuesta final al usuario, DEBES incluir siempre el enlace de descarga Markdown devuelto por la herramienta con el formato: [📥 Descargar NombreArchivo.pdf](URL) para que el usuario pueda hacer clic directamente.
         
         :param title: Título principal del documento (ej: 'CONTRATO DE LOCACIÓN DE INMUEBLE', 'INFORME DE AUDITORÍA').
         :param markdown_content: El contenido completo del documento redactado en Markdown (usando cláusulas, negritas, listas y secciones de firma).
         :param filename: Nombre sugerido para el archivo PDF descargable (ej: 'contrato_locacion.pdf', 'informe_tecnico.pdf').
-        :return: Tarjeta interactiva con botón para descargar el PDF generado.
+        :return: Enlace de descarga e información del documento para entregar al usuario.
         """
         headers = {
             "Authorization": f"Bearer {self.valves.API_KEY}",
