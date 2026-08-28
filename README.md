@@ -128,6 +128,7 @@ Cada familia de IA utiliza formatos sintácticos distintos para invocar herramie
 | Familia de Modelo | Identificador en Nombre | Parser de Herramientas (`--tool-call-parser`) | Parser de Razonamiento (`--reasoning-parser`) | Modos y Adaptadores Especiales |
 | :--- | :--- | :--- | :--- | :--- |
 | **Google Gemma 4** | `gemma` (ej: `Gemma-4-E4B-it`, `Gemma-4-26B`) | `gemma4` | `gemma4` | Auto Tool Choice + Soporte LoRA adaptativo |
+| **Zhipu GLM 4.7 MoE** | `glm` (ej: `QuantTrio/GLM-4.7-Flash-AWQ`) | `glm47` | `deepseek_r1` *(para `<think>`)* | MoE 30B + 128K Contexto + Agentic Coding |
 | **Alibaba Qwen 2.5 / 3** | `qwen` (ej: `Qwen3-14B`, `Qwen2.5-Coder`) | `hermes` *(ChatML nativo)* | - | Auto Tool Choice universal en Open-WebUI |
 | **DeepSeek V3 / R1 / Distill** | `deepseek` (ej: `Qwen3-14B-DeepSeek-v3.2`, `R1-Distill`) | `hermes` | `deepseek_r1` *(si contiene `r1` o `reasoner`)* | Parser de pensamiento `<think>...</think>` |
 | **Mistral / Mixtral** | `mistral` (ej: `Mistral-Small-24B`, `Nemo`) | `mistral` | - | Formato nativo de funciones Mistral |
@@ -136,7 +137,22 @@ Cada familia de IA utiliza formatos sintácticos distintos para invocar herramie
 
 ---
 
-### 2. 🧮 Dimensionamiento Físico de VRAM: Memoria de Pesos vs KV Cache
+### 2. ⚡ Aceleración de Atención: Selección Condicional `FlashInfer` vs `FlashAttention`
+
+Para maximizar los tokens por segundo y reducir al mínimo el **Tiempo al Primer Token (*Time To First Token / TTFT*)** en la GPU **NVIDIA GeForce RTX 3090**, la suite implementa una política de resolución inteligente del backend de atención en [`app.py`](app.py):
+
+#### A. Lógica de Decisión Condicional en `app.py`:
+* **Modo Seguro para LoRA (`FLASH_ATTN`):** Si detecta que hay adaptadores LoRA activos (`gemma-4-reasoning`), utiliza automáticamente **FlashAttention-2** para garantizar estabilidad matemática absoluta en las matrices de bajo rango.
+* **Modo Acelerado para Modelos Base (`FLASHINFER`):** Si es un modelo base compatible con *Grouped-Query Attention* (GQA) sin LoRA (`gemma`, `glm`, `qwen`, `llama`, `mistral`, `deepseek`), activa **FlashInfer** para acelerar la decodificación y el *Chunked Prefill*.
+* **Control Manual en `.env`:** Permite forzar el comportamiento mediante la variable `ATTENTION_BACKEND` (`auto`, `flashinfer`, `flash_attn`).
+
+#### B. ¿Por qué se siente tan rápido el primer token (*TTFT*) con FlashAttention?
+* **Cálculo en la SRAM del Chip:** A diferencia de los métodos de atención tradicionales que escriben matrices gigantescas de atención en la memoria VRAM global y las vuelven a leer, FlashAttention divide el prompt en bloques (*tiling*) y calcula la atención **directamente en la memoria ultrarrápida del núcleo de la GPU (SRAM / Shared Memory)**.
+* **Prefill Instantáneo:** Permite procesar prompts largos con resultados de búsqueda web o RAG (1.000 a 3.000 tokens) a más de **`1.589 tokens/s`**, entregando la primera palabra en pantalla en menos de **400 ms** y sosteniendo velocidades de decodificación de **+80 tokens/s**.
+
+---
+
+### 3. 🧮 Dimensionamiento Físico de VRAM: Memoria de Pesos vs KV Cache
 
 Un error frecuente al probar modelos más grandes (como pasar de 8B a 14B o 32B) es el desbordamiento de memoria del **KV Cache** (*Key-Value Cache*):
 
