@@ -1668,6 +1668,172 @@ Los modelos de lenguaje no poseen reloj interno y están sujetos a su fecha de c
 
 ---
 
+### 🌤️ 12. Herramienta de Clima en Tiempo Real para Open-WebUI (*OpenWeatherMap Tool*)
+
+Para enriquecer la experiencia conversacional en **Open-WebUI**, se diseñó una herramienta nativa (*Custom Tool*) que permite a **Gemma 4**, **GLM-4.7-Flash**, **Qwen3** o cualquier modelo conectado consultar el clima actual y el pronóstico meteorológico extendido a 5 días para cualquier ciudad o localidad del mundo en tiempo real.
+
+```
++---------------------------------------------------------------------------------------------------+
+|                   ARQUITECTURA DE HERRAMIENTA CLIMA (OPEN-WEBUI + OPENWEATHERMAP)                 |
++---------------------------------------------------------------------------------------------------+
+|  1. Interfaz de Usuario (Open-WebUI):                                                             |
+|     * Entrada: "Para Buenos Aires" / "¿Cómo va a estar el tiempo los próximos días?"              |
+|     * Detección Automática de Intención (Function Calling nativo vía Tool Choice).                 |
+|                                                                                                   |
+|  2. Ejecución de la Herramienta (Python Tool en Sandbox WebUI):                                   |
+|     * get_current_weather(city, country_code): Temperatura, sensación, humedad, viento, sol.     |
+|     * get_weather_forecast(city, country_code): Agrupación día por día (Mín / Máx / Estado).      |
+|     * Seguridad de Credenciales: API Key configurable en caliente mediante 'Valves' en la GUI.    |
+|                                                                                                   |
+|  3. Proveedor Meteorológico (OpenWeatherMap API):                                                 |
+|     * Formato métrico (°C, m/s), idioma español ('es') y geolocalización por nombre o código ISO. |
++---------------------------------------------------------------------------------------------------+
+```
+
+#### A. Código de la Herramienta para Open-WebUI (`openweather_tool.py`):
+
+En Open-WebUI, ve a **Workspace (Espacio de Trabajo)** ➔ **Herramientas (Tools)** ➔ **+ (Crear Herramienta)** y pega el siguiente código:
+
+```python
+"""
+title: Consulta de Clima OpenWeatherMap
+author: Jose Luis Villaronga
+version: 1.0.0
+license: MIT
+description: Consulta de clima actual y pronóstico extendido a 5 días usando OpenWeatherMap.
+requirements: requests, pydantic
+"""
+
+import requests
+from typing import Optional, Dict, Any, List
+from datetime import datetime
+from collections import defaultdict
+from pydantic import BaseModel, Field
+
+
+class Tools:
+    class Valves(BaseModel):
+        OPENWEATHER_API_KEY: str = Field(
+            default="TU_OPENWEATHER_API_KEY_AQUI",
+            description="API Key de OpenWeatherMap (obtenida gratis en https://openweathermap.org/api)"
+        )
+        DEFAULT_UNITS: str = Field(
+            default="metric",
+            description="Unidades de medida: 'metric' (Celsius), 'imperial' (Fahrenheit)"
+        )
+        DEFAULT_LANG: str = Field(
+            default="es",
+            description="Idioma de las descripciones (ej: 'es', 'en')"
+        )
+
+    def __init__(self):
+        self.valves = self.Valves()
+
+    def get_current_weather(self, city: str, country_code: Optional[str] = None) -> str:
+        """
+        Obtiene el clima actual para una ciudad o localidad.
+        :param city: Nombre de la ciudad o localidad (ej: 'Buenos Aires', 'San Nicolas', 'Madrid', 'Rosario').
+        :param country_code: Código ISO de dos letras del país opcional (ej: 'AR', 'ES', 'UY', 'CL').
+        :return: Resumen detallado del clima actual en la ciudad consultada.
+        """
+        query = f"{city},{country_code}" if country_code else city
+        url = "https://api.openweathermap.org/data/2.5/weather"
+        params = {
+            "q": query,
+            "units": self.valves.DEFAULT_UNITS,
+            "lang": self.valves.DEFAULT_LANG,
+            "appid": self.valves.OPENWEATHER_API_KEY
+        }
+
+        try:
+            response = requests.get(url, params=params, timeout=10)
+            if response.status_code == 404:
+                return f"Error: No se encontró la ciudad '{city}'. Verifica el nombre o especifica el país."
+            response.raise_for_status()
+            data = response.json()
+
+            # Formatear amanecer y atardecer en hora local legible
+            sunrise_ts = data.get("sys", {}).get("sunrise")
+            sunset_ts = data.get("sys", {}).get("sunset")
+            sunrise_str = datetime.fromtimestamp(sunrise_ts).strftime("%H:%M:%S") if sunrise_ts else "N/D"
+            sunset_str = datetime.fromtimestamp(sunset_ts).strftime("%H:%M:%S") if sunset_ts else "N/D"
+
+            clima_info = {
+                "ciudad": data.get("name"),
+                "pais": data.get("sys", {}).get("country"),
+                "temperatura_C": data.get("main", {}).get("temp"),
+                "sensacion_termica_C": data.get("main", {}).get("feels_like"),
+                "temp_min_C": data.get("main", {}).get("temp_min"),
+                "temp_max_C": data.get("main", {}).get("temp_max"),
+                "humedad_pct": data.get("main", {}).get("humidity"),
+                "presion_hPa": data.get("main", {}).get("pressure"),
+                "viento_ms": data.get("wind", {}).get("speed"),
+                "estado_cielo": data.get("weather", [{}])[0].get("description", "N/D"),
+                "amanecer": sunrise_str,
+                "atardecer": sunset_str
+            }
+            return f"Clima actual en {clima_info['ciudad']} ({clima_info['pais']}):\n" + "\n".join(f"- {k}: {v}" for k, v in clima_info.items())
+
+        except requests.exceptions.RequestException as e:
+            return f"Error al consultar el clima actual: {str(e)}"
+
+    def get_weather_forecast(self, city: str, country_code: Optional[str] = None) -> str:
+        """
+        Obtiene el pronóstico meteorológico extendido para los próximos 5 días de una ciudad.
+        :param city: Nombre de la ciudad o localidad (ej: 'Buenos Aires', 'San Nicolas', 'Cordoba').
+        :param country_code: Código ISO de dos letras del país opcional (ej: 'AR', 'ES', 'MX').
+        :return: Pronóstico agrupado día por día con temperaturas mínimas, máximas y estado del tiempo.
+        """
+        query = f"{city},{country_code}" if country_code else city
+        url = "https://api.openweathermap.org/data/2.5/forecast"
+        params = {
+            "q": query,
+            "units": self.valves.DEFAULT_UNITS,
+            "lang": self.valves.DEFAULT_LANG,
+            "appid": self.valves.OPENWEATHER_API_KEY
+        }
+
+        try:
+            response = requests.get(url, params=params, timeout=10)
+            if response.status_code == 404:
+                return f"Error: No se encontró la ciudad '{city}' para el pronóstico."
+            response.raise_for_status()
+            data = response.json()
+
+            # Agrupar las mediciones de 3 horas por fecha (YYYY-MM-DD)
+            daily_data = defaultdict(list)
+            for item in data.get("list", []):
+                date_str = item.get("dt_txt", "")[:10]
+                if date_str:
+                    daily_data[date_str].append(item)
+
+            report_lines = [f"Pronóstico extendido de 5 días para {data.get('city', {}).get('name')}:"]
+            for date_key, items in sorted(daily_data.items()):
+                mins = [it["main"]["temp_min"] for it in items if "main" in it]
+                maxs = [it["main"]["temp_max"] for it in items if "main" in it]
+                desc = items[0]["weather"][0]["description"] if items and "weather" in items[0] else "N/D"
+                
+                min_c = min(mins) if mins else "N/D"
+                max_c = max(maxs) if maxs else "N/D"
+                report_lines.append(f"📅 {date_key}: Mín {min_c}°C / Máx {max_c}°C | Estado: {desc}")
+
+            return "\n".join(report_lines)
+
+        except requests.exceptions.RequestException as e:
+            return f"Error al consultar el pronóstico: {str(e)}"
+```
+
+#### B. Configuración de Credenciales Segura (*Valves* en Open-WebUI):
+1. Una vez guardada la herramienta, haz clic en el icono de **engranaje ⚙️ (Valves)** al lado de la herramienta.
+2. Ingresa tu API Key de OpenWeatherMap en el campo `OPENWEATHER_API_KEY`.
+3. Esto mantiene tu clave resguardada en la base de datos de Open-WebUI sin exponerla en repositorios de código abiertos ni scripts de control de versiones.
+
+#### C. Captura de Verificación en Producción:
+* **Consulta de Clima Actual y Pronóstico Extendido a 5 Días en Open-WebUI con `Gemma 4`:**
+![Consulta de Clima en Open-WebUI](screenshots/openwebui_weather_tool_success.png)
+
+---
+
 ### ⚙️ Administración del Servicio de Gateway (Systemd)
 
 * **Instalar/Registrar el Servicio:**
