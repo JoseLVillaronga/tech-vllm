@@ -1914,13 +1914,18 @@ Para permitir que **Gemma 4**, **GLM-4.7-Flash**, **Qwen3** o cualquier modelo r
 +---------------------------------------------------------------------------------------------------+
 ```
 
-#### A. Código de la Herramienta para Open-WebUI (`pdf_export_tool.py`):
+#### A. Variantes de la Herramienta para Open-WebUI:
 
-En Open-WebUI, ve a **Workspace (Espacio de Trabajo)** ➔ **Herramientas (Tools)** ➔ **+ (Crear Herramienta)** y pega el siguiente código:
+Dependiendo de la dinámica conversacional que prefieras en tu chat, puedes elegir entre dos variantes de la herramienta:
+
+---
+
+##### ⚡ Opción 1: Variante Directa / One-Shot (v1.1.5 - Recomendada)
+> **Comportamiento:** El LLM redacta el texto completo y compila el PDF de forma autónoma en un solo turno, sin hacer preguntas intermedias de confirmación.
 
 ```python
 """
-title: Generador de Documentos y Contratos en PDF
+title: Generador de Documentos y Contratos en PDF (One-Shot)
 author: Jose Luis Villaronga
 version: 1.1.5
 license: MIT
@@ -2017,7 +2022,112 @@ class Tools:
             return f"❌ Error conectando con el servicio de generación de PDF: {str(e)}"
 ```
 
-#### B. Configuración de Credenciales en Open-WebUI (*Valves*):
+---
+
+##### 💬 Opción 2: Variante Interactiva / Cautelosa (v1.1.0)
+> **Comportamiento:** El LLM evalúa primero la magnitud de la tarea, suele dialogar o pedir confirmación sobre la estructura/extensión deseada y compila el PDF tras la aprobación del usuario.
+
+```python
+"""
+title: Generador de Documentos y Contratos en PDF (Interactivo)
+author: Jose Luis Villaronga
+version: 1.1.0
+license: MIT
+description: Genera documentos PDF estándar A4 con diseño profesional a través del Gateway de vLLM Suite.
+requirements: requests, pydantic
+"""
+
+import requests
+from typing import Optional
+from pydantic import BaseModel, Field
+
+
+class Tools:
+    class Valves(BaseModel):
+        GATEWAY_URL: str = Field(
+            default="http://127.0.0.1:8000/api/tools/generate-pdf",
+            description="URL del endpoint de PDF en vLLM Gateway (usar http://host.docker.internal:8000/api/tools/generate-pdf si Open-WebUI corre en Docker)"
+        )
+        API_KEY: str = Field(
+            default="TU_API_KEY_AQUI",
+            description="Clave API registrada en vLLM Suite Gateway"
+        )
+        COMPANY_NAME: str = Field(
+            default="Documento Oficial",
+            description="Nombre de la empresa o entidad para el pie de página"
+        )
+
+    def __init__(self):
+        self.valves = self.Valves()
+
+    def generate_pdf_document(
+        self,
+        title: str,
+        markdown_content: str,
+        filename: Optional[str] = None
+    ) -> str:
+        """
+        Genera un archivo PDF profesional en formato A4 a partir de contenido en Markdown y devuelve el enlace de descarga directa.
+        Úsalo cada vez que el usuario te pida crear, redactar o exportar contratos, acuerdos, informes, cartas formales o documentos en PDF.
+        
+        :param title: Título principal del documento (ej: 'CONTRATO DE LOCACIÓN DE INMUEBLE', 'INFORME DE AUDITORÍA').
+        :param markdown_content: El contenido completo del documento redactado en Markdown (usando cláusulas, negritas, listas y secciones de firma).
+        :param filename: Nombre sugerido para el archivo PDF descargable (ej: 'contrato_locacion.pdf', 'informe_tecnico.pdf').
+        :return: Tarjeta de descarga con enlace directo al documento.
+        """
+        clean_title = (title or "").strip() or "Documento Oficial"
+        clean_content = (markdown_content or "").strip()
+
+        clean_filename = (filename or "").strip()
+        if not clean_filename:
+            clean_filename = f"{clean_title.lower().replace(' ', '_')}.pdf"
+        if not clean_filename.lower().endswith(".pdf"):
+            clean_filename += ".pdf"
+
+        headers = {
+            "Authorization": f"Bearer {self.valves.API_KEY}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "title": clean_title,
+            "markdown_content": clean_content,
+            "filename": clean_filename,
+            "company_name": self.valves.COMPANY_NAME
+        }
+
+        try:
+            resp = requests.post(
+                self.valves.GATEWAY_URL,
+                json=payload,
+                headers=headers,
+                timeout=30
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                dl_url = data.get("download_url", "")
+                pages = data.get("pages", 1)
+                size_kb = data.get("size_kb", 0)
+
+                return (
+                    f"✅ Documento PDF generado exitosamente.\n\n"
+                    f"📄 **{clean_title}**\n"
+                    f"🔗 **Enlace de descarga:** [📥 Descargar {clean_filename}]({dl_url})\n"
+                    f"*(Páginas: {pages} | Tamaño: {size_kb} KB)*"
+                )
+
+            return f"❌ Error al generar PDF en Gateway: HTTP {resp.status_code} - {resp.text}"
+
+        except Exception as e:
+            return f"❌ Error conectando con el servicio de generación de PDF: {str(e)}"
+```
+
+---
+
+#### B. Política de Almacenamiento y Limpieza Automática (TTL 24 Horas):
+* **Directorio de Almacenamiento:** Los archivos PDF se generan y almacenan en el servidor local dentro de `/home/jose/vllm/outputs/pdfs/`.
+* **Retención de 24 Horas:** La suite ejecuta un recolector automático (`cleanup_old_pdfs`) que purga de forma transparente cualquier PDF con más de 24 horas de antigüedad, evitando la acumulación innecesaria en el disco.
+
+#### C. Configuración de Credenciales en Open-WebUI (*Valves*):
 1. Guarda la herramienta en Open-WebUI.
 2. Haz clic en el icono de **engranaje ⚙️ (Valves)** al lado de la herramienta.
 3. Configura tu `API_KEY` (tu clave de la suite) y, si Open-WebUI corre dentro de Docker, establece `GATEWAY_URL` en `http://host.docker.internal:8000/api/tools/generate-pdf`.
