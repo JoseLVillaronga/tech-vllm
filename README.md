@@ -1890,6 +1890,115 @@ class Tools:
 
 ---
 
+### 📄 13. Herramienta de Generación y Exportación de Documentos y Contratos en PDF (*PDF Export Tool*)
+
+Para permitir que **Gemma 4**, **GLM-4.7-Flash**, **Qwen3** o cualquier modelo redacte contratos, acuerdos, informes o cartas formales y los entregue **listos para descargar en formato PDF A4**, la suite incorpora un motor de compilación PDF desacoplado en el Gateway:
+
+```
++---------------------------------------------------------------------------------------------------+
+|               ARQUITECTURA DE GENERACIÓN DE PDF (OPEN-WEBUI + vLLM SUITE GATEWAY)                 |
++---------------------------------------------------------------------------------------------------+
+|  1. Interfaz de Usuario (Open-WebUI):                                                             |
+|     * Prompt: "Haceme un contrato de locación con X cláusulas y entregame la salida en PDF"      |
+|     * El LLM redacta el documento en Markdown y llama a la Tool 'generate_pdf_document'.         |
+|     * La Tool en Open-WebUI es ultraligera (solo usa 'requests' y 'pydantic').                    |
+|                                                                                                   |
+|  2. Compilación en el Gateway Proxy (Endpoint POST /api/tools/generate-pdf en :8000):             |
+|     * Motor 'pdf_engine.py': Compila el Markdown a PDF estándar A4 en memoria.                    |
+|     * Tipografía y Diseño: Márgenes de 2.5cm, títulos estructurados, listas, líneas de firma y    |
+|       pie de página dinámico con paginación ("Documento Oficial | Página X de Y").                |
+|     * Compresión: FlateDecode (zlib) integrada con cero dependencias externas pesadas.           |
+|                                                                                                   |
+|  3. Retorno al Chat:                                                                              |
+|     * Tarjeta interactiva con botón violeta '📥 Descargar PDF' (Data URI Base64).                 |
++---------------------------------------------------------------------------------------------------+
+```
+
+#### A. Código de la Herramienta para Open-WebUI (`pdf_export_tool.py`):
+
+En Open-WebUI, ve a **Workspace (Espacio de Trabajo)** ➔ **Herramientas (Tools)** ➔ **+ (Crear Herramienta)** y pega el siguiente código:
+
+```python
+"""
+title: Generador de Documentos y Contratos en PDF
+author: Jose Luis Villaronga
+version: 1.0.0
+license: MIT
+description: Genera documentos PDF estándar A4 con diseño profesional a través del Gateway de vLLM Suite.
+requirements: requests, pydantic
+"""
+
+import requests
+from typing import Optional
+from pydantic import BaseModel, Field
+
+
+class Tools:
+    class Valves(BaseModel):
+        GATEWAY_URL: str = Field(
+            default="http://127.0.0.1:8000/api/tools/generate-pdf",
+            description="URL del endpoint de generación de PDF en vLLM Gateway (usar http://host.docker.internal:8000/api/tools/generate-pdf si Open-WebUI corre en Docker)"
+        )
+        API_KEY: str = Field(
+            default="TU_API_KEY_AQUI",
+            description="Clave API registrada en vLLM Suite Gateway"
+        )
+        COMPANY_NAME: str = Field(
+            default="Documento Oficial",
+            description="Nombre de la empresa o entidad para el pie de página"
+        )
+
+    def __init__(self):
+        self.valves = self.Valves()
+
+    def generate_pdf_document(
+        self,
+        title: str,
+        markdown_content: str,
+        filename: Optional[str] = None
+    ) -> str:
+        """
+        Genera un archivo PDF profesional en formato A4 a partir de contenido en Markdown y devuelve el botón de descarga directa.
+        Úsalo cada vez que el usuario te pida crear, redactar o exportar contratos, acuerdos, informes, cartas formales o documentos en PDF.
+        
+        :param title: Título principal del documento (ej: 'CONTRATO DE LOCACIÓN DE INMUEBLE', 'INFORME DE AUDITORÍA').
+        :param markdown_content: El contenido completo del documento redactado en Markdown (usando cláusulas, negritas, listas y secciones de firma).
+        :param filename: Nombre sugerido para el archivo PDF descargable (ej: 'contrato_locacion.pdf', 'informe_tecnico.pdf').
+        :return: Tarjeta interactiva con botón para descargar el PDF generado.
+        """
+        headers = {
+            "Authorization": f"Bearer {self.valves.API_KEY}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "title": title,
+            "markdown_content": markdown_content,
+            "filename": filename,
+            "company_name": self.valves.COMPANY_NAME
+        }
+
+        try:
+            resp = requests.post(
+                self.valves.GATEWAY_URL,
+                json=payload,
+                headers=headers,
+                timeout=20
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                return data.get("formatted_context") or data.get("text") or "PDF generado correctamente."
+            return f"❌ Error al generar PDF en Gateway: HTTP {resp.status_code} - {resp.text}"
+        except Exception as e:
+            return f"❌ Error conectando con el servicio de generación de PDF: {str(e)}"
+```
+
+#### B. Configuración de Credenciales en Open-WebUI (*Valves*):
+1. Guarda la herramienta en Open-WebUI.
+2. Haz clic en el icono de **engranaje ⚙️ (Valves)** al lado de la herramienta.
+3. Configura tu `API_KEY` (tu clave de la suite) y, si Open-WebUI corre dentro de Docker, establece `GATEWAY_URL` en `http://host.docker.internal:8000/api/tools/generate-pdf`.
+
+---
+
 ### ⚙️ Administración del Servicio de Gateway (Systemd)
 
 * **Instalar/Registrar el Servicio:**
