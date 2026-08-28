@@ -246,8 +246,16 @@ def create_pdf_from_markdown(
     base_url: str = "http://127.0.0.1:8000"
 ) -> Dict[str, Any]:
     """Genera un archivo PDF, lo guarda en disco para descarga directa y devuelve metadata + URL."""
-    clean_title = title.strip() or "Documento"
-    clean_filename = filename.strip() if filename else f"{re.sub(r"[^a-zA-Z0-9_-]", "_", clean_title.lower())}.pdf"
+    clean_title = (title or "").strip()
+    if not clean_title and markdown_content:
+        for line in markdown_content.strip().split("\n"):
+            if line.startswith("#"):
+                clean_title = line.lstrip("#").strip()
+                break
+    if not clean_title:
+        clean_title = "Documento Oficial"
+
+    clean_filename = filename.strip() if filename else f"{re.sub(r'[^a-zA-Z0-9_-]', '_', clean_title.lower())}.pdf"
     if not clean_filename.lower().endswith(".pdf"):
         clean_filename += ".pdf"
         
@@ -268,17 +276,14 @@ def create_pdf_from_markdown(
     # URL de descarga directa limpia (sin base64 gigante)
     download_url = f"{base_url.rstrip("/")}/api/tools/pdf/download/{file_id}/{clean_filename}"
     
-    formatted_card = f"""
-### 📄 Documento PDF Generado Exitosamente
+    formatted_card = f"""✅ Archivo PDF compilado exitosamente.
 
-* **Título:** {clean_title}
-* **Archivo:** `{clean_filename}`
-* **Páginas:** {page_count}
-* **Tamaño:** {size_kb} KB
+Enlace de descarga para el usuario:
+[📥 Descargar {clean_filename}]({download_url})
 
----
-
-[📥 **Descargar {clean_filename}**]({download_url})
+Detalles:
+* Archivo: `{clean_filename}` ({page_count} páginas, {size_kb} KB)
+* Título: {clean_title}
 """
     return {
         "success": True,
