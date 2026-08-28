@@ -567,5 +567,76 @@ Se ejecutó una prueba agéntica desatendida en **DeepSeek Harness** sobre un re
    EMBEDDINGS_CPU_THREADS=8
    ```
 
+---
 
+## 11. Ecosistema de Herramientas Corporativas de Alto Impacto (*Enterprise Tool Calling Suite*)
 
+Tras la exitosa validación en producción del motor de generación de **PDFs legales A4 (`pdf_engine.py`)** y el **Tool-Chaining autónomo** (Búsqueda Web ➔ Síntesis ➔ PDF compilado), se planifica la expansión del Gateway de la Suite (`:8000`) con un catálogo de herramientas orientadas a flujos de trabajo corporativos de alto valor y retorno de inversión (ROI):
+
+```
++---------------------------------------------------------------------------------------------------+
+|               CATÁLOGO DE TOOLS CORPORATIVAS EN EL GATEWAY DE vLLM SUITE (:8000)                  |
++---------------------------------------------------------------------------------------------------+
+|                                                                                                   |
+|  1. 📄 Generación y Compilación PDF A4 (IMPLEMENTADO ✅)                                          |
+|     * Motor 'pdf_engine.py': Contratos, acuerdos, auditorías y reportes formales descargables.    |
+|                                                                                                   |
+|  2. ⭐ Extractor OCR Inteligente de Documentos Escaneados (Docling Tool - ORO PURO 🏆)           |
+|     * Integración con Docling (:5020): OCR de facturas, remitos y balances escaneados.            |
+|                                                                                                   |
+|  3. 📊 Generador de Planillas Excel y CSV Formateadas (xlsx_engine)                              |
+|     * Creación de hojas .xlsx con estilos corporativos, fórmulas (SUM/AVERAGE) y totales.         |
+|                                                                                                   |
+|  4. 📈 Generador de Gráficos y Visualizaciones Estadísticas (chart_engine)                        |
+|     * Renderizado de gráficos de barras, tendencias y tortas en PNG/SVG de alta definición.       |
+|                                                                                                   |
+|  5. 💾 Conector SQL de Base de Datos de Solo Lectura (sql_query_tool)                             |
+|     * Consultas analíticas seguras sobre inventarios, ventas y clientes en tiempo real.           |
+|                                                                                                   |
+|  6. ✉️ Redactor y Despachador de Comunicados y Minutas Formales (memo_tool)                       |
+|     * Estandarización de acuerdos de reunión, circulares y plantillas ejecutivas.                 |
++---------------------------------------------------------------------------------------------------+
+```
+
+---
+
+### 11.1. ⭐ [PRIORIDAD MÁXIMA] Extractor OCR Inteligente de Documentos Escaneados (`docling_ocr_tool`)
+
+* **Justificación de Negocio:** Es una de las capacidades más demandadas en empresas y estudios contables/jurídicos. Reemplaza plataformas comerciales costosas de OCR (*AWS Textract, Azure Document Intelligence*) por un servicio local, confidencial y sin costo por hoja.
+* **Arquitectura de Implementación:**
+  * El Gateway expondrá `POST /api/tools/docling-ocr`.
+  * La herramienta conecta directamente con nuestro contenedor/servicio de **Docling Serve (`http://127.0.0.1:5020/v1/document/convert`)**.
+  * **Procesamiento:** El usuario sube una foto o PDF escaneado (factura de proveedor, remito de entrega, balance en PDF); Docling ejecuta OCR por lotes con aceleración GPU/CPU, reconstruye la jerarquía visual de tablas multidimensionales complejas y entrega Markdown limpio al LLM.
+  * **Acción Agéntica:** El LLM puede responder preguntas como *"¿Cuál es el total con IVA de esta factura?", "¿Quién es el emisor y CUIT?"*, o generar automáticamente asientos contables y reportes cruzados.
+
+### 11.2. 📊 Exportador y Compilador de Planillas Excel y CSV (`xlsx_engine`)
+
+* **Justificación de Negocio:** Los usuarios de administración y finanzas requieren datos tabulados directamente en Excel para consolidación y fórmulas.
+* **Arquitectura de Implementación:**
+  * Endpoint en Gateway: `POST /api/tools/generate-excel` respaldado por `openpyxl` / `pandas` en el entorno de Python del servidor.
+  * El LLM recibe balances, listas de precios, inventarios o estados de cuenta y genera archivos `.xlsx` reales con:
+    * Cabeceras destacadas con colores institucionales y autofiltros activados.
+    * Formato de celdas automático (monedas `$`, porcentajes `%`, fechas `DD/MM/AAAA`).
+    * Inserción de fórmulas nativas de Excel (`=SUMA(...)`, `=PROMEDIO(...)`) en las filas de totales.
+  * Descarga directa en 1 clic vía `GET /api/tools/excel/download/{file_id}/{filename}` con la política de retención automática de 24 horas.
+
+### 11.3. 📈 Generador de Gráficos y Reportes Visuales (`chart_engine`)
+
+* **Justificación de Negocio:** Enriquece los resúmenes e informes ejecutivos con soporte visual inmediato.
+* **Arquitectura de Implementación:**
+  * Endpoint en Gateway: `POST /api/tools/generate-chart` utilizando `matplotlib` y `seaborn` en modo *headless*.
+  * El LLM extrae los puntos de datos y genera gráficos de barras comparativas, evolución temporal o distribución porcentual exportados en PNG o SVG listos para ver en el chat o incrustar en los PDFs.
+
+### 11.4. 💾 Conector SQL de Base de Datos de Solo Lectura (`sql_query_tool`)
+
+* **Justificación de Negocio:** Permite a directivos y personal operativo consultar el estado del negocio en lenguaje natural sin requerir conocimientos de bases de datos relacionales.
+* **Arquitectura de Implementación:**
+  * Endpoint en Gateway: `POST /api/tools/sql-query` conectado mediante SQLAlchemy / Psycopg a bases PostgreSQL, MySQL, SQLite o colecciones de MongoDB con **usuario estricto de solo lectura (`GRANT SELECT`)**.
+  * **Capa de Seguridad WAF:** El Gateway valida y sanitiza la consulta antes de enviarla, bloqueando de forma absoluta cualquier palabra clave modificadora (`DROP`, `DELETE`, `UPDATE`, `INSERT`, `ALTER`, `TRUNCATE`).
+  * El LLM traduce la pregunta del usuario (*"Mostrame los 5 productos con menos stock"*) a SQL, ejecuta la consulta y redacta la conclusión de negocio.
+
+### 11.5. ✉️ Redactor y Despachador de Comunicados, Minutas y Correos (`memo_tool`)
+
+* **Justificación de Negocio:** Automatiza la redacción formal de comunicaciones internas, acuerdos de directorio y minutas de reuniones de equipo con formato corporativo unificado.
+* **Arquitectura de Implementación:**
+  * Genera el acta o comunicado estructurado con fecha, asistentes, temas tratados y compromisos asumidos, con opción de entrega directa en texto, exportación automática a PDF o despacho mediante SMTP seguro configurado en las credenciales de la empresa.
