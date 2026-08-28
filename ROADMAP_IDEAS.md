@@ -353,11 +353,14 @@ A partir de la evaluación empírica de consultas reales sobre procedimientos in
 
 ---
 
-### 8.1. Herramienta de Lectura de Documento Completo (`Document Synthesis Tool`)
-* **Problema identificado:** La búsqueda por similitud vectorial con `top_k` fijo (ej: 4–5 fragmentos) prioriza los bloques con mayor densidad de palabras clave respecto a la consulta, pero omite fragmentos intermedios en secciones largas. En un procedimiento de 12 pasos (de la A a la L), el modelo solo recibía los pasos finales (K y L), perdiendo las definiciones operativas iniciales (A a J).
-* **Solución propuesta:**
-  * Implementar en el Gateway y en la herramienta de Open-WebUI el endpoint/método `leer_documento_completo(doc_id)` o `obtener_estructura_secciones(doc_id)`.
-  * Cuando el usuario pida *"Describí todo el procedimiento X"* o *"Sintetizá la norma Y"*, el LLM puede solicitar la secuencia documental íntegra paginada en lugar de depender exclusivamente de vectores semánticos dispersos.
+### 8.1. Herramienta de Lectura de Documento Completo (`Document Synthesis Tool` - IMPLEMENTADO ✅)
+* **Estado:** Implementado y operativo en producción (agosto 2026).
+* **Solución aplicada:**
+  * Endpoint `POST /api/tools/rag-document` en Gateway y método `leer_documento_completo(doc_id, parte=1)` en Open-WebUI.
+  * Estrategia híbrida con frontera de **275 chunks**:
+    * $\le 275$ chunks: Recuperación 1:1 directa desde la API de Teccam PDF (`:5022` / MongoDB).
+    * $> 275$ chunks: Recuperación paginada por bloques continuos desde LanceDB.
+  * Resolución tolerante (*Fuzzy Match / LIKE %...%*): Acepta `doc_id` hexadecimal o títulos parciales sin acentos.
 
 ---
 
@@ -386,6 +389,26 @@ A partir de la evaluación empírica de consultas reales sobre procedimientos in
 * **Solución propuesta:**
   * **Neighbor Expansion:** Cuando un fragmento $n$ supera un umbral de similitud (ej. $>0.88$), el motor recupera automáticamente también sus vecinos inmediatos ($n-1$ y $n+1$) del mismo documento para dotar de contexto anterior y posterior.
   * **Deduplicación por sesión:** Filtrar en memoria los identificadores de chunks ya inyectados en la conversación activa para que las llamadas subsecuentes traigan información nueva y complementaria.
+
+---
+
+### 8.5. Caché de Documentos en RAM (2 GB LRU + TTL) con Ventana Deslizante Centrada (*Context-Centered Working Memory*)
+* **Fundamento y Justificación:**
+  * En **1 GB de RAM** entran más de **1.000 libros completos en texto puro Markdown** (~1 MB por libro de 400 págs).
+  * Reservar un espacio de **2 GB de RAM** en el Gateway o en un proceso dedicado permite mantener en memoria caliente cientos de libros y tratados normativos masivos sin tocar disco ni consultar bases de datos externas repetidamente.
+* **Mecánica Arquitectónica:**
+  1. **Buffer LRU con Límite de 2.048 MB:**
+     * Cuando se solicita un libro masivo (> 275 chunks, ej. *Código Civil* de 2.246 chunks), el texto completo se carga en memoria RAM asociado a su `doc_id`.
+     * **Política de desalojo:** Si el buffer alcanza los 2 GB, desaloja automáticamente el documento menos recientemente utilizado (LRU / FIFO).
+     * **TTL de Vencimiento:** Cada documento tiene una caducidad automática (ej. 2 a 4 horas de inactividad) para liberar la RAM de forma desatendida.
+  2. **Ventana Deslizante Centrada (*Context-Centered Sliding Window*):**
+     * Cuando el usuario o el LLM buscan un concepto o artículo específico dentro del libro extenso, el motor localiza el chunk o posición exacta del match ($K$).
+     * En lugar de entregar la "Parte 1" a ciegas, calcula una ventana continua de 275 chunks **centrada exactamente en el objetivo**:
+       $$\text{Inicio} = \max(0, K - 137), \quad \text{Fin} = \min(\text{Total}, \text{Inicio} + 275)$$
+     * El LLM recibe el artículo buscado con todo su contexto precedente y subsiguiente íntegro en **menos de 2 milisegundos**.
+  3. **Diferenciación y Trazabilidad de Usuarios (Open-WebUI Metadata):**
+     * Open-WebUI inyecta nativamente los metadatos del usuario (`__user__`: `id`, `email`, `role`) y de la conversación (`__chat_id__`) en la ejecución de herramientas.
+     * La herramienta puede enviar estas cabeceras al Gateway (`X-User-Id`, `X-Chat-Id`) para mantener caches de documentos por sesión de usuario, garantizando aislamiento multi-inquilino (*multi-tenant*) y métricas de auditoría por colaborador.
 
 ---
 
