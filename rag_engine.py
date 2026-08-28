@@ -399,6 +399,76 @@ def get_rag_stats() -> Dict[str, Any]:
             "error": str(e)
         }
 
+import unicodedata
+
+def normalize_text(text: str) -> str:
+    """Elimina acentos, diacríticos y normaliza a minúsculas para comparaciones tolerantes."""
+    if not text:
+        return ""
+    text = str(text).lower().strip()
+    nfkd = unicodedata.normalize('NFKD', text)
+    cleaned = ''.join(c for c in nfkd if not unicodedata.combining(c))
+    return ' '.join(cleaned.split())
+
+def find_documents_by_fuzzy_title(query: str) -> List[Dict[str, Any]]:
+    """
+    Busca documentos en LanceDB que coincidan con la consulta por título, palabras clave o substring (estilo SQL LIKE %...%).
+    Tolera diferencias de acentos, mayúsculas, signos de puntuación y orden de palabras.
+    """
+    table = get_table()
+    if table is None or len(table) == 0:
+        return []
+        
+    df = table.to_arrow()
+    if "doc_title" not in df.schema.names or "doc_id" not in df.schema.names:
+        return []
+        
+    titles = df["doc_title"].to_pylist()
+    ids = df["doc_id"].to_pylist()
+    topics = df["doc_topic"].to_pylist() if "doc_topic" in df.schema.names else ["General"] * len(ids)
+    authors = df["doc_author"].to_pylist() if "doc_author" in df.schema.names else ["Desconocido"] * len(ids)
+    
+    unique_docs = {}
+    for d_id, t, top, aut in zip(ids, titles, topics, authors):
+        if d_id not in unique_docs:
+            unique_docs[d_id] = {
+                "doc_id": d_id,
+                "title": t,
+                "topic": top,
+                "author": aut,
+                "chunks_count": 0
+            }
+        unique_docs[d_id]["chunks_count"] += 1
+        
+    q_norm = normalize_text(query)
+    q_words = set(w for w in q_norm.split() if len(w) > 2)
+    
+    candidates = []
+    for d_id, doc in unique_docs.items():
+        t_norm = normalize_text(doc["title"])
+        t_words = set(w for w in t_norm.split() if len(w) > 2)
+        
+        score = 0.0
+        # 1. Coincidencia exacta normalizada
+        if q_norm == t_norm:
+            score = 1.0
+        # 2. Substring (LIKE %...%)
+        elif q_norm in t_norm or t_norm in q_norm:
+            score = 0.90
+        # 3. Coincidencia por conjunto de palabras clave
+        else:
+            common = q_words.intersection(t_words)
+            if common and (len(common) >= min(len(q_words), 2) or len(common) == len(q_words)):
+                score = len(common) / max(len(q_words), len(t_words))
+                
+        if score >= 0.20:
+            candidates.append({
+                **doc,
+                "score": round(score, 2)
+            })
+            
+    return sorted(candidates, key=lambda x: x["score"], reverse=True)
+
 def fetch_teccam_document_raw(doc_id: str) -> Optional[Dict[str, Any]]:
     """Consulta la API de Teccam PDF (:5022) para obtener el Markdown íntegro original desde MongoDB."""
     if not TECCAM_PDF_URL_BASE:
@@ -426,8 +496,8 @@ def get_document_full_content(
     """
     Obtiene el contenido completo o paginado de un documento para síntesis exhaustiva por el LLM.
     
-    Estrategia Híbrida y Resolución Inteligente:
-    - Acepta tanto el `doc_id` hexadecimal (ej: '67b2111008223c9b3c3e5608') como el título del documento.
+    Estrategia Híbrida y Resolución Tolerante (Fuzzy / LIKE %...%):
+    - Acepta tanto el `doc_id` hexadecimal como el título exacto, parcial o sin acentos.
     - Si total_chunks <= 275: Recupera el Markdown original 1:1 desde la API de Teccam PDF (:5022).
       Fallback: Si la API de Teccam no responde, concatena los fragmentos desde LanceDB.
     - Si total_chunks > 275: Divide el documento en partes de hasta 275 fragmentos desde LanceDB.
@@ -441,32 +511,27 @@ def get_document_full_content(
             "doc_id": clean_doc_id
         }
 
-    # 1. Consultar todos los chunks de este documento en LanceDB por doc_id
+    # 1. Consultar todos los chunks de este documento en LanceDB por doc_id exacto
     clean_sql_id = clean_doc_id.replace("'", "''")
     results = table.search().where(f"doc_id = '{clean_sql_id}'").limit(10000).to_arrow()
     
-    # Si no se encontró por ID exacto, buscar si pasó el título del documento
+    # 2. Si no se encontró por ID exacto, buscar con el motor difuso tolerante a acentos y substrings
+    candidates = []
     if len(results) == 0:
-        df = table.to_arrow()
-        if "doc_title" in df.schema.names and "doc_id" in df.schema.names:
-            titles = df["doc_title"].to_pylist()
-            ids = df["doc_id"].to_pylist()
-            matched_id = None
-            query_lower = clean_doc_id.lower()
-            for t, i in zip(titles, ids):
-                t_lower = t.lower()
-                if query_lower in t_lower or t_lower in query_lower:
-                    matched_id = i
-                    break
-            if matched_id:
-                clean_doc_id = matched_id
-                clean_sql_id = clean_doc_id.replace("'", "''")
-                results = table.search().where(f"doc_id = '{clean_sql_id}'").limit(10000).to_arrow()
+        candidates = find_documents_by_fuzzy_title(clean_doc_id)
+        if candidates:
+            best_match = candidates[0]
+            clean_doc_id = best_match["doc_id"]
+            clean_sql_id = clean_doc_id.replace("'", "''")
+            results = table.search().where(f"doc_id = '{clean_sql_id}'").limit(10000).to_arrow()
     
     if len(results) == 0:
+        stats = get_rag_stats()
+        avail = [f"- '{d['title']}' [doc_id: {d['id']}]" for d in stats.get("documents", [])[:10]]
+        avail_str = "\n".join(avail)
         return {
             "success": False,
-            "error": f"No se encontró ningún documento con ID o título '{clean_doc_id}' en la base de conocimiento.",
+            "error": f"No se encontró ningún documento con ID o título que coincida con '{clean_doc_id}'.\n\nDocumentos disponibles en la biblioteca:\n{avail_str}",
             "doc_id": clean_doc_id
         }
         
@@ -475,8 +540,14 @@ def get_document_full_content(
     doc_topic = results["doc_topic"][0].as_py() if "doc_topic" in results.schema.names else "General"
     doc_author = results["doc_author"][0].as_py() if "doc_author" in results.schema.names else "Desconocido"
     total_chunks = len(results)
+
+    # Avisos de coincidencias alternativas si hubo búsqueda difusa
+    alt_notice = ""
+    if candidates and len(candidates) > 1:
+        other_matches = [f"'{c['title']}' (doc_id: {c['doc_id']})" for c in candidates[1:4]]
+        alt_notice = f"💡 *Nota de Búsqueda:* Se seleccionó '{doc_title}'. Otras coincidencias posibles: {', '.join(other_matches)}\n\n"
     
-    # 2. ESCENARIO A: Documentos Cortos/Medianos (<= 275 chunks) -> Fidelidad Total desde Teccam PDF
+    # 3. ESCENARIO A: Documentos Cortos/Medianos (<= 275 chunks) -> Fidelidad Total desde Teccam PDF
     if total_chunks <= chunk_threshold:
         raw_detail = fetch_teccam_document_raw(actual_doc_id)
         if raw_detail and raw_detail.get("texto", "").strip():
@@ -485,6 +556,7 @@ def get_document_full_content(
                 f"# {doc_title}\n"
                 f"**ID de Documento:** {actual_doc_id} | **Tema / Dominio:** {doc_topic} | **Autor:** {doc_author} | **Total Fragmentos:** {total_chunks}\n"
                 f"**Modo de Recuperación:** Documento Íntegro Oficial (Fidelidad 100% desde Teccam PDF)\n\n"
+                f"{alt_notice}"
                 f"---\n\n"
             )
             return {
@@ -503,7 +575,7 @@ def get_document_full_content(
         # Fallback a concatenación desde LanceDB si la API de Teccam PDF no estaba disponible
         print(f"ℹ️ [RAG Engine] Fallback a concatenación de LanceDB para '{doc_title}' ({actual_doc_id})", file=sys.stderr)
         
-    # 3. ESCENARIO B: Libros/Códigos Masivos (> 275 chunks) o Fallback LanceDB
+    # 4. ESCENARIO B: Libros/Códigos Masivos (> 275 chunks) o Fallback LanceDB
     ids = results["id"].to_pylist() if "id" in results.schema.names else []
     sections = results["section_path"].to_pylist() if "section_path" in results.schema.names else []
     contents = results["content"].to_pylist() if "content" in results.schema.names else []
