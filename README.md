@@ -834,19 +834,77 @@ curl -X POST http://localhost:8000/v1/rag/search \
 
 ### 7. Diagnóstico y Auto-Reparación del Subsistema RAG (`check_rag_health.sh`)
 
-Para auditar y restablecer la operatividad de todo el stack RAG ante cualquier eventualidad o cuello de botella (ej. servicios de embeddings caídos tras un reinicio o cambio de modelo), la suite incluye el script interactivo [`check_rag_health.sh`](check_rag_health.sh):
+Para auditar, supervisar y restablecer la operatividad de todo el ecosistema RAG ante cualquier eventualidad o cuello de botella (ej. microservicio de embeddings en estado 503 tras pruebas de carga extrema de VRAM o reinicios del sistema), la suite incluye el script interactivo y autónomo [`check_rag_health.sh`](check_rag_health.sh).
 
-* **Ejecutar Diagnóstico Completo de 5 Capas:**
+#### A. Las 5 Capas de Auditoría en Tiempo Real:
+
+```
++---------------------------------------------------------------------------------------------------+
+|                     FLUJO DE AUDITORÍA EN 5 CAPAS (check_rag_health.sh)                           |
++---------------------------------------------------------------------------------------------------+
+|  [1/5] Persistencia LanceDB:       Valida directorio 'data/lancedb/' y tablas de vectores (.lance)|
+|  [2/5] Microservicio Embeddings:   Consulta GET /v1/models en :18005 (Modelo Qwen3-Embedding)     |
+|  [3/5] Vectorización en Vivo:      Ejecuta POST /v1/embeddings y valida vector de 1024 dimensiones|
+|  [4/5] Búsqueda RAG en Dashboard:  Ejecuta POST /api/rag/search en :8004 con consulta semántica   |
+|  [5/5] Tool Calling en Gateway:    Ejecuta POST /api/tools/rag-search en :8000 con API Key Bearer |
++---------------------------------------------------------------------------------------------------+
+```
+
+#### B. Modos de Ejecución:
+
+* **1. Modo Diagnóstico / Inspección (Solo lectura):**
   ```bash
   ./check_rag_health.sh
   ```
-  *Verifica en tiempo real: (1) Base LanceDB en disco, (2) Microservicio de Embeddings en `:18005`, (3) Generación de vector 1024D en vivo, (4) Endpoint del Dashboard en `:8004`, y (5) Tool Calling autenticado en Gateway `:8000`.*
+  *Muestra un informe detallado con tiempos de latencia en milisegundos para cada capa sin modificar el estado de los servicios.*
 
-* **Ejecutar con Auto-Reparación Automática (`--fix`):**
+* **2. Modo Auto-Reparación (`--fix` o `--heal`):**
   ```bash
   ./check_rag_health.sh --fix
   ```
-  *Si detecta que algún microservicio está en error (ej. HTTP 503 o proceso caído), reinicia de forma segura los servicios afectados vía systemd y re-ejecuta la prueba hasta confirmar 100% de operatividad.*
+  *Si detecta que el servicio de embeddings o el gateway están caídos, bloqueados o devolviendo `HTTP 503 / 500`, ejecuta automáticamente `sudo systemctl restart vllm-embeddings vllm-gateway`, espera la inicialización y re-ejecuta el diagnóstico completo hasta confirmar 100% de operatividad.*
+
+#### C. Casos de Uso y Resolución de Problemas:
+
+1. **Error HTTP 503 en Embeddings tras pruebas de modelos pesados:**
+   * **Causa:** Al cargar modelos masivos en VRAM (ej. GLM-4.7 30B con 22 GB VRAM), el servicio `vllm-embeddings` puede perder la asignación de tensores en CUDA.
+   * **Solución:** Ejecutar `./check_rag_health.sh --fix` para reenganchar el servicio en segundos.
+2. **"Latencia LanceDB: undefined ms" en la pestaña Base RAG del Dashboard:**
+   * **Causa:** El endpoint `/api/rag/search` arrojó error 500 porque el motor de embeddings no respondió.
+   * **Solución:** Correr `./check_rag_health.sh` para ver qué capa específica falló.
+3. **Verificación post-sincronización de libros:**
+   * Comprueba que los nuevos fragmentos indexados desde Teccam PDF respondan de inmediato al motor híbrido (Vectorial + BM25).
+
+#### D. Ejemplo de Salida en Producción:
+
+```text
+======================================================================
+   🔍 DIAGNÓSTICO INTEGRAL DEL SUBSISTEMA RAG (LANCEDB + vLLM SUITE)  
+======================================================================
+
+[1/5] Verificando Base Vectorial LanceDB en disco...
+  ✔ Directorio LanceDB operativo: /home/jose/vllm/data/lancedb (1 tabla/s encontradas)
+
+[2/5] Verificando Microservicio de Embeddings (Puerto :18005)...
+  ✔ Servicio vllm-embeddings respondiendo en puerto :18005 (HTTP 200)
+    Modelo activo: Qwen/Qwen3-Embedding-0.6B
+
+[3/5] Probando generación de vector de prueba (1024 dimensiones)...
+  ✔ Vectorización completada en 64 ms (HTTP 200)
+    Dimensiones generadas: 1024D (Vector Qwen3-Embedding)
+
+[4/5] Probando Búsqueda RAG en API del Dashboard (Puerto :8004)...
+  ✔ Búsqueda RAG del Dashboard exitosa en 77 ms (HTTP 200)
+    Fragmentos recuperados: 3 | Primer resultado: Procedimiento General de Soporte en Puestos de Trabajo
+
+[5/5] Probando Tool Calling RAG en el Gateway (Puerto :8000)...
+  ✔ Tool Calling en Gateway exitoso en 78 ms (HTTP 200)
+    Fragmentos entregados al LLM: 3
+
+======================================================================
+🎉 ¡EL SUBSISTEMA RAG ESTÁ 100% SALUDABLE Y OPERATIVO!
+======================================================================
+```
 
 ---
 
