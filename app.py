@@ -82,13 +82,38 @@ def main():
     # Configurar LoRA si está habilitado en .env, el adaptador está completamente descargado y el modelo es compatible (Gemma)
     lora_env = os.getenv("LORA", "True").strip().lower() in ("true", "1", "yes")
     lora_dir = os.getenv("LORA_DIR", "/home/jose/modelos/loras/gemma-4-E4B-opus-reasoning-claude-code-lora")
-    if lora_env and "gemma" in model.lower() and os.path.exists(os.path.join(lora_dir, "adapter_config.json")):
+    has_active_lora = lora_env and "gemma" in model.lower() and os.path.exists(os.path.join(lora_dir, "adapter_config.json"))
+    if has_active_lora:
         cmd.extend([
             "--enable-lora",
             "--lora-modules", f"gemma-4-reasoning={lora_dir}",
             "--max-loras", "4",
             "--max-lora-rank", "64"
         ])
+
+    # Configurar resolución condicional del backend de atención (FlashInfer vs FlashAttention)
+    flashinfer_families = ["gemma", "qwen", "llama", "mistral", "deepseek", "glm"]
+    is_gqa_model = any(f in model.lower() for f in flashinfer_families)
+    user_backend_pref = os.getenv("ATTENTION_BACKEND", "auto").strip().lower()
+
+    if user_backend_pref == "flashinfer":
+        selected_backend = "FLASHINFER"
+        backend_reason = "Manual (.env)"
+    elif user_backend_pref in ("flash_attn", "flashattention"):
+        selected_backend = "FLASH_ATTN"
+        backend_reason = "Manual (.env)"
+    else:  # Modo 'auto'
+        if has_active_lora:
+            selected_backend = "FLASH_ATTN"
+            backend_reason = "LoRA activo -> FlashAttention seguro"
+        elif is_gqa_model:
+            selected_backend = "FLASHINFER"
+            backend_reason = "Modelo GQA compatible sin LoRA -> FlashInfer acelerado"
+        else:
+            selected_backend = "FLASH_ATTN"
+            backend_reason = "Estándar -> FlashAttention"
+
+    os.environ["VLLM_ATTENTION_BACKEND"] = selected_backend
 
     # Agregar --quantization si está definido en .env
     if quantization:
@@ -102,6 +127,7 @@ def main():
     print("🚀 Iniciando servidor vLLM OpenAI API...")
     print(f"📦 Modelo: {model}")
     print(f"🌐 Dirección: http://{host}:{port}")
+    print(f"⚡ Backend de Atención: {selected_backend} ({backend_reason})")
     print(f"🧠 VRAM reservada: {float(gpu_memory_utilization)*100:.0f}% (~{float(gpu_memory_utilization)*24:.1f} GB de 24 GB) | Libre: ~{(1-float(gpu_memory_utilization))*24:.1f} GB")
     print(f"💾 CPU Offload GB: {swap_space} GB RAM" if float(swap_space) > 0 else "⚡ CPU Offload: Deshabilitado (Máxima velocidad GPU)")
     print(f"🔑 API Key configurada: {api_key}")
