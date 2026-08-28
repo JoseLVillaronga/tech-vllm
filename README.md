@@ -1922,14 +1922,14 @@ En Open-WebUI, ve a **Workspace (Espacio de Trabajo)** ➔ **Herramientas (Tools
 """
 title: Generador de Documentos y Contratos en PDF
 author: Jose Luis Villaronga
-version: 1.2.0
+version: 1.1.5
 license: MIT
 description: Genera documentos PDF estándar A4 con diseño profesional y descarga directa en vLLM Suite Gateway.
 requirements: requests, pydantic
 """
 
 import requests
-from typing import Optional, Callable, Any
+from typing import Optional
 from pydantic import BaseModel, Field
 
 
@@ -1937,7 +1937,7 @@ class Tools:
     class Valves(BaseModel):
         GATEWAY_URL: str = Field(
             default="http://127.0.0.1:8000/api/tools/generate-pdf",
-            description="URL del endpoint de generación de PDF en vLLM Gateway (usar http://host.docker.internal:8000/api/tools/generate-pdf si Open-WebUI corre en Docker)"
+            description="URL del endpoint de PDF en vLLM Gateway (usar http://host.docker.internal:8000/api/tools/generate-pdf si Open-WebUI corre en Docker)"
         )
         API_KEY: str = Field(
             default="TU_API_KEY_AQUI",
@@ -1951,32 +1951,29 @@ class Tools:
     def __init__(self):
         self.valves = self.Valves()
 
-    async def generate_pdf_document(
+    def generate_pdf_document(
         self,
+        title: str = "Documento Oficial",
         markdown_content: str = "",
-        title: Optional[str] = None,
-        filename: Optional[str] = None,
-        __event_emitter__: Optional[Callable[[dict], Any]] = None
+        filename: Optional[str] = None
     ) -> str:
         """
-        Genera un archivo PDF profesional en formato A4 a partir de contenido en Markdown y entrega el enlace de descarga directa.
+        Genera un archivo PDF profesional en formato A4 a partir de contenido en Markdown y devuelve el enlace de descarga directa.
+        Úsalo cada vez que el usuario te pida crear, redactar o exportar contratos, acuerdos, informes, cartas formales o documentos en PDF.
         
-        :param markdown_content: El contenido completo del documento en formato Markdown.
-        :param title: Título principal del documento (opcional, si se omite se extrae del primer encabezado).
-        :param filename: Nombre sugerido para el archivo (ej: 'resumen_victoriano.pdf').
-        :return: Tarjeta de confirmación con enlace de descarga directa.
+        :param title: Título principal del documento (ej: 'CONTRATO DE LOCACIÓN DE INMUEBLE', 'INFORME HISTÓRICO').
+        :param markdown_content: El contenido completo del documento redactado en Markdown.
+        :param filename: Nombre sugerido para el archivo PDF (ej: 'contrato_locacion.pdf', 'informe_historico.pdf').
+        :return: Enlace de descarga e información del documento.
         """
-        # Extraer título del markdown si no vino en los parámetros
-        clean_title = (title or "").strip()
-        if not clean_title and markdown_content:
-            for line in markdown_content.strip().split("\n"):
-                if line.startswith("#"):
-                    clean_title = line.lstrip("#").strip()
-                    break
-        if not clean_title:
+        clean_title = (title or "").strip() or "Documento Oficial"
+        clean_content = (markdown_content or "").strip()
+
+        # Fallback si el modelo invirtió los parámetros
+        if not clean_content and clean_title:
+            clean_content = clean_title
             clean_title = "Documento Oficial"
 
-        # Formatear nombre de archivo
         clean_filename = (filename or "").strip()
         if not clean_filename:
             clean_filename = f"{clean_title.lower().replace(' ', '_')}.pdf"
@@ -1989,16 +1986,10 @@ class Tools:
         }
         payload = {
             "title": clean_title,
-            "markdown_content": markdown_content,
+            "markdown_content": clean_content,
             "filename": clean_filename,
             "company_name": self.valves.COMPANY_NAME
         }
-
-        if __event_emitter__:
-            await __event_emitter__({
-                "type": "status",
-                "data": {"description": f"Compilando documento PDF: {clean_filename}...", "done": False}
-            })
 
         try:
             resp = requests.post(
@@ -2013,37 +2004,17 @@ class Tools:
                 pages = data.get("pages", 1)
                 size_kb = data.get("size_kb", 0)
 
-                chat_message = f"""### 📄 Documento PDF Generado Exitosamente
+                return (
+                    f"✅ Documento PDF generado exitosamente.\n\n"
+                    f"📄 **{clean_title}**\n"
+                    f"🔗 **Enlace de descarga:** [📥 Descargar {clean_filename}]({dl_url})\n"
+                    f"*(Páginas: {pages} | Tamaño: {size_kb} KB)*"
+                )
 
-* **Título:** {clean_title}
-* **Archivo:** `{clean_filename}` ({pages} páginas, {size_kb} KB)
-
-👉 [📥 **Hacé clic aquí para Descargar {clean_filename}**]({dl_url})
-"""
-                if __event_emitter__:
-                    # 1. Marcar status finalizado
-                    await __event_emitter__({
-                        "type": "status",
-                        "data": {"description": f"PDF generado: {clean_filename}", "done": True}
-                    })
-                    # 2. Inyectar automáticamente el mensaje con el enlace en el chat
-                    await __event_emitter__({
-                        "type": "message",
-                        "data": {"content": chat_message}
-                    })
-
-                return chat_message
-
-            err_msg = f"❌ Error al generar PDF en Gateway: HTTP {resp.status_code} - {resp.text}"
-            if __event_emitter__:
-                await __event_emitter__({"type": "status", "data": {"description": err_msg, "done": True}})
-            return err_msg
+            return f"❌ Error al generar PDF en Gateway: HTTP {resp.status_code} - {resp.text}"
 
         except Exception as e:
-            err_msg = f"❌ Error conectando con el servicio de generación de PDF: {str(e)}"
-            if __event_emitter__:
-                await __event_emitter__({"type": "status", "data": {"description": err_msg, "done": True}})
-            return err_msg
+            return f"❌ Error conectando con el servicio de generación de PDF: {str(e)}"
 ```
 
 #### B. Configuración de Credenciales en Open-WebUI (*Valves*):
