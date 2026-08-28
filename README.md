@@ -1698,17 +1698,22 @@ En Open-WebUI, ve a **Workspace (Espacio de Trabajo)** ➔ **Herramientas (Tools
 """
 title: Consulta de Clima OpenWeatherMap
 author: Jose Luis Villaronga
-version: 1.0.0
+version: 1.1.0
 license: MIT
-description: Consulta de clima actual y pronóstico extendido a 5 días usando OpenWeatherMap.
+description: Consulta de clima actual y pronóstico extendido a 5 días con ajuste de zona horaria usando OpenWeatherMap.
 requirements: requests, pydantic
 """
 
 import requests
 from typing import Optional, Dict, Any, List
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from collections import defaultdict
 from pydantic import BaseModel, Field
+
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:
+    ZoneInfo = None
 
 
 class Tools:
@@ -1716,6 +1721,10 @@ class Tools:
         OPENWEATHER_API_KEY: str = Field(
             default="TU_OPENWEATHER_API_KEY_AQUI",
             description="API Key de OpenWeatherMap (obtenida gratis en https://openweathermap.org/api)"
+        )
+        DEFAULT_TIMEZONE: str = Field(
+            default="America/Argentina/Buenos_Aires",
+            description="Zona horaria IANA por defecto para horas de salida/puesta del sol y fechas (ej: 'America/Argentina/Buenos_Aires', 'America/Montevideo', 'Europe/Madrid', o 'auto' para usar la zona local de la ciudad consultada)"
         )
         DEFAULT_UNITS: str = Field(
             default="metric",
@@ -1729,12 +1738,55 @@ class Tools:
     def __init__(self):
         self.valves = self.Valves()
 
+    def _format_timestamp(self, ts: Optional[int], city_tz_offset: int = 0) -> str:
+        """Convierte un timestamp Unix UTC a la hora local configurada."""
+        if not ts:
+            return "N/D"
+
+        tz_setting = self.valves.DEFAULT_TIMEZONE.strip()
+
+        # Si se eligió 'auto', usar el offset en segundos que devuelve la API para esa ciudad
+        if tz_setting.lower() == "auto":
+            tz = timezone(timedelta(seconds=city_tz_offset))
+            dt = datetime.fromtimestamp(ts, tz=timezone.utc).astimezone(tz)
+            return dt.strftime("%H:%M:%S")
+
+        # Intentar usar ZoneInfo con la zona horaria configurada (ej: America/Argentina/Buenos_Aires)
+        if ZoneInfo:
+            try:
+                tz = ZoneInfo(tz_setting)
+                dt = datetime.fromtimestamp(ts, tz=timezone.utc).astimezone(tz)
+                return dt.strftime("%H:%M:%S")
+            except Exception:
+                pass
+
+        # Fallback usando el offset directo de la ciudad
+        tz = timezone(timedelta(seconds=city_tz_offset))
+        dt = datetime.fromtimestamp(ts, tz=timezone.utc).astimezone(tz)
+        return dt.strftime("%H:%M:%S")
+
+    def _format_date(self, ts: Optional[int], city_tz_offset: int = 0) -> str:
+        """Convierte un timestamp Unix a fecha YYYY-MM-DD en la zona horaria correspondiente."""
+        if not ts:
+            return ""
+        tz_setting = self.valves.DEFAULT_TIMEZONE.strip()
+        if tz_setting.lower() != "auto" and ZoneInfo:
+            try:
+                tz = ZoneInfo(tz_setting)
+                dt = datetime.fromtimestamp(ts, tz=timezone.utc).astimezone(tz)
+                return dt.strftime("%Y-%m-%d")
+            except Exception:
+                pass
+        tz = timezone(timedelta(seconds=city_tz_offset))
+        dt = datetime.fromtimestamp(ts, tz=timezone.utc).astimezone(tz)
+        return dt.strftime("%Y-%m-%d")
+
     def get_current_weather(self, city: str, country_code: Optional[str] = None) -> str:
         """
         Obtiene el clima actual para una ciudad o localidad.
         :param city: Nombre de la ciudad o localidad (ej: 'Buenos Aires', 'San Nicolas', 'Madrid', 'Rosario').
         :param country_code: Código ISO de dos letras del país opcional (ej: 'AR', 'ES', 'UY', 'CL').
-        :return: Resumen detallado del clima actual en la ciudad consultada.
+        :return: Resumen detallado del clima actual con amanecer y atardecer en hora local ajustada.
         """
         query = f"{city},{country_code}" if country_code else city
         url = "https://api.openweathermap.org/data/2.5/weather"
@@ -1752,11 +1804,12 @@ class Tools:
             response.raise_for_status()
             data = response.json()
 
-            # Formatear amanecer y atardecer en hora local legible
+            city_tz_offset = data.get("timezone", 0)
             sunrise_ts = data.get("sys", {}).get("sunrise")
             sunset_ts = data.get("sys", {}).get("sunset")
-            sunrise_str = datetime.fromtimestamp(sunrise_ts).strftime("%H:%M:%S") if sunrise_ts else "N/D"
-            sunset_str = datetime.fromtimestamp(sunset_ts).strftime("%H:%M:%S") if sunset_ts else "N/D"
+
+            sunrise_str = self._format_timestamp(sunrise_ts, city_tz_offset)
+            sunset_str = self._format_timestamp(sunset_ts, city_tz_offset)
 
             clima_info = {
                 "ciudad": data.get("name"),
@@ -1769,8 +1822,8 @@ class Tools:
                 "presion_hPa": data.get("main", {}).get("pressure"),
                 "viento_ms": data.get("wind", {}).get("speed"),
                 "estado_cielo": data.get("weather", [{}])[0].get("description", "N/D"),
-                "amanecer": sunrise_str,
-                "atardecer": sunset_str
+                "amanecer": f"{sunrise_str} (hora local)",
+                "atardecer": f"{sunset_str} (hora local)"
             }
             return f"Clima actual en {clima_info['ciudad']} ({clima_info['pais']}):\n" + "\n".join(f"- {k}: {v}" for k, v in clima_info.items())
 
@@ -1800,10 +1853,13 @@ class Tools:
             response.raise_for_status()
             data = response.json()
 
-            # Agrupar las mediciones de 3 horas por fecha (YYYY-MM-DD)
+            city_tz_offset = data.get("city", {}).get("timezone", 0)
+
+            # Agrupar las mediciones por fecha local (YYYY-MM-DD)
             daily_data = defaultdict(list)
             for item in data.get("list", []):
-                date_str = item.get("dt_txt", "")[:10]
+                ts = item.get("dt")
+                date_str = self._format_date(ts, city_tz_offset) if ts else item.get("dt_txt", "")[:10]
                 if date_str:
                     daily_data[date_str].append(item)
 
@@ -1812,7 +1868,7 @@ class Tools:
                 mins = [it["main"]["temp_min"] for it in items if "main" in it]
                 maxs = [it["main"]["temp_max"] for it in items if "main" in it]
                 desc = items[0]["weather"][0]["description"] if items and "weather" in items[0] else "N/D"
-                
+
                 min_c = min(mins) if mins else "N/D"
                 max_c = max(maxs) if maxs else "N/D"
                 report_lines.append(f"📅 {date_key}: Mín {min_c}°C / Máx {max_c}°C | Estado: {desc}")
