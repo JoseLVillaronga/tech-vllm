@@ -1783,10 +1783,10 @@ class Tools:
 
     def get_current_weather(self, city: str, country_code: Optional[str] = None) -> str:
         """
-        Obtiene el clima actual para una ciudad o localidad.
+        Obtiene el clima actual y el pronóstico / reporte detallado del día de hoy para una ciudad o localidad.
         :param city: Nombre de la ciudad o localidad (ej: 'Buenos Aires', 'San Nicolas', 'Madrid', 'Rosario').
         :param country_code: Código ISO de dos letras del país opcional (ej: 'AR', 'ES', 'UY', 'CL').
-        :return: Resumen detallado del clima actual con amanecer y atardecer en hora local ajustada.
+        :return: Resumen detallado del clima de hoy con mínimas, máximas, sensación térmica, viento, humedad, amanecer y atardecer en hora local.
         """
         query = f"{city},{country_code}" if country_code else city
         url = "https://api.openweathermap.org/data/2.5/weather"
@@ -1825,14 +1825,14 @@ class Tools:
                 "amanecer": f"{sunrise_str} (hora local)",
                 "atardecer": f"{sunset_str} (hora local)"
             }
-            return f"Clima actual en {clima_info['ciudad']} ({clima_info['pais']}):\n" + "\n".join(f"- {k}: {v}" for k, v in clima_info.items())
+            return f"Clima actual y reporte de hoy en {clima_info['ciudad']} ({clima_info['pais']}):\n" + "\n".join(f"- {k}: {v}" for k, v in clima_info.items())
 
         except requests.exceptions.RequestException as e:
             return f"Error al consultar el clima actual: {str(e)}"
 
     def get_weather_forecast(self, city: str, country_code: Optional[str] = None) -> str:
         """
-        Obtiene el pronóstico meteorológico extendido para los próximos 5 días de una ciudad.
+        Obtiene el pronóstico meteorológico extendido para los próximos 5 días de una ciudad o localidad.
         :param city: Nombre de la ciudad o localidad (ej: 'Buenos Aires', 'San Nicolas', 'Cordoba').
         :param country_code: Código ISO de dos letras del país opcional (ej: 'AR', 'ES', 'MX').
         :return: Pronóstico agrupado día por día con temperaturas mínimas, máximas y estado del tiempo.
