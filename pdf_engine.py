@@ -2,18 +2,47 @@
 # -*- coding: utf-8 -*-
 """
 Motor de Generación de Documentos y Contratos en PDF para vLLM Suite Gateway.
-Genera documentos PDF estándar A4 sin dependencias externas pesadas.
+Genera documentos PDF estándar A4 sin dependencias externas pesadas, con soporte
+de caracteres en español, paginación exacta y descarga directa vía HTTP.
 """
 
 import io
+import os
 import zlib
 import re
+import uuid
 import base64
 from typing import Optional, Dict, Any, List
 
+PDF_STORAGE_DIR = "/home/jose/vllm/outputs/pdfs"
+os.makedirs(PDF_STORAGE_DIR, exist_ok=True)
+
+
+def sanitize_text_for_pdf(text: str) -> str:
+    """Reemplaza caracteres tipográficos Unicode que no existen en Latin-1 / WinAnsi."""
+    replacements = {
+        "—": " - ",
+        "–": "-",
+        "“": "\"",
+        "”": "\"",
+        "‘": "\x27",
+        "’": "\x27",
+        "…": "...",
+        "•": "*",
+        "·": "*",
+        "™": "(TM)",
+        "©": "(C)",
+        "®": "(R)",
+        "\u200b": "",
+        "\ufeff": "",
+    }
+    for k, v in replacements.items():
+        text = text.replace(k, v)
+    return text
+
 
 class PDFDocumentBuilder:
-    """Compilador de documentos PDF A4 en memoria con soporte de Markdown."""
+    """Compilador de documentos PDF A4 en memoria con soporte de Markdown y paginación precisa."""
 
     def __init__(self, page_size=(595.28, 841.89), company_name: str = "Documento Oficial"):
         self.width, self.height = page_size
@@ -23,10 +52,10 @@ class PDFDocumentBuilder:
         self.pages = []
         self.current_page_stream = []
         self.y = self.height - self.margin_y
-        self.footer_text = company_name
+        self.footer_text = sanitize_text_for_pdf(company_name)
 
     def new_page(self):
-        if self.current_page_stream or not self.pages:
+        if self.current_page_stream:
             self.pages.append(self.current_page_stream)
             self.current_page_stream = []
         self.y = self.height - self.margin_y
@@ -59,7 +88,7 @@ class PDFDocumentBuilder:
         return lines if lines else [""]
 
     def add_wrapped_paragraph(self, text: str, font: str = "F1", size: float = 10.5, line_height: float = 14.0, align: str = "left", indent: float = 0.0):
-        clean = text
+        clean = sanitize_text_for_pdf(text)
         clean = re.sub(r"\*\*(.*?)\*\*", r"\1", clean)
         clean = re.sub(r"\*(.*?)\*", r"\1", clean)
         clean = re.sub(r"`(.*?)`", r"\1", clean)
@@ -100,21 +129,19 @@ class PDFDocumentBuilder:
         self.current_page_stream.append(f"0.7 w 0 0 0 RG {x_right_start:.2f} {self.y:.2f} m {x_right_end:.2f} {self.y:.2f} l S")
         
         self.y -= 14
-        lbl_l = name_left.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
-        lbl_r = name_right.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+        lbl_l = sanitize_text_for_pdf(name_left).replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+        lbl_r = sanitize_text_for_pdf(name_right).replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
         
         self.current_page_stream.append(f"BT /F1 8.5 Tf {x_left_start:.2f} {self.y:.2f} Td ({lbl_l}) Tj ET")
         self.current_page_stream.append(f"BT /F1 8.5 Tf {x_right_start:.2f} {self.y:.2f} Td ({lbl_r}) Tj ET")
         self.y -= 15
 
     def render_markdown(self, md_text: str, title: str = ""):
-        if not self.pages:
-            self.new_page()
-            
-        if title:
-            self.add_wrapped_paragraph(title.upper(), font="F2", size=14, line_height=18, align="center")
+        clean_title = sanitize_text_for_pdf(title)
+        if clean_title:
+            self.add_wrapped_paragraph(clean_title.upper(), font="F2", size=14, line_height=18, align="center")
             self.add_separator_line()
-            self.y -= 8
+            self.y -= 6
             
         raw_lines = md_text.split("\n")
         has_signatures = False
@@ -215,9 +242,10 @@ def create_pdf_from_markdown(
     title: str,
     markdown_content: str,
     filename: Optional[str] = None,
-    company_name: str = "Documento Oficial"
+    company_name: str = "Documento Oficial",
+    base_url: str = "http://127.0.0.1:8000"
 ) -> Dict[str, Any]:
-    """Genera un archivo PDF a partir de Markdown y devuelve metadata + Base64."""
+    """Genera un archivo PDF, lo guarda en disco para descarga directa y devuelve metadata + URL."""
     clean_title = title.strip() or "Documento"
     clean_filename = filename.strip() if filename else f"{re.sub(r"[^a-zA-Z0-9_-]", "_", clean_title.lower())}.pdf"
     if not clean_filename.lower().endswith(".pdf"):
@@ -227,10 +255,18 @@ def create_pdf_from_markdown(
     builder.render_markdown(markdown_content, title=clean_title)
     pdf_bytes = builder.build_pdf()
     
-    b64_pdf = base64.b64encode(pdf_bytes).decode("utf-8")
-    data_uri = f"data:application/pdf;base64,{b64_pdf}"
+    # Guardar en disco para descarga HTTP directa
+    file_id = uuid.uuid4().hex[:12]
+    saved_name = f"{file_id}_{clean_filename}"
+    file_path = os.path.join(PDF_STORAGE_DIR, saved_name)
+    with open(file_path, "wb") as f:
+        f.write(pdf_bytes)
+        
     size_kb = round(len(pdf_bytes) / 1024, 1)
     page_count = len(builder.pages)
+    
+    # URL de descarga directa limpia (sin base64 gigante)
+    download_url = f"{base_url.rstrip("/")}/api/tools/pdf/download/{file_id}/{clean_filename}"
     
     formatted_card = f"""
 ### 📄 Documento PDF Generado Exitosamente
@@ -242,25 +278,17 @@ def create_pdf_from_markdown(
 
 ---
 
-[📥 **Descargar {clean_filename}**]({data_uri})
-
-<div style="margin: 15px 0; padding: 14px; background: rgba(99, 102, 241, 0.08); border: 1px solid rgba(99, 102, 241, 0.3); border-radius: 10px; display: flex; align-items: center; justify-content: space-between;">
-    <div>
-        <span style="font-weight: bold; color: #6366f1; font-size: 14px;">📄 {clean_filename}</span>
-        <div style="font-size: 12px; color: #94a3b8;">Documento PDF compilado ({page_count} pág, {size_kb} KB)</div>
-    </div>
-    <a href="{data_uri}" download="{clean_filename}" style="background: #4f46e5; color: white; padding: 8px 18px; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 13px; display: inline-block;">
-        📥 Descargar PDF
-    </a>
-</div>
+[📥 **Descargar {clean_filename}**]({download_url})
 """
     return {
         "success": True,
         "title": clean_title,
         "filename": clean_filename,
+        "file_id": file_id,
+        "file_path": file_path,
+        "download_url": download_url,
         "pages": page_count,
         "size_kb": size_kb,
-        "data_uri": data_uri,
         "formatted_context": formatted_card,
         "text": formatted_card
     }

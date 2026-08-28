@@ -472,6 +472,47 @@ def create_proxy_app(service_name: str, target_port: int, fallback_port: Optiona
         # Permitir peticiones preflight CORS libres
         if request.method == "OPTIONS":
             return Response(status_code=200)
+
+        # Permitir descarga directa de PDFs generados vía GET
+        if request.method == "GET" and ("api/tools/pdf/download/" in path or "v1/tools/pdf/download/" in path):
+            try:
+                import os
+                from fastapi.responses import FileResponse
+                
+                parts = path.strip("/").split("/")
+                file_id = ""
+                dl_filename = "documento.pdf"
+                for i, p in enumerate(parts):
+                    if p == "download" and i + 1 < len(parts):
+                        file_id = parts[i + 1]
+                        if i + 2 < len(parts):
+                            dl_filename = parts[i + 2]
+                        break
+                        
+                if not file_id:
+                    raise HTTPException(status_code=400, detail="ID de archivo no especificado.")
+                    
+                storage_dir = "/home/jose/vllm/outputs/pdfs"
+                matched_file = None
+                if os.path.exists(storage_dir):
+                    for fname in os.listdir(storage_dir):
+                        if fname.startswith(f"{file_id}_"):
+                            matched_file = os.path.join(storage_dir, fname)
+                            break
+                        
+                if not matched_file or not os.path.exists(matched_file):
+                    raise HTTPException(status_code=404, detail="El documento PDF solicitado no existe o ha expirado.")
+                    
+                return FileResponse(
+                    path=matched_file,
+                    media_type="application/pdf",
+                    filename=dl_filename,
+                    headers={"Content-Disposition": f'attachment; filename="{dl_filename}"'}
+                )
+            except HTTPException:
+                raise
+            except Exception as dl_err:
+                raise HTTPException(status_code=500, detail=f"Error al descargar PDF: {dl_err}")
             
         # Obtener token de Bearer o parámetro query
         auth_header = request.headers.get("Authorization")
@@ -610,11 +651,17 @@ def create_proxy_app(service_name: str, target_port: int, fallback_port: Optiona
                         status_code=400
                     )
                 
+                # Construir base_url usando la cabecera Host de la petición entrante
+                proto = request.headers.get("x-forwarded-proto") or request.url.scheme or "http"
+                host_hdr = request.headers.get("host") or f"127.0.0.1:{GATEWAY_PORT}"
+                base_url = f"{proto}://{host_hdr}"
+                
                 pdf_res = create_pdf_from_markdown(
                     title=title,
                     markdown_content=markdown_content,
                     filename=filename,
-                    company_name=company_name
+                    company_name=company_name,
+                    base_url=base_url
                 )
                 
                 return Response(
