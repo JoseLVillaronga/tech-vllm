@@ -571,6 +571,64 @@ def create_proxy_app(service_name: str, target_port: int, fallback_port: Optiona
                     media_type="application/json",
                     status_code=500
                 )
+
+        # Interceptar endpoint de Tool de Generación de PDF
+        if current_service == "gemma" and path.strip("/") in ["api/tools/generate-pdf", "v1/tools/generate-pdf", "api/tools/pdf", "v1/tools/pdf"] and request.method == "POST":
+            try:
+                import json
+                from pdf_engine import create_pdf_from_markdown
+                
+                tool_body = await request.body()
+                tool_data = json.loads(tool_body) if tool_body else {}
+                
+                # Manejar inputs directos o empaquetados en 'arguments'
+                if "arguments" in tool_data and isinstance(tool_data["arguments"], dict):
+                    tool_data.update(tool_data["arguments"])
+                elif "arguments" in tool_data and isinstance(tool_data["arguments"], str):
+                    try:
+                        arg_obj = json.loads(tool_data["arguments"])
+                        if isinstance(arg_obj, dict):
+                            tool_data.update(arg_obj)
+                    except Exception:
+                        pass
+                
+                title = tool_data.get("title") or tool_data.get("document_title") or "Documento Oficial"
+                markdown_content = (
+                    tool_data.get("markdown_content")
+                    or tool_data.get("content")
+                    or tool_data.get("text")
+                    or tool_data.get("markdown")
+                    or ""
+                )
+                filename = tool_data.get("filename") or tool_data.get("file_name") or None
+                company_name = tool_data.get("company_name") or "Documento Oficial"
+                
+                if not markdown_content:
+                    return Response(
+                        content=json.dumps({"success": False, "error": "El parámetro 'markdown_content' no puede estar vacío."}),
+                        media_type="application/json",
+                        status_code=400
+                    )
+                
+                pdf_res = create_pdf_from_markdown(
+                    title=title,
+                    markdown_content=markdown_content,
+                    filename=filename,
+                    company_name=company_name
+                )
+                
+                return Response(
+                    content=json.dumps(pdf_res),
+                    media_type="application/json",
+                    status_code=200
+                )
+            except Exception as pdf_err:
+                print(f"⚠️ Error procesando tool de generación de PDF: {pdf_err}", file=sys.stderr, flush=True)
+                return Response(
+                    content=json.dumps({"success": False, "error": str(pdf_err)}),
+                    media_type="application/json",
+                    status_code=500
+                )
             
         # Interceptar /v1/models en gemma proxy para combinar locales y en la nube según permisos granulares
         if current_service == "gemma" and path.strip("/") == "v1/models" and request.method == "GET":
