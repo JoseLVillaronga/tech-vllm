@@ -818,7 +818,7 @@ class Tools:
         self,
         doc_id: str = Field(
             ...,
-            description="ID único del documento a leer (obtenido previamente en los metadatos de una búsqueda RAG, ej: '67b2111008223c9b3c3e5608')."
+            description="ID único del documento (ej: '67b2111008223c9b3c3e5608') o el título del documento (ej: 'Procedimiento General de Soporte en Puestos de Trabajo')."
         ),
         parte: int = Field(
             default=1,
@@ -827,6 +827,7 @@ class Tools:
     ) -> str:
         """
         Obtiene el texto completo o una parte masiva de un documento, procedimiento o libro oficial para redactar resúmenes integrales, síntesis ejecutivas o análisis normativos exhaustivos sin omitir pasos ni incisos.
+        Acepta tanto el doc_id hexadecimal como el título exacto o parcial del procedimiento/libro.
         Si el documento tiene hasta 275 fragmentos (~15-20 páginas), entrega el texto original íntegro 1:1. Si es más extenso, entrega la parte solicitada con aviso de paginación.
         """
         url = f"{self.valves.GATEWAY_URL.rstrip('/')}/api/tools/rag-document"

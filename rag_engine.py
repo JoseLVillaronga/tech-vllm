@@ -314,13 +314,14 @@ def search_knowledge_base(
     return final_results
 
 def format_rag_context_for_llm(results: List[Dict[str, Any]]) -> str:
-    """Formatea los resultados de búsqueda en un bloque de contexto claro y estructurado con citas para Gemma."""
+    """Formatea los resultados de búsqueda en un bloque de contexto claro y estructurado con citas y doc_id para el LLM."""
     if not results:
         return "No se encontraron fragmentos relevantes en la base de conocimiento de Teccam."
         
     snippets = []
     for idx, item in enumerate(results, 1):
         doc_title = item.get("doc_title", "Documento sin título")
+        doc_id = item.get("doc_id", "")
         doc_topic = item.get("doc_topic", "General")
         section = item.get("section_path", "Sección Principal")
         author = item.get("doc_author", "Desconocido")
@@ -328,7 +329,8 @@ def format_rag_context_for_llm(results: List[Dict[str, Any]]) -> str:
         sim_pct = int(item.get("similarity", 0) * 100)
         
         snippets.append(
-            f"--- FUENTE [{idx}]: \"{doc_title}\" (Tema: {doc_topic} | Sección: {section} | Autor: {author} | Coincidencia: {sim_pct}%) ---\n"
+            f"--- FUENTE [{idx}]: \"{doc_title}\" [doc_id: {doc_id}] (Tema: {doc_topic} | Sección: {section} | Autor: {author} | Coincidencia: {sim_pct}%) ---\n"
+            f"💡 [Acción Disponible: Para leer este documento completo o hacer una síntesis integral usa: leer_documento_completo(doc_id=\"{doc_id}\")]\n"
             f"{content}"
         )
         
@@ -424,7 +426,8 @@ def get_document_full_content(
     """
     Obtiene el contenido completo o paginado de un documento para síntesis exhaustiva por el LLM.
     
-    Estrategia Híbrida:
+    Estrategia Híbrida y Resolución Inteligente:
+    - Acepta tanto el `doc_id` hexadecimal (ej: '67b2111008223c9b3c3e5608') como el título del documento.
     - Si total_chunks <= 275: Recupera el Markdown original 1:1 desde la API de Teccam PDF (:5022).
       Fallback: Si la API de Teccam no responde, concatena los fragmentos desde LanceDB.
     - Si total_chunks > 275: Divide el documento en partes de hasta 275 fragmentos desde LanceDB.
@@ -438,17 +441,36 @@ def get_document_full_content(
             "doc_id": clean_doc_id
         }
 
-    # 1. Consultar todos los chunks de este documento en LanceDB
+    # 1. Consultar todos los chunks de este documento en LanceDB por doc_id
     clean_sql_id = clean_doc_id.replace("'", "''")
     results = table.search().where(f"doc_id = '{clean_sql_id}'").limit(10000).to_arrow()
+    
+    # Si no se encontró por ID exacto, buscar si pasó el título del documento
+    if len(results) == 0:
+        df = table.to_arrow()
+        if "doc_title" in df.schema.names and "doc_id" in df.schema.names:
+            titles = df["doc_title"].to_pylist()
+            ids = df["doc_id"].to_pylist()
+            matched_id = None
+            query_lower = clean_doc_id.lower()
+            for t, i in zip(titles, ids):
+                t_lower = t.lower()
+                if query_lower in t_lower or t_lower in query_lower:
+                    matched_id = i
+                    break
+            if matched_id:
+                clean_doc_id = matched_id
+                clean_sql_id = clean_doc_id.replace("'", "''")
+                results = table.search().where(f"doc_id = '{clean_sql_id}'").limit(10000).to_arrow()
     
     if len(results) == 0:
         return {
             "success": False,
-            "error": f"No se encontró ningún documento con ID '{clean_doc_id}' en la base de conocimiento.",
+            "error": f"No se encontró ningún documento con ID o título '{clean_doc_id}' en la base de conocimiento.",
             "doc_id": clean_doc_id
         }
         
+    actual_doc_id = results["doc_id"][0].as_py() if "doc_id" in results.schema.names else clean_doc_id
     doc_title = results["doc_title"][0].as_py() if "doc_title" in results.schema.names else "Documento"
     doc_topic = results["doc_topic"][0].as_py() if "doc_topic" in results.schema.names else "General"
     doc_author = results["doc_author"][0].as_py() if "doc_author" in results.schema.names else "Desconocido"
@@ -456,18 +478,18 @@ def get_document_full_content(
     
     # 2. ESCENARIO A: Documentos Cortos/Medianos (<= 275 chunks) -> Fidelidad Total desde Teccam PDF
     if total_chunks <= chunk_threshold:
-        raw_detail = fetch_teccam_document_raw(clean_doc_id)
+        raw_detail = fetch_teccam_document_raw(actual_doc_id)
         if raw_detail and raw_detail.get("texto", "").strip():
             raw_text = raw_detail.get("texto", "").strip()
             header = (
                 f"# {doc_title}\n"
-                f"**Tema / Dominio:** {doc_topic} | **Autor:** {doc_author} | **Total Fragmentos:** {total_chunks}\n"
+                f"**ID de Documento:** {actual_doc_id} | **Tema / Dominio:** {doc_topic} | **Autor:** {doc_author} | **Total Fragmentos:** {total_chunks}\n"
                 f"**Modo de Recuperación:** Documento Íntegro Oficial (Fidelidad 100% desde Teccam PDF)\n\n"
                 f"---\n\n"
             )
             return {
                 "success": True,
-                "doc_id": clean_doc_id,
+                "doc_id": actual_doc_id,
                 "titulo": doc_title,
                 "tema": doc_topic,
                 "autor": doc_author,
@@ -479,7 +501,7 @@ def get_document_full_content(
             }
             
         # Fallback a concatenación desde LanceDB si la API de Teccam PDF no estaba disponible
-        print(f"ℹ️ [RAG Engine] Fallback a concatenación de LanceDB para '{doc_title}' ({clean_doc_id})", file=sys.stderr)
+        print(f"ℹ️ [RAG Engine] Fallback a concatenación de LanceDB para '{doc_title}' ({actual_doc_id})", file=sys.stderr)
         
     # 3. ESCENARIO B: Libros/Códigos Masivos (> 275 chunks) o Fallback LanceDB
     ids = results["id"].to_pylist() if "id" in results.schema.names else []
