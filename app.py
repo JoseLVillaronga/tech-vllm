@@ -74,8 +74,8 @@ def main():
         ])
     elif "glm" in model_lower:
         cmd.extend([
-            "--tool-call-parser", "glm47_moe",
-            "--reasoning-parser", "glm47_moe",
+            "--tool-call-parser", "glm47",
+            "--reasoning-parser", "deepseek_r1",
             "--enable-auto-tool-choice"
         ])
     else:
