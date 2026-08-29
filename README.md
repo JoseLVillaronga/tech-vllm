@@ -891,6 +891,9 @@ Para garantizar un comportamiento determinista y libre de fricciones sin crear p
    * Déjalo vacío (no selecciones ninguna colección interna).
 4. En la sección inferior **Capacidades**:
    * **DESMARCA** la casilla **`Herramientas Integradas`** (*Built-in Tools*). Esto evita que Open-WebUI inyecte sus herramientas nativas vacías (`search_knowledge_files`).
+
+![Configuración del Modelo en Open-WebUI: Deshabilitar Herramientas Integradas](screenshots/openwebui_model_config_disable_builtin_tools.png)
+
 5. **¿Por qué esta solución?**
    * **Preserva la arquitectura limpia:** No altera ni puentea las funciones nativas de Open-WebUI mediante interceptores ("Pipes") que podrían romper funcionalidades futuras si el usuario sube archivos individuales al chat.
    * **Cero ambigüedad para el LLM:** El modelo recibe un esquema de funciones unívoco, forzando la consulta directa a LanceDB desde el primer intento.
