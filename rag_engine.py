@@ -511,16 +511,17 @@ def fetch_teccam_document_raw(doc_id: str) -> Optional[Dict[str, Any]]:
 def get_document_full_content(
     doc_id: str,
     parte: int = 1,
-    chunk_threshold: int = 275
+    token_threshold: int = 60000,
+    chunk_threshold: Optional[int] = None
 ) -> Dict[str, Any]:
     """
     Obtiene el contenido completo o paginado de un documento para síntesis exhaustiva por el LLM.
     
-    Estrategia Híbrida y Resolución Tolerante (Fuzzy / LIKE %...%):
+    Estrategia Dinámica Centrada en Tokens y Resolución Tolerante (Fuzzy / LIKE %...%):
     - Acepta tanto el `doc_id` hexadecimal como el título exacto, parcial o sin acentos.
-    - Si total_chunks <= 275: Recupera el Markdown original 1:1 desde la API de Teccam PDF (:5022).
+    - Si total_doc_tokens <= 60.000 (~50% de ventana de 128K): Recupera el Markdown original 1:1 desde Teccam PDF (:5022).
       Fallback: Si la API de Teccam no responde, concatena los fragmentos desde LanceDB.
-    - Si total_chunks > 275: Divide el documento en partes de hasta 275 fragmentos desde LanceDB.
+    - Si total_doc_tokens > 60.000: Divide el documento en partes dinámicas de hasta 60.000 tokens desde LanceDB.
     """
     clean_doc_id = doc_id.strip()
     table = get_table()
@@ -530,6 +531,11 @@ def get_document_full_content(
             "error": "Base vectorial LanceDB no inicializada o vacía.",
             "doc_id": clean_doc_id
         }
+
+    # Compatibilidad hacia atrás si se pasa chunk_threshold
+    effective_token_threshold = token_threshold
+    if chunk_threshold is not None and chunk_threshold > 0:
+        effective_token_threshold = chunk_threshold * 220
 
     # 1. Consultar todos los chunks de este documento en LanceDB por doc_id exacto
     clean_sql_id = clean_doc_id.replace("'", "''")
@@ -561,20 +567,32 @@ def get_document_full_content(
     doc_author = results["doc_author"][0].as_py() if "doc_author" in results.schema.names else "Desconocido"
     total_chunks = len(results)
 
+    ids = results["id"].to_pylist() if "id" in results.schema.names else []
+    sections = results["section_path"].to_pylist() if "section_path" in results.schema.names else []
+    contents = results["content"].to_pylist() if "content" in results.schema.names else []
+    chunk_tokens = results["chunk_tokens"].to_pylist() if "chunk_tokens" in results.schema.names else [len(c)//4 for c in contents]
+    
+    # Obtener o calcular el total de tokens reales del documento
+    raw_doc_tokens = results["total_doc_tokens"][0].as_py() if "total_doc_tokens" in results.schema.names else None
+    if raw_doc_tokens and raw_doc_tokens > 0:
+        total_doc_tokens = int(raw_doc_tokens)
+    else:
+        total_doc_tokens = sum(tok if (tok and tok > 0) else max(1, len(c)//4) for tok, c in zip(chunk_tokens, contents))
+
     # Avisos de coincidencias alternativas si hubo búsqueda difusa
     alt_notice = ""
     if candidates and len(candidates) > 1:
         other_matches = [f"'{c['title']}' (doc_id: {c['doc_id']})" for c in candidates[1:4]]
         alt_notice = f"💡 *Nota de Búsqueda:* Se seleccionó '{doc_title}'. Otras coincidencias posibles: {', '.join(other_matches)}\n\n"
     
-    # 3. ESCENARIO A: Documentos Cortos/Medianos (<= 275 chunks) -> Fidelidad Total desde Teccam PDF
-    if total_chunks <= chunk_threshold:
+    # 3. ESCENARIO A: Documentos que caben en el presupuesto de tokens (<= 60.000 tokens) -> Fidelidad 1:1 Teccam PDF
+    if total_doc_tokens <= effective_token_threshold:
         raw_detail = fetch_teccam_document_raw(actual_doc_id)
         if raw_detail and raw_detail.get("texto", "").strip():
             raw_text = raw_detail.get("texto", "").strip()
             header = (
                 f"# {doc_title}\n"
-                f"**ID de Documento:** {actual_doc_id} | **Tema / Dominio:** {doc_topic} | **Autor:** {doc_author} | **Total Fragmentos:** {total_chunks}\n"
+                f"**ID:** {actual_doc_id} | **Tema:** {doc_topic} | **Autor:** {doc_author} | **Tokens:** ~{total_doc_tokens:,} ({total_chunks} fragmentos)\n"
                 f"**Modo de Recuperación:** Documento Íntegro Oficial (Fidelidad 100% desde Teccam PDF)\n\n"
                 f"{alt_notice}"
                 f"---\n\n"
@@ -586,6 +604,8 @@ def get_document_full_content(
                 "tema": doc_topic,
                 "autor": doc_author,
                 "total_chunks": total_chunks,
+                "total_doc_tokens": total_doc_tokens,
+                "tokens_en_esta_parte": total_doc_tokens,
                 "modo": "completo_directo",
                 "parte_actual": 1,
                 "total_partes": 1,
@@ -595,24 +615,35 @@ def get_document_full_content(
         # Fallback a concatenación desde LanceDB si la API de Teccam PDF no estaba disponible
         print(f"ℹ️ [RAG Engine] Fallback a concatenación de LanceDB para '{doc_title}' ({actual_doc_id})", file=sys.stderr)
         
-    # 4. ESCENARIO B: Libros/Códigos Masivos (> 275 chunks) o Fallback LanceDB
-    ids = results["id"].to_pylist() if "id" in results.schema.names else []
-    sections = results["section_path"].to_pylist() if "section_path" in results.schema.names else []
-    contents = results["content"].to_pylist() if "content" in results.schema.names else []
+    # 4. ESCENARIO B: Libros/Códigos Masivos (> 60.000 tokens) con Paginación Dinámica Acumulativa
+    sorted_items = sorted(zip(ids, sections, contents, chunk_tokens), key=lambda x: x[0])
     
-    # Ordenar chunks por ID secuencial (doc_id_0000, doc_id_0001, etc.)
-    sorted_items = sorted(zip(ids, sections, contents), key=lambda x: x[0])
+    # Agrupar fragmentos en partes de hasta effective_token_threshold tokens
+    partes_chunks = []
+    current_part = []
+    current_part_tokens = 0
     
-    total_partes = max(1, (total_chunks + chunk_threshold - 1) // chunk_threshold)
+    for ch_id, sec, cont, tok_cnt in sorted_items:
+        t_c = tok_cnt if (tok_cnt and tok_cnt > 0) else max(1, len(cont) // 4)
+        if current_part and (current_part_tokens + t_c > effective_token_threshold):
+            partes_chunks.append((current_part, current_part_tokens))
+            current_part = [(ch_id, sec, cont, t_c)]
+            current_part_tokens = t_c
+        else:
+            current_part.append((ch_id, sec, cont, t_c))
+            current_part_tokens += t_c
+            
+    if current_part:
+        partes_chunks.append((current_part, current_part_tokens))
+        
+    total_partes = max(1, len(partes_chunks))
     parte = max(1, min(parte, total_partes))
     
-    start_idx = (parte - 1) * chunk_threshold
-    end_idx = min(start_idx + chunk_threshold, total_chunks)
-    slice_items = sorted_items[start_idx:end_idx]
+    selected_slice, part_tokens = partes_chunks[parte - 1]
     
     body_parts = []
     current_sec = None
-    for _, sec, cont in slice_items:
+    for _, sec, cont, _ in selected_slice:
         if sec != current_sec:
             current_sec = sec
             body_parts.append(f"\n\n### {sec}\n")
@@ -620,11 +651,11 @@ def get_document_full_content(
         
     slice_text = "\n\n".join(body_parts).strip()
     
-    if total_chunks <= chunk_threshold:
+    if total_partes == 1:
         modo_str = "completo_lancedb"
         header = (
             f"# {doc_title}\n"
-            f"**Tema / Dominio:** {doc_topic} | **Autor:** {doc_author} | **Total Fragmentos:** {total_chunks}\n"
+            f"**Tema:** {doc_topic} | **Autor:** {doc_author} | **Tokens:** ~{part_tokens:,} ({len(selected_slice)} fragmentos)\n"
             f"**Modo de Recuperación:** Documento Completo Reconstruido desde LanceDB\n\n"
             f"---\n\n"
         )
@@ -633,21 +664,23 @@ def get_document_full_content(
         next_hint = f" (Para leer la siguiente parte use parte={parte+1})" if parte < total_partes else " (Fin del documento)"
         header = (
             f"# {doc_title} (Parte {parte} de {total_partes})\n"
-            f"**Tema / Dominio:** {doc_topic} | **Autor:** {doc_author} | **Fragmentos:** {start_idx + 1} al {end_idx} (de {total_chunks})\n"
-            f"**Aviso de Paginación:** Documento extenso dividido en bloques de {chunk_threshold} fragmentos.{next_hint}\n\n"
+            f"**Tema:** {doc_topic} | **Autor:** {doc_author} | **Tokens en esta parte:** ~{part_tokens:,} ({len(selected_slice)} fragmentos) | **Total Obra:** ~{total_doc_tokens:,} tokens ({total_chunks} fragmentos)\n"
+            f"**Aviso de Paginación:** Documento extenso dividido dinámicamente en bloques de hasta {effective_token_threshold:,} tokens.{next_hint}\n\n"
             f"---\n\n"
         )
         
     return {
         "success": True,
-        "doc_id": clean_doc_id,
+        "doc_id": actual_doc_id,
         "titulo": doc_title,
         "tema": doc_topic,
         "autor": doc_author,
         "total_chunks": total_chunks,
+        "total_doc_tokens": total_doc_tokens,
+        "tokens_en_esta_parte": part_tokens,
+        "chunks_en_esta_parte": len(selected_slice),
         "modo": modo_str,
         "parte_actual": parte,
         "total_partes": total_partes,
-        "chunks_en_esta_parte": len(slice_items),
         "content": header + slice_text
     }

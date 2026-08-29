@@ -740,7 +740,7 @@ author: Jose Luis Villaronga
 description: Consulta la base de conocimiento documental de Teccam en LanceDB con búsqueda híbrida 1024D (Qwen3 + BM25) y lectura de documentos completos para síntesis y análisis normativo.
 required_open_webui_version: 0.3.0
 requirements: requests, pydantic
-version: 1.2.0
+version: 1.2.2
 """
 
 import os
@@ -826,7 +826,7 @@ class Tools:
         """
         Obtiene el texto completo o una parte masiva de un documento, procedimiento o libro oficial de Teccam para redactar resúmenes integrales, síntesis ejecutivas o análisis normativos exhaustivos sin omitir pasos ni incisos.
         Acepta tanto el doc_id hexadecimal como el título exacto o parcial del procedimiento/libro.
-        Si el documento tiene hasta 275 fragmentos (~15-20 páginas), entrega el texto original íntegro 1:1. Si es más extenso, entrega la parte solicitada con aviso de paginación.
+        Si el documento tiene hasta 60.000 tokens (~50% de la ventana de 128K), entrega el texto original íntegro 1:1. Si es más extenso, entrega la parte solicitada con aviso de paginación.
         :param doc_id: ID único del documento (ej: '67b2111008223c9b3c3e5608') o el título del documento (ej: 'Procedimiento General de Soporte en Puestos de Trabajo').
         :param parte: Número de parte a recuperar si es un libro extenso paginado (1 para la primera parte, 2 para la siguiente, etc.).
         """
@@ -847,7 +847,7 @@ class Tools:
         payload = {
             "doc_id": clean_doc_id,
             "parte": clean_parte,
-            "chunk_threshold": 275
+            "token_threshold": 60000
         }
 
         try:

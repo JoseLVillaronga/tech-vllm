@@ -18,7 +18,7 @@ if [ -f "${ENV_FILE}" ]; then
 fi
 
 VENV_PYTHON="${PROJECT_DIR}/venv/bin/python"
-APP_SCRIPT="${PROJECT_DIR}/app_rag_sync.py"
+APP_SCRIPT="${PROJECT_DIR}/sync_rag_scheduled.sh"
 SERVICE_NAME="vllm-rag-sync"
 SERVICE_PATH="/etc/systemd/system/${SERVICE_NAME}.service"
 TIMER_PATH="/etc/systemd/system/${SERVICE_NAME}.timer"
@@ -27,8 +27,8 @@ echo "============================================================"
 echo "⚙️  Configurando Servicio y Temporizador Systemd para RAG Sync"
 echo "============================================================"
 echo "📍 Directorio del Proyecto: ${PROJECT_DIR}"
-echo "👤 Usuario del Servicio:   ${SERVICE_USER}"
-echo "🐍 Python Venv:            ${VENV_PYTHON}"
+echo "👤 Usuario del Servicio:   root (requerido para gestionar vllm.service)"
+echo "📜 Script Orquestador:     ${APP_SCRIPT}"
 echo "⏰ Frecuencia de Sincronía: Cada 12 horas (00:00 y 12:00)"
 echo "============================================================"
 
@@ -39,7 +39,7 @@ if [ ! -f "${VENV_PYTHON}" ]; then
 fi
 
 if [ ! -f "${APP_SCRIPT}" ]; then
-    echo "❌ Error: No se encontró app_rag_sync.py."
+    echo "❌ Error: No se encontró sync_rag_scheduled.sh."
     exit 1
 fi
 
@@ -52,16 +52,16 @@ fi
 # Crear archivo de servicio
 cat <<EOF > "${SERVICE_PATH}"
 [Unit]
-Description=vLLM Knowledge Base RAG Synchronizer (Teccam PDF to LanceDB)
+Description=vLLM Knowledge Base RAG Synchronizer with VRAM Management (Teccam PDF to LanceDB)
 After=network.target vllm-embeddings.service
 
 [Service]
 Type=oneshot
-User=${SERVICE_USER}
+User=root
 WorkingDirectory=${PROJECT_DIR}
-Environment="HOME=/home/${SERVICE_USER}"
-Environment="PATH=${PROJECT_DIR}/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-ExecStart=${VENV_PYTHON} ${APP_SCRIPT}
+Environment="HOME=/root"
+Environment="PATH=${PROJECT_DIR}/venv/bin:/usr/local/cuda/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+ExecStart=/bin/bash ${APP_SCRIPT}
 StandardOutput=journal
 StandardError=journal
 

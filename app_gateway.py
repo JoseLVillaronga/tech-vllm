@@ -935,13 +935,20 @@ def create_proxy_app(service_name: str, target_port: int, fallback_port: Optiona
                 body_data = json.loads(body) if body else {}
                 doc_id = body_data.get("doc_id", "").strip()
                 parte = int(body_data.get("parte", 1))
-                chunk_threshold = int(body_data.get("chunk_threshold", 275))
+                token_threshold = int(body_data.get("token_threshold", 60000))
+                chunk_threshold = body_data.get("chunk_threshold")
+                chunk_threshold_val = int(chunk_threshold) if chunk_threshold is not None else None
                 
                 if not doc_id:
                     raise HTTPException(status_code=400, detail="El parámetro 'doc_id' es obligatorio para leer el documento.")
                     
                 t_doc_0 = time.time()
-                res = get_document_full_content(doc_id=doc_id, parte=parte, chunk_threshold=chunk_threshold)
+                res = get_document_full_content(
+                    doc_id=doc_id,
+                    parte=parte,
+                    token_threshold=token_threshold,
+                    chunk_threshold=chunk_threshold_val
+                )
                 dur_doc_ms = round((time.time() - t_doc_0) * 1000, 2)
                 
                 if not res.get("success", False):
@@ -954,6 +961,8 @@ def create_proxy_app(service_name: str, target_port: int, fallback_port: Optiona
                     "tema": res.get("tema"),
                     "autor": res.get("autor"),
                     "total_chunks": res.get("total_chunks"),
+                    "total_doc_tokens": res.get("total_doc_tokens"),
+                    "tokens_en_esta_parte": res.get("tokens_en_esta_parte"),
                     "modo": res.get("modo"),
                     "parte_actual": res.get("parte_actual", 1),
                     "total_partes": res.get("total_partes", 1),

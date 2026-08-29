@@ -357,9 +357,9 @@ A partir de la evaluación empírica de consultas reales sobre procedimientos in
 * **Estado:** Implementado y operativo en producción (agosto 2026).
 * **Solución aplicada:**
   * Endpoint `POST /api/tools/rag-document` en Gateway y método `leer_documento_completo(doc_id, parte=1)` en Open-WebUI.
-  * Estrategia híbrida con frontera de **275 chunks**:
-    * $\le 275$ chunks: Recuperación 1:1 directa desde la API de Teccam PDF (`:5022` / MongoDB).
-    * $> 275$ chunks: Recuperación paginada por bloques continuos desde LanceDB.
+  * Estrategia dinámica centrada en tokens con frontera de **`token_threshold = 60.000 tokens`** (~50% de la ventana de contexto de 128K):
+    * $\le 60.000$ tokens totales: Recuperación 1:1 directa desde la API de Teccam PDF (`:5022` / MongoDB) en modo `completo_directo`.
+    * $> 60.000$ tokens: Paginación dinámica acumulativa por bloques de hasta 60.000 tokens desde LanceDB.
   * Resolución tolerante (*Fuzzy Match / LIKE %...%*): Acepta `doc_id` hexadecimal o títulos parciales sin acentos.
 
 ---
@@ -381,7 +381,7 @@ A partir de la evaluación empírica de consultas reales sobre procedimientos in
   * **Reconstrucción de Párrafos y Tablas Atómicas:** Fusiona líneas continuas de un mismo párrafo antes de tokenizar, eliminando los cortes por wrapping de OCR o saltos de línea arbitrarios.
   * **Solapamiento Deslizante (*Chunk Overlap* de 180 caracteres):** Cada fragmento hereda la última(s) oración(es) del fragmento anterior de la misma sección.
   * **Lote Adaptativo Anti-OOM en Vectorización:** `generate_embeddings_batch` reduce dinámicamente el tamaño de lote (8 $\to$ 4 $\to$ 2 $\to$ 1) ante picos de presión de VRAM, garantizando una ingesta 100% resiliente sin caídas del servicio de embeddings.
-  * **Base Vectorial 100% Re-indexada:** 14 documentos procesados y **11.408 fragmentos** con embeddings 1024D persistidos en LanceDB.
+  * **Base Vectorial 100% Re-indexada:** 14 documentos procesados y **6.096 fragmentos** estructurados con conteo exacto de tokens (`chunk_tokens`, `total_chunks`, `total_doc_tokens`).
 
 ---
 
@@ -390,32 +390,43 @@ A partir de la evaluación empírica de consultas reales sobre procedimientos in
   1. Falta de fluidez narrativa entre fragmentos recuperados.
   2. Redundancia en sesiones multi-turno: cuando el LLM invoca la herramienta RAG varias veces en un mismo chat, el fragmento de mayor score se repite en cada llamada consumiendo tokens de contexto innecesarios.
 * **Solución propuesta:**
-  * **Neighbor Expansion:** Cuando un fragmento $n$ supera un umbral de similitud (ej. $>0.88$), el motor recupera automáticamente también sus vecinos inmediatos ($n-1$ y $n+1$) del mismo documento para dotar de contexto anterior y posterior.
+  * **Neighbor Expansion por Tokens:** Cuando un fragmento $n$ supera un umbral de similitud (ej. $>0.88$), el motor recupera automáticamente también sus vecinos inmediatos ($n-1$ y $n+1$) del mismo documento hasta un presupuesto máximo de **1.500 a 2.000 tokens**.
   * **Deduplicación por sesión:** Filtrar en memoria los identificadores de chunks ya inyectados en la conversación activa para que las llamadas subsecuentes traigan información nueva y complementaria.
 
 ---
 
-### 8.5. Caché de Documentos en RAM (2 GB LRU + TTL) con Ventana Deslizante Centrada (*Context-Centered Working Memory*)
+### 8.5. Caché de Documentos en RAM (2 GB LRU + TTL) con Ventana Deslizante Centrada por Tokens (*Context-Centered Working Memory*)
 * **Fundamento y Justificación:**
   * En **1 GB de RAM** entran más de **1.000 libros completos en texto puro Markdown** (~1 MB por libro de 400 págs).
   * Reservar un espacio de **2 GB de RAM** en el Gateway o en un proceso dedicado permite mantener en memoria caliente cientos de libros y tratados normativos masivos sin tocar disco ni consultar bases de datos externas repetidamente.
 * **Mecánica Arquitectónica:**
   1. **Buffer LRU con Límite de 2.048 MB:**
-     * Cuando se solicita un libro masivo (> 275 chunks, ej. *Código Civil* de 2.246 chunks), el texto completo se carga en memoria RAM asociado a su `doc_id`.
+     * Cuando se solicita un libro masivo (> 60.000 tokens, ej. *Código Civil* de 850.000 tokens), el texto completo se carga en memoria RAM asociado a su `doc_id`.
      * **Política de desalojo:** Si el buffer alcanza los 2 GB, desaloja automáticamente el documento menos recientemente utilizado (LRU / FIFO).
      * **TTL de Vencimiento:** Cada documento tiene una caducidad automática (ej. 2 a 4 horas de inactividad) para liberar la RAM de forma desatendida.
-  2. **Ventana Deslizante Centrada (*Context-Centered Sliding Window*):**
+  2. **Ventana Deslizante Centrada en Tokens (*Token-Centered Sliding Window*):**
      * Cuando el usuario o el LLM buscan un concepto o artículo específico dentro del libro extenso, el motor localiza el chunk o posición exacta del match ($K$).
-     * En lugar de entregar la "Parte 1" a ciegas, calcula una ventana continua de 275 chunks **centrada exactamente en el objetivo**:
-       $$\text{Inicio} = \max(0, K - 137), \quad \text{Fin} = \min(\text{Total}, \text{Inicio} + 275)$$
+     * En lugar de entregar una partición estática a ciegas, calcula una ventana continua acumulando fragmentos contiguos hasta completar **60.000 tokens** (o el presupuesto solicitado), centrada simétricamente en el punto de coincidencia:
+       $$\text{Tokens Contexto Anterior} \approx 30.000, \quad \text{Match} = K, \quad \text{Tokens Contexto Posterior} \approx 30.000$$
      * El LLM recibe el artículo buscado con todo su contexto precedente y subsiguiente íntegro en **menos de 2 milisegundos**.
   3. **Diferenciación y Trazabilidad de Usuarios (Open-WebUI Metadata):**
      * Open-WebUI inyecta nativamente los metadatos del usuario (`__user__`: `id`, `email`, `role`) y de la conversación (`__chat_id__`) en la ejecución de herramientas.
-     * La herramienta puede enviar estas cabeceras al Gateway (`X-User-Id`, `X-Chat-Id`) para mantener caches de documentos por sesión de usuario, garantizando aislamiento multi-inquilino (*multi-tenant*) y métricas de auditoría por colaborador.
+     * La herramienta envía estas cabeceras al Gateway (`X-User-Id`, `X-Chat-Id`) para mantener caches de documentos por sesión de usuario, garantizando aislamiento multi-inquilino (*multi-tenant*) y métricas de auditoría por colaborador.
 
 ---
 
-### 8.6. Decisión de Diseño (ADR): Prevención del 'Sesgo de Falta de Confirmación' y Desacoplamiento de Tools Nativas
+### 8.6. Orquestación Segura de VRAM para Sincronización Programada (`sync_rag_scheduled.sh` - IMPLEMENTADO ✅)
+* **Estado:** Implementado y operativo en producción (agosto 2026).
+* **Solución aplicada:**
+  * **Aceleración CUDA (~300x más rápida que CPU):** Ingesta de 6.000+ fragmentos en 121 segundos usando la RTX 3090.
+  * **Pausa Controlada del LLM:** Antes de iniciar el ciclo periódico (00:00 y 12:00), `sync_rag_scheduled.sh` detiene `vllm.service` liberando los 14 GB de VRAM.
+  * **Verificación de VRAM:** Confirma mediante `nvidia-smi` que el uso de VRAM sea inferior a 10 GB.
+  * **Restauración Garantizada (`trap EXIT`):** Al finalizar la sincronización (sea por éxito o error), el script reanuda automáticamente el servicio `vllm.service` sin intervención humana.
+  * **Integración con Systemd:** Servicio `vllm-rag-sync.service` ejecutado como `root` con temporizador `vllm-rag-sync.timer`.
+
+---
+
+### 8.7. Decisión de Diseño (ADR): Prevención del 'Sesgo de Falta de Confirmación' y Desacoplamiento de Tools Nativas
 * **Problema:** En modelos compactos (como Gemma 4 E4B), la coexistencia de `search_knowledge_files` (nativa de Open-WebUI) y `buscar_en_base_de_conocimiento` (LanceDB) genera fallos cuando el LLM consulta primero la nativa, recibe `[]` y concluye prematuramente que el documento no existe en toda la base.
 * **Evaluación de Alternativas:**
   1. *Alternativa A (Filtro/Pipe Interceptor):* Interceptar `search_knowledge_files` en Open-WebUI y redirigirla a LanceDB. **Descartada** por introducir acoplamientos ocultos y deuda técnica si a futuro se desea usar el almacén nativo de Open-WebUI para archivos temporales del chat.
