@@ -419,10 +419,10 @@ A partir de la evaluación empírica de consultas reales sobre procedimientos in
 * **Estado:** Implementado y operativo en producción (agosto 2026).
 * **Solución aplicada:**
   * **Aceleración CUDA (~300x más rápida que CPU):** Ingesta de 6.000+ fragmentos en 121 segundos usando la RTX 3090.
-  * **Pausa Controlada del LLM:** Antes de iniciar el ciclo periódico (00:00 y 12:00), `sync_rag_scheduled.sh` detiene `vllm.service` liberando los 14 GB de VRAM.
+  * **Pausa Controlada del LLM:** Antes de iniciar el ciclo periódico diario a la medianoche (00:00:00), `sync_rag_scheduled.sh` detiene `vllm.service` liberando los 14 GB de VRAM.
   * **Verificación de VRAM:** Confirma mediante `nvidia-smi` que el uso de VRAM sea inferior a 10 GB.
   * **Restauración Garantizada (`trap EXIT`):** Al finalizar la sincronización (sea por éxito o error), el script reanuda automáticamente el servicio `vllm.service` sin intervención humana.
-  * **Integración con Systemd:** Servicio `vllm-rag-sync.service` ejecutado como `root` con temporizador `vllm-rag-sync.timer`.
+  * **Integración con Systemd:** Servicio `vllm-rag-sync.service` ejecutado como `root` con temporizador `vllm-rag-sync.timer` a las 00:00:00.
 
 ---
 
@@ -431,8 +431,17 @@ A partir de la evaluación empírica de consultas reales sobre procedimientos in
 * **Evaluación de Alternativas:**
   1. *Alternativa A (Filtro/Pipe Interceptor):* Interceptar `search_knowledge_files` en Open-WebUI y redirigirla a LanceDB. **Descartada** por introducir acoplamientos ocultos y deuda técnica si a futuro se desea usar el almacén nativo de Open-WebUI para archivos temporales del chat.
   2. *Alternativa B (Sync de Metadatos vía API):* Sincronizar el catálogo a SQLite de Open-WebUI. **Descartada** por duplicar estados y mantenimiento entre LanceDB y Open-WebUI.
-  3. *Alternativa C (Perfilado Explícito de Herramientas en el Modelo - SELECCIONADA ✅):* Desactivar el switch nativo de conocimiento en el perfil del modelo y asignar exclusivamente la Tool de LanceDB.
+  3. *Alternativa C (Perfilado Explícito de Herramientas en el Modelo - SELECCIONADA ✅):* Desactivar la casilla *'Herramientas Integradas'* (*Built-in Tools*) en el perfil del modelo en Open-WebUI y asignar exclusivamente la Tool de LanceDB.
 * **Justificación:** Es la solución más limpia, robusta y con 0% de deuda técnica, garantizando que el modelo jamás sufra colisiones ni falsos negativos.
+
+---
+
+### 8.8. Telemetría Térmica de CPU en Tiempo Real en el Dashboard (IMPLEMENTADO ✅)
+* **Estado:** Implementado y operativo en producción (agosto 2026).
+* **Solución aplicada:**
+  * **Lectura In-Memory de Sensores del Kernel:** Mapeo de `psutil.sensors_temperatures()` (`k10temp` en AMD Ryzen / `coretemp` en Intel) con $0\text{ ms}$ de latencia y 0% de sobrecarga de procesamiento.
+  * **Visualización Simétrica en la UI:** Integración de la temperatura de CPU en la tarjeta superior del Dashboard (`templates/tabs/tab_monitor.html`), mostrando uso porcentual y temperatura (°C) junto a la tarjeta de GPU.
+  * **Persistencia Histórica:** Registro de `cpu_temp` cada 60 segundos en la colección `telemetry_history` de MongoDB.
 
 ---
 

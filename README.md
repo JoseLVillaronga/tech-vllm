@@ -884,13 +884,34 @@ En modelos pequeños, este retorno vacío produce un **"Sesgo de Falta de Confir
 #### B. La Solución Arquitectónica (Opción Limpia y Sin Deuda Técnica):
 Para garantizar un comportamiento determinista y libre de fricciones sin crear parches o acoplamientos ocultos:
 
-1. Ve a **Workspace ➔ Modelos** en Open-WebUI y edita el modelo en uso.
-2. En la sección **Capacidades / Herramientas**:
-   * **DESMARCA** el interruptor de *Conocimiento / Archivos Internos* de Open-WebUI.
-   * **MARCA ÚNICAMENTE** la herramienta personalizada **`Búsqueda y Lectura Documental RAG (LanceDB + Teccam)`**.
-3. **¿Por qué esta solución?**
+1. Ve a **Espacio de Trabajo ➔ Modelos** en Open-WebUI y edita el modelo en uso (o crea uno nuevo como `local/gemma-4-teccam`).
+2. En la sección **Herramientas (Tools)**:
+   * **MARCA** la herramienta personalizada **`Búsqueda RAG Teccam (LanceDB)`** (además de PDF Generator o Clima si aplican).
+3. En la sección **Conocimiento**:
+   * Déjalo vacío (no selecciones ninguna colección interna).
+4. En la sección inferior **Capacidades**:
+   * **DESMARCA** la casilla **`Herramientas Integradas`** (*Built-in Tools*). Esto evita que Open-WebUI inyecte sus herramientas nativas vacías (`search_knowledge_files`).
+5. **¿Por qué esta solución?**
    * **Preserva la arquitectura limpia:** No altera ni puentea las funciones nativas de Open-WebUI mediante interceptores ("Pipes") que podrían romper funcionalidades futuras si el usuario sube archivos individuales al chat.
    * **Cero ambigüedad para el LLM:** El modelo recibe un esquema de funciones unívoco, forzando la consulta directa a LanceDB desde el primer intento.
+
+---
+
+### 5.4. Orquestación Segura de VRAM para Ingesta y Sincronización (`sync_rag_scheduled.sh`)
+
+#### A. Por qué CUDA en lugar de CPU para Embeddings Masivos:
+Durante la ingesta y re-indexación de la biblioteca corporativa (14 obras completas y más de 6.000 fragmentos / 10 millones de tokens):
+* **En CPU:** El cálculo matricial en float32 consume el 700% de CPU durante más de una hora, resultando inviable para mantenimiento continuo.
+* **En GPU CUDA (RTX 3090):** La aceleración masiva por Tensor Cores liquida la vectorización de toda la biblioteca en **121 segundos** (~300 veces más rápido).
+
+#### B. Mecánica de Protección de VRAM:
+Para evitar picos de memoria cuando el LLM (`vllm.service`, ~14.2 GB de VRAM) y la ingesta masiva compiten por la GPU:
+1. El script orquestador [`sync_rag_scheduled.sh`](file:///home/jose/vllm/sync_rag_scheduled.sh) detecta si el LLM está activo y lo detiene temporalmente.
+2. Comprueba mediante `nvidia-smi` que el uso de VRAM en la GPU 0 descienda por debajo de los 10 GB.
+3. Ejecuta `app_rag_sync.py` con aceleración CUDA completa, límites de oración, solapamiento de 180c y cálculo exacto de tokens.
+4. **Garantía de Restauración (`trap cleanup EXIT INT TERM`):** Al finalizar la sincronización (por éxito o por error), el script reanuda automáticamente el servicio `vllm.service`.
+5. **Programación Automática:** Se ejecuta 1 vez al día a la **medianoche en punto (00:00:00)** a través del temporizador systemd `vllm-rag-sync.timer`.
+6. **Sincronización Manual desde el Dashboard:** Al pulsar "Sincronizar Base RAG Ahora" en la Web GUI (`:8004`), el sistema muestra un modal de advertencia preventiva y ejecuta este mismo flujo seguro en segundo plano.
 
 ---
 
@@ -916,7 +937,7 @@ curl -X POST http://localhost:8000/api/tools/rag-document \
   -d '{
     "doc_id": "67b2111008223c9b3c3e5608",
     "parte": 1,
-    "chunk_threshold": 275
+    "token_threshold": 60000
   }'
 ```
 
