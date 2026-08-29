@@ -316,6 +316,9 @@ def search_knowledge_base(
                 "doc_topic": item.get("doc_topic"),
                 "section_path": item.get("section_path"),
                 "chunk_index": item.get("chunk_index"),
+                "chunk_tokens": item.get("chunk_tokens"),
+                "total_chunks": item.get("total_chunks"),
+                "total_doc_tokens": item.get("total_doc_tokens"),
                 "content": item.get("content"),
                 "enriched_text": item.get("text"),
                 "similarity": round(final_sim, 4),
@@ -342,9 +345,11 @@ def format_rag_context_for_llm(results: List[Dict[str, Any]]) -> str:
         author = item.get("doc_author", "Desconocido")
         content = item.get("content", "").strip()
         sim_pct = int(item.get("similarity", 0) * 100)
+        c_tokens = item.get("chunk_tokens")
+        tokens_tag = f" | Tokens: ~{c_tokens}" if c_tokens else ""
         
         snippets.append(
-            f"--- FUENTE [{idx}]: \"{doc_title}\" [doc_id: {doc_id}] (Tema: {doc_topic} | Sección: {section} | Autor: {author} | Coincidencia: {sim_pct}%) ---\n"
+            f"--- FUENTE [{idx}]: \"{doc_title}\" [doc_id: {doc_id}] (Tema: {doc_topic} | Sección: {section} | Autor: {author}{tokens_tag} | Coincidencia: {sim_pct}%) ---\n"
             f"💡 [Acción Disponible: Para leer este documento completo o hacer una síntesis integral usa: leer_documento_completo(doc_id=\"{doc_id}\")]\n"
             f"{content}"
         )

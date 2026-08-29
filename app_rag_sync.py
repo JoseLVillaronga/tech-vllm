@@ -57,6 +57,29 @@ def log_sync_to_mongo(log_data: Dict[str, Any]):
             print(f"⚠️ [Sync] Error guardando log en MongoDB: {e}", file=sys.stderr)
 
 import re
+from transformers import AutoTokenizer
+
+_TOKENIZER = None
+def get_tokenizer():
+    global _TOKENIZER
+    if _TOKENIZER is None:
+        try:
+            _TOKENIZER = AutoTokenizer.from_pretrained("Qwen/Qwen3-Embedding-0.6B", trust_remote_code=True)
+        except Exception:
+            pass
+    return _TOKENIZER
+
+def count_tokens(text: str) -> int:
+    """Calcula el conteo exacto de tokens según el vocabulario de Qwen3."""
+    if not text:
+        return 0
+    tok = get_tokenizer()
+    if tok is not None:
+        try:
+            return len(tok.encode(text, add_special_tokens=False))
+        except Exception:
+            pass
+    return max(1, len(text) // 4)
 
 def split_into_sentences(text: str) -> List[str]:
     """
@@ -447,7 +470,10 @@ def sync_knowledge_base(
                 min_chars=min_chars,
                 overlap_chars=overlap_chars
             )
-            print(f"   ✂️ Troceado en {len(chunks)} fragmentos estructurados con solapamiento ({overlap_chars}c).")
+            total_chunks = len(chunks)
+            chunk_tokens_list = [count_tokens(ch["content"]) for ch in chunks]
+            total_doc_tokens = sum(chunk_tokens_list)
+            print(f"   ✂️ Troceado en {total_chunks} fragmentos estructurados con solapamiento ({overlap_chars}c) | Total Tokens: {total_doc_tokens:,}.")
             
             # Preparar textos enriquecidos para embedding y lectura del LLM
             enriched_texts = []
@@ -456,6 +482,7 @@ def sync_knowledge_base(
             for c_idx, ch in enumerate(chunks):
                 section = ch["section"]
                 content = ch["content"]
+                c_tokens = chunk_tokens_list[c_idx]
                 
                 # Contexto enriquecido para alta densidad semántica
                 enriched = (
@@ -477,6 +504,9 @@ def sync_knowledge_base(
                     "doc_date": doc_date,
                     "section_path": section,
                     "chunk_index": c_idx,
+                    "chunk_tokens": c_tokens,
+                    "total_chunks": total_chunks,
+                    "total_doc_tokens": total_doc_tokens,
                     "content": content,
                     "text": enriched
                 })
@@ -489,10 +519,10 @@ def sync_knowledge_base(
             for rec, vec in zip(chunk_records, vectors):
                 rec["vector"] = vec
                 
-            # Si la tabla aún no existe, crearla con este primer documento
-            if table is None:
+            # Si la tabla aún no existe o estamos forzando re-indexación completa desde cero
+            if table is None or (force and idx == 1 and not doc_id_filter):
                 table = db.create_table(TABLE_NAME, data=chunk_records, mode="overwrite")
-                print(f"   💾 Tabla '{TABLE_NAME}' creada e inicializada.")
+                print(f"   💾 Tabla '{TABLE_NAME}' creada e inicializada con nuevo esquema.")
             else:
                 # Si el documento ya existía previamente en LanceDB, eliminar sus versiones anteriores
                 if doc_id in local_doc_dates:
