@@ -1,0 +1,55 @@
+[
+  {
+    "id": "abe4212c-3a50-4b68-b690-99eb4c9463f8",
+    "user_id": "a50bed8e-2870-492b-bd0d-66d1c26cdbbf",
+    "title": "Constitución Nacional Articulo",
+    "chat": {
+      "id": "abe4212c-3a50-4b68-b690-99eb4c9463f8",
+      "title": "Constitución Nacional Articulo",
+      "models": [
+        "local/google/gemma-4-E4B-it"
+      ],
+      "history": {
+        "currentId": "a48578b8-f8e0-4bfd-aff3-1881ed8a1861",
+        "turns_summary": [
+          {
+            "turn": 1,
+            "query": "Mostrame el articulo 14 bis de la constitucion nacional",
+            "tool_called": "buscar_en_base_de_conocimiento -> leer_documento_completo(doc_id='6a8b12c6ace6becbcb49b20e')",
+            "result": "Exitoso. Artículo 14 bis reproducido íntegramente con fidelidad jurídica."
+          },
+          {
+            "turn": 2,
+            "query": "Mostrame ahora el articulo 14",
+            "tool_called": "leer_documento_completo(doc_id='6a8b12c6ace6becbcb49b20e')",
+            "result": "Exitoso. Distinción exacta entre Art. 14 y Art. 14 bis, citando los derechos civiles clásicos."
+          },
+          {
+            "turn": 3,
+            "query": "Hablame del modelo etico adaptativo",
+            "tool_called": "leer_documento_completo(doc_id='6a927cbc4f5897e20e2be924')",
+            "result": "Exitoso. Reconocimiento de la versión 2.1 y síntesis de Valores Asintóticos vs Invariantes Binarios."
+          },
+          {
+            "turn": 4,
+            "query": "Podes analizar la version anterior del modelo y explicarme sus diferencias ?",
+            "tool_called": "buscar_en_base_de_conocimiento",
+            "result": "Exitoso. Comparativa conceptual exhaustiva entre v1 y v2.1."
+          },
+          {
+            "turn": 5,
+            "query": "Ahora hablemos del procedimiento de soporte de Teccam",
+            "tool_called": "buscar_en_base_de_conocimiento -> leer_documento_completo(doc_id='67b2111008223c9b3c3e5608')",
+            "result": "Exitoso. Recuperación del Procedimiento General de Soporte en Puestos de Trabajo del CDR."
+          },
+          {
+            "turn": 6,
+            "query": "Podes pasarme en un PDF el texto completo del modelo etico adaptativo ?",
+            "tool_called": "generate_pdf_document",
+            "result": "Fallo en llamada a Tool por parámetro posicional 'title', recuperación elegante en texto plano estructurado."
+          }
+        ]
+      }
+    }
+  }
+]
