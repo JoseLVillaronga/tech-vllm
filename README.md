@@ -2428,6 +2428,10 @@ class Tools:
 2. Haz clic en el engranaje **⚙️ (Valves)** y configura tu `API_KEY` (la misma clave autorizada de la suite) y `GATEWAY_URL` en `http://192.168.1.47:8000`.
 3. Asigna la herramienta a tu modelo personalizado (ej. `local/gemma-4-teccam`).
 
+#### C. Captura de Verificación en Producción:
+* **Búsqueda Web en Vivo en Open-WebUI con `Gemma 4` (Noticias del Día en Buenos Aires):**
+![Búsqueda Web en Tiempo Real en Open-WebUI](screenshots/openwebui_custom_web_search_success.png)
+
 ---
 
 ### ⚙️ Administración del Servicio de Gateway (Systemd)
