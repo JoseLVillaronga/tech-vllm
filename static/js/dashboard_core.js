@@ -113,6 +113,10 @@
                 
                 // Actualizar métricas del sistema
                 document.getElementById('metric-cpu').innerText = `${data.system.cpu}%`;
+                const cpuTempEl = document.getElementById('metric-cpu-temp');
+                if (cpuTempEl && data.system.cpu_temp !== undefined && data.system.cpu_temp !== null) {
+                    cpuTempEl.innerText = `${data.system.cpu_temp}°C`;
+                }
                 document.getElementById('progress-cpu').style.width = `${data.system.cpu}%`;
                 
                 document.getElementById('metric-ram').innerText = `${data.system.ram}%`;

@@ -133,6 +133,28 @@ def get_gpu_info():
         "gpu_temp": 0.0
     }
 
+def get_cpu_temperature():
+    """Obtiene la temperatura de la CPU en °C desde los sensores del kernel con cero sobrecarga."""
+    try:
+        temps = psutil.sensors_temperatures()
+        if not temps:
+            return None
+        # Sensores comunes de CPU en Linux (AMD k10temp/zenpower, Intel coretemp, ARM cpu_thermal)
+        for key in ['k10temp', 'coretemp', 'cpu_thermal', 'zenpower', 'acpitz']:
+            if key in temps and temps[key]:
+                return round(temps[key][0].current, 1)
+        # Fallback a cualquier sensor que contenga 'cpu' o 'temp'
+        for key, entries in temps.items():
+            if ('cpu' in key.lower() or 'temp' in key.lower()) and entries:
+                return round(entries[0].current, 1)
+        # Fallback al primer sensor disponible si existe
+        first_key = next(iter(temps))
+        if temps[first_key]:
+            return round(temps[first_key][0].current, 1)
+    except Exception:
+        pass
+    return None
+
 def get_service_status(service_name):
     """
     Obtiene el estado de ejecución de un servicio systemd.
@@ -189,6 +211,7 @@ def start_telemetry_collector():
                 
                 # 2. Obtener info de CPU y RAM
                 cpu_util = psutil.cpu_percent()
+                cpu_temp = get_cpu_temperature() or 0.0
                 ram = psutil.virtual_memory()
                 ram_util = ram.percent
                 
@@ -202,6 +225,7 @@ def start_telemetry_collector():
                 db.telemetry_history.insert_one({
                     "timestamp": datetime.utcnow(),
                     "cpu": cpu_util,
+                    "cpu_temp": cpu_temp,
                     "ram": ram_util,
                     "gpu_util": gpu_util,
                     "gpu_temp": gpu_temp,
@@ -770,6 +794,7 @@ def api_telemetry_history():
             result.append({
                 "timestamp": ts_str,
                 "cpu": r.get("cpu", 0),
+                "cpu_temp": r.get("cpu_temp", 0),
                 "ram": r.get("ram", 0),
                 "gpu_util": r.get("gpu_util", 0),
                 "gpu_temp": r.get("gpu_temp", 0),
@@ -1376,6 +1401,7 @@ def api_status():
     return jsonify({
         "system": {
             "cpu": psutil.cpu_percent(),
+            "cpu_temp": get_cpu_temperature(),
             "ram": psutil.virtual_memory().percent,
             "gpu_util": gpu["gpu_util"],
             "gpu_temp": gpu["gpu_temp"],
