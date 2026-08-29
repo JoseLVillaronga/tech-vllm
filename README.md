@@ -2316,7 +2316,117 @@ class Tools:
 #### C. Configuración de Credenciales en Open-WebUI (*Valves*):
 1. Guarda la herramienta en Open-WebUI.
 2. Haz clic en el icono de **engranaje ⚙️ (Valves)** al lado de la herramienta.
-3. Configura tu `API_KEY` (tu clave de la suite) y, si Open-WebUI corre dentro de Docker, establece `GATEWAY_URL` en `http://host.docker.internal:8000/api/tools/generate-pdf`.
+3. Configura tu `API_KEY` (tu clave de la suite) y, si Open-WebUI corre dentro de Docker, establece `GATEWAY_URL` en `http://192.168.1.47:8000/api/tools/generate-pdf`.
+
+---
+
+### 🌐 14. Herramienta de Búsqueda Web en Internet (*Web Search Tool*)
+
+Cuando se desmarcan las **`Herramientas Integradas`** en el perfil de un modelo para evitar el *"Sesgo de Falta de Confirmación"* del RAG, el modelo pierde el acceso a la búsqueda web nativa de Open-WebUI. Para restituir la capacidad de consultar internet en vivo sin reactivar las herramientas nativas conflictivas, la suite provee esta herramienta dedicada conectada directamente al endpoint `POST /api/tools/web-search` del Gateway en el puerto `:8000`.
+
+#### A. Código Completo de la Herramienta para Open-WebUI:
+Copia y pega este script en **Espacio de Trabajo ➔ Herramientas ➔ + (Crear Herramienta)**:
+
+```python
+"""
+title: Búsqueda Web en Internet
+author: Jose Luis Villaronga
+author_url: https://tech-support.com.ar
+version: 1.1.0
+license: MIT
+description: Realiza búsquedas en tiempo real en la web e internet a través del Gateway de vLLM Suite para obtener información actualizada, noticias, cotizaciones o documentación externa.
+requirements: requests, pydantic
+"""
+
+import os
+import requests
+from typing import Optional, List
+from pydantic import BaseModel, Field
+
+
+class Tools:
+    class Valves(BaseModel):
+        GATEWAY_URL: str = Field(
+            default="http://192.168.1.47:8000",
+            description="URL base del API Gateway de la suite vLLM (usar 192.168.1.47 si Open-WebUI corre en Docker)."
+        )
+        API_KEY: str = Field(
+            default="TU_CLAVE_API_VLLM_AQUI",
+            description="Clave API autorizada generada en el Dashboard para consultar los servicios de la suite."
+        )
+        DEFAULT_MAX_RESULTS: int = Field(
+            default=3,
+            description="Cantidad máxima de resultados web a recuperar por consulta (recomendado: 3 a 5)."
+        )
+
+    def __init__(self):
+        self.valves = self.Valves()
+
+    def buscar_en_internet(
+        self,
+        consulta: str,
+        max_resultados: Optional[int] = 3
+    ) -> str:
+        """
+        Busca información actualizada en tiempo real en la web e Internet (noticias, cotizaciones, eventos recientes, documentación técnica externa o datos posteriores a tu fecha de corte).
+        Úsala siempre que el usuario pregunte por hechos recientes, precios del día, noticias o información que requiera consulta en la web en vivo.
+
+        :param consulta: Términos o pregunta clave para buscar en la web (ej: 'últimas noticias inteligencia artificial', 'cotización dólar hoy argentina').
+        :param max_resultados: Cantidad de fuentes web a recuperar (por defecto 3).
+        :return: Fragmentos relevantes encontrados en la web con sus títulos y URLs.
+        """
+        clean_query = str(consulta).strip() if consulta and not str(type(consulta)).endswith("FieldInfo'>") else ""
+        if not clean_query:
+            return "Error: Debes proporcionar una consulta de búsqueda válida."
+
+        clean_max = 3
+        if max_resultados is not None and not str(type(max_resultados)).endswith("FieldInfo'>"):
+            try:
+                clean_max = int(max_resultados)
+            except Exception:
+                clean_max = int(self.valves.DEFAULT_MAX_RESULTS)
+        else:
+            clean_max = int(self.valves.DEFAULT_MAX_RESULTS)
+
+        url = f"{self.valves.GATEWAY_URL.rstrip('/')}/api/tools/web-search"
+        headers = {
+            "Authorization": f"Bearer {self.valves.API_KEY}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "query": clean_query,
+            "max_results": clean_max
+        }
+
+        try:
+            response = requests.post(url, json=payload, headers=headers, timeout=20.0)
+
+            if response.status_code == 503:
+                return "Aviso: El servicio de Búsqueda Web está temporalmente desactivado globalmente."
+
+            if response.status_code != 200:
+                return f"Error en la búsqueda web (HTTP {response.status_code}): {response.text}"
+
+            data = response.json()
+            if not data.get("success", False):
+                return f"Aviso de búsqueda: {data.get('error', 'No se pudieron recuperar resultados.')}"
+
+            formatted_context = data.get("formatted_context") or data.get("text") or ""
+            count = data.get("count", 0)
+
+            if not formatted_context or count == 0:
+                return f"No se encontraron resultados web relevantes para la consulta: '{clean_query}'."
+
+            return f"--- RESULTADOS DE BÚSQUEDA WEB EN VIVO ({count} fuentes) ---\n\n{formatted_context}\n\n--- FIN DE RESULTADOS WEB ---"
+
+        except Exception as e:
+            return f"Error de conexión con el Gateway de Búsqueda Web ({url}): {str(e)}"
+```
+
+#### B. Configuración de Credenciales (*Valves*):
+1. Guarda la herramienta con el nombre **`Búsqueda Web en Internet`**.
+2. Haz clic en el engranaje **⚙️ (Valves)** y configura tu `API_KEY` (la misma clave autorizada de la suite) y `GATEWAY_URL` en `http://192.168.1.47:8000`.
+3. Asigna la herramienta a tu modelo personalizado (ej. `local/gemma-4-teccam`).
 
 ---
 
