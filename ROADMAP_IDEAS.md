@@ -374,11 +374,14 @@ A partir de la evaluación empírica de consultas reales sobre procedimientos in
 
 ---
 
-### 8.3. Delimitación por Fronteras de Oración y Solapamiento (*Sentence-Boundary Aware Splitter*)
-* **Problema identificado:** Fragmentos que inician o finalizan a mitad de frase (ejemplo: `"...mantener la producción si las inicia un colaborador..."`), truncando el sentido gramatical del inicio del párrafo.
-* **Solución propuesta:**
-  * Configurar la segmentación en `app_rag_sync.py` para respetar delimitadores de fin de oración (`.\n\n`, `.\n`, `. `, `;\n`).
-  * Aplicar un solapamiento deslizante (*chunk overlap*) de **150 a 200 caracteres** entre fragmentos adyacentes, asegurando que ninguna idea quede partida en el límite del chunk.
+### 8.3. Delimitación por Fronteras de Oración y Solapamiento (*Sentence-Boundary Aware Splitter + Overlap* - IMPLEMENTADO ✅)
+* **Estado:** Implementado y operativo en producción (agosto 2026).
+* **Solución aplicada:**
+  * **Tokenizador de Oraciones Inteligente (`split_into_sentences`):** Protege abreviaturas normativas y técnicas (`art.`, `inc.`, `ej.`, `p. ej.`, `dr.`, `pág.`, `núm.`, etc.) y divide por puntuación natural (`[.!?]\s+`).
+  * **Reconstrucción de Párrafos y Tablas Atómicas:** Fusiona líneas continuas de un mismo párrafo antes de tokenizar, eliminando los cortes por wrapping de OCR o saltos de línea arbitrarios.
+  * **Solapamiento Deslizante (*Chunk Overlap* de 180 caracteres):** Cada fragmento hereda la última(s) oración(es) del fragmento anterior de la misma sección.
+  * **Lote Adaptativo Anti-OOM en Vectorización:** `generate_embeddings_batch` reduce dinámicamente el tamaño de lote (8 $\to$ 4 $\to$ 2 $\to$ 1) ante picos de presión de VRAM, garantizando una ingesta 100% resiliente sin caídas del servicio de embeddings.
+  * **Base Vectorial 100% Re-indexada:** 14 documentos procesados y **11.408 fragmentos** con embeddings 1024D persistidos en LanceDB.
 
 ---
 

@@ -56,87 +56,226 @@ def log_sync_to_mongo(log_data: Dict[str, Any]):
         except Exception as e:
             print(f"⚠️ [Sync] Error guardando log en MongoDB: {e}", file=sys.stderr)
 
-def hierarchical_chunk_markdown(text: str, max_chars: int = 1200, min_chars: int = 100) -> List[Dict[str, str]]:
+import re
+
+def split_into_sentences(text: str) -> List[str]:
     """
-    Trocea un texto en Markdown preservando la jerarquía de títulos y tablas.
+    Divide un texto en oraciones respetando signos de puntuación, abreviaturas y comillas.
+    Evita cortes erróneos en abreviaturas jurídicas, académicas y comunes.
+    """
+    if not text.strip():
+        return []
+    abbrevs = [
+        'ej.', 'art.', 'arts.', 'inc.', 'incs.', 'p. ej.', 'sr.', 'sra.', 'dr.', 'dra.',
+        'etc.', 'vs.', 'núm.', 'pág.', 'págs.', 'e.g.', 'i.e.', 'cap.', 'sec.', 'tít.'
+    ]
+    protected = text
+    for i, abb in enumerate(abbrevs):
+        protected = protected.replace(abb, f'__ABB_{i}__')
+    
+    # Dividir por punto, signo de exclamación o interrogación seguido de espacio o salto de línea
+    pattern = r'(?<=[.!?])\s+'
+    raw_sentences = re.split(pattern, protected)
+    
+    sentences = []
+    for s in raw_sentences:
+        s_clean = s
+        for i, abb in enumerate(abbrevs):
+            s_clean = s_clean.replace(f'__ABB_{i}__', abb)
+        s_clean = s_clean.strip()
+        if s_clean:
+            sentences.append(s_clean)
+    return sentences
+
+def hierarchical_chunk_markdown(
+    text: str,
+    max_chars: int = 1100,
+    min_chars: int = 100,
+    overlap_chars: int = 180
+) -> List[Dict[str, str]]:
+    """
+    Trocea un texto en Markdown preservando la jerarquía de títulos, tablas y fronteras de oración,
+    con solapamiento deslizante inteligente (chunk overlap) entre fragmentos de la misma sección.
     
     Returns:
         Lista de dicts: [{'section': 'H1 > H2 > H3', 'content': '...'}]
     """
     lines = text.split('\n')
-    chunks = []
+    sections = [] # Lista de tuplas: (section_path, list_of_blocks)
     
     current_h1 = ''
     current_h2 = ''
     current_h3 = ''
-    current_buffer = []
-    current_len = 0
-    in_table = False
+    current_h4 = ''
+    current_blocks = []
+    
+    table_buffer = []
+    code_buffer = []
+    in_code_block = False
     
     def get_section_path():
-        parts = [p for p in [current_h1, current_h2, current_h3] if p]
+        parts = [p for p in [current_h1, current_h2, current_h3, current_h4] if p]
         return ' > '.join(parts) if parts else 'Sección General'
         
-    def flush_buffer():
-        nonlocal current_buffer, current_len
-        if not current_buffer:
-            return
-        content = '\n'.join(current_buffer).strip()
-        if content:
-            chunks.append({
-                'section': get_section_path(),
-                'content': content
-            })
-        current_buffer = []
-        current_len = 0
-        
+    def flush_section():
+        nonlocal current_blocks
+        if current_blocks:
+            sections.append((get_section_path(), current_blocks))
+            current_blocks = []
+            
+    # Paso 1: Parsear Markdown en Secciones Jerárquicas y Bloques Semánticos (reconstruyendo párrafos)
     for line in lines:
         stripped = line.strip()
         
-        # Detectar tablas Markdown
+        # Omitir divisores puramente visuales
+        if stripped in ('---', '-----', '***', '___'):
+            continue
+            
+        # Bloques de código
+        if stripped.startswith('```'):
+            if in_code_block:
+                code_buffer.append(line)
+                current_blocks.append('\n'.join(code_buffer))
+                code_buffer = []
+                in_code_block = False
+                continue
+            else:
+                in_code_block = True
+                code_buffer.append(line)
+                continue
+                
+        if in_code_block:
+            code_buffer.append(line)
+            continue
+            
+        # Tablas Markdown (mantenerlas atómicas)
         if stripped.startswith('|') and stripped.endswith('|'):
-            in_table = True
-        else:
-            in_table = False
+            table_buffer.append(line)
+            continue
+        elif table_buffer:
+            current_blocks.append('\n'.join(table_buffer))
+            table_buffer = []
             
-        # Detectar encabezados (solo si no estamos dentro de una celda de tabla)
-        if not in_table:
-            if stripped.startswith('# '):
-                flush_buffer()
-                current_h1 = stripped[2:].strip()
-                current_h2 = ''
-                current_h3 = ''
-                continue
-            elif stripped.startswith('## '):
-                flush_buffer()
-                current_h2 = stripped[3:].strip()
-                current_h3 = ''
-                continue
-            elif stripped.startswith('### '):
-                flush_buffer()
-                current_h3 = stripped[4:].strip()
-                continue
+        # Encabezados
+        if stripped.startswith('# '):
+            flush_section()
+            current_h1 = stripped[2:].strip()
+            current_h2 = ''
+            current_h3 = ''
+            current_h4 = ''
+            continue
+        elif stripped.startswith('## '):
+            flush_section()
+            current_h2 = stripped[3:].strip()
+            current_h3 = ''
+            current_h4 = ''
+            continue
+        elif stripped.startswith('### '):
+            flush_section()
+            current_h3 = stripped[4:].strip()
+            current_h4 = ''
+            continue
+        elif stripped.startswith('#### '):
+            flush_section()
+            current_h4 = stripped[5:].strip()
+            continue
             
-        line_len = len(line) + 1
-        
-        # Si el búfer supera el tamaño máximo y no estamos en medio de una tabla
-        if current_len + line_len > max_chars and current_buffer and not in_table:
-            flush_buffer()
+        # Líneas normales o párrafos envueltos
+        if stripped:
+            is_list_item = stripped.startswith(('- ', '* ')) or bool(re.match(r'^\d+\.\s+', stripped))
+            if is_list_item:
+                current_blocks.append(stripped)
+            else:
+                # Si el bloque anterior era texto normal (no lista ni tabla ni código), unirlo al párrafo
+                if current_blocks and not current_blocks[-1].startswith('|') and not current_blocks[-1].startswith('```') and not current_blocks[-1].startswith(('- ', '* ')) and not re.match(r'^\d+\.\s+', current_blocks[-1]):
+                    current_blocks[-1] += ' ' + stripped
+                else:
+                    current_blocks.append(stripped)
             
-        current_buffer.append(line)
-        current_len += line_len
-        
-    flush_buffer()
+    if table_buffer:
+        current_blocks.append('\n'.join(table_buffer))
+    flush_section()
     
-    # Post-procesamiento: Fusionar micro-chunks (< min_chars) con el chunk anterior si comparten sección
-    merged_chunks = []
-    for ch in chunks:
-        if merged_chunks and len(ch['content']) < min_chars and merged_chunks[-1]['section'] == ch['section']:
-            merged_chunks[-1]['content'] += "\n\n" + ch['content']
-        else:
-            merged_chunks.append(ch)
+    # Paso 2: Chunking con fronteras de oración y solapamiento dentro de cada sección
+    final_chunks = []
+    
+    for sec_path, blocks in sections:
+        sec_chunks = []
+        chunk_sentences = []
+        chunk_len = 0
+        
+        # Expandir bloques en oraciones o unidades atómicas
+        units = []
+        for blk in blocks:
+            if blk.startswith('|') or blk.startswith('```'):
+                units.append(blk)
+            else:
+                sents = split_into_sentences(blk)
+                if sents:
+                    units.extend(sents)
+                else:
+                    units.append(blk)
+                    
+        def close_chunk():
+            nonlocal chunk_sentences, chunk_len
+            if not chunk_sentences:
+                return
+            content = ' '.join(chunk_sentences).strip()
+            if content:
+                sec_chunks.append({
+                    'section': sec_path,
+                    'content': content
+                })
             
-    return merged_chunks
+            # Calcular solapamiento para el siguiente chunk (transferir última(s) oración(es))
+            if overlap_chars > 0 and len(chunk_sentences) > 1:
+                overlap_sents = []
+                curr_ov = 0
+                for s in reversed(chunk_sentences):
+                    if curr_ov + len(s) + 1 <= overlap_chars:
+                        overlap_sents.insert(0, s)
+                        curr_ov += len(s) + 1
+                    else:
+                        break
+                chunk_sentences = overlap_sents
+                chunk_len = sum(len(s) + 1 for s in chunk_sentences)
+            else:
+                chunk_sentences = []
+                chunk_len = 0
+                
+        for u in units:
+            u_len = len(u) + 1
+            if chunk_len + u_len > max_chars and chunk_sentences:
+                close_chunk()
+            chunk_sentences.append(u)
+            chunk_len += u_len
+            
+        if chunk_sentences:
+            content = ' '.join(chunk_sentences).strip()
+            if content:
+                sec_chunks.append({
+                    'section': sec_path,
+                    'content': content
+                })
+                
+        # Fusionar micro-chunks (< min_chars) dentro de la sección
+        merged_sec_chunks = []
+        for ch in sec_chunks:
+            if not ch['content'].strip():
+                continue
+            if merged_sec_chunks and len(ch['content']) < min_chars and merged_sec_chunks[-1]['section'] == ch['section']:
+                merged_sec_chunks[-1]['content'] += '\n\n' + ch['content']
+            else:
+                merged_sec_chunks.append(ch)
+                
+        # Segunda pasada: Si el primer chunk de la sección es chico (< min_chars), fusionar hacia adelante
+        if len(merged_sec_chunks) >= 2 and len(merged_sec_chunks[0]['content']) < min_chars and merged_sec_chunks[0]['section'] == merged_sec_chunks[1]['section']:
+            merged_sec_chunks[1]['content'] = merged_sec_chunks[0]['content'] + '\n\n' + merged_sec_chunks[1]['content']
+            merged_sec_chunks.pop(0)
+                
+        final_chunks.extend(merged_sec_chunks)
+        
+    return final_chunks
 
 def fetch_teccam_documents_index() -> List[Dict[str, Any]]:
     """Consulta la API de Teccam PDF y retorna el listado completo de documentos disponibles."""
@@ -185,13 +324,22 @@ def fetch_teccam_document_detail(doc_id: str) -> Dict[str, Any]:
             raise RuntimeError(f"Error HTTP {resp.status_code} al descargar documento {doc_id}: {resp.text}")
         return resp.json()
 
-def sync_knowledge_base(force: bool = False, doc_id_filter: Optional[str] = None) -> Dict[str, Any]:
+def sync_knowledge_base(
+    force: bool = False,
+    doc_id_filter: Optional[str] = None,
+    max_chars: int = 1100,
+    min_chars: int = 100,
+    overlap_chars: int = 180
+) -> Dict[str, Any]:
     """
     Ejecuta el ciclo de sincronización diferencial contra Teccam PDF.
     
     Args:
         force: Si es True, re-indexa todos los documentos ignorando el estado previo.
         doc_id_filter: Si se especifica, sincroniza únicamente ese documento.
+        max_chars: Límite superior de caracteres por chunk (~220 tokens).
+        min_chars: Límite inferior para fusionar micro-chunks.
+        overlap_chars: Solapamiento deslizante de oraciones entre chunks contiguos.
         
     Returns:
         Diccionario con el resumen de la operación.
@@ -204,6 +352,7 @@ def sync_knowledge_base(force: bool = False, doc_id_filter: Optional[str] = None
     print(f"🌐 Servidor Teccam: {TECCAM_PDF_URL_BASE}")
     print(f"📁 Directorio LanceDB: {LANCEDB_DIR}")
     print(f"⚙️ Modo: {'Forzado (Re-indexación completa)' if force else 'Diferencial / Incremental'}")
+    print(f"✂️ Parámetros Chunking: Max {max_chars}c | Min {min_chars}c | Overlap {overlap_chars}c (Sentence-Boundary Aware)")
     print("=" * 70)
     
     db = get_lancedb()
@@ -275,7 +424,6 @@ def sync_knowledge_base(force: bool = False, doc_id_filter: Optional[str] = None
     # 4. Procesar y vectorizar cada documento nuevo/modificado
     synced_details = []
     total_new_chunks = 0
-    all_table_records = []
     
     for idx, doc in enumerate(docs_to_sync, 1):
         doc_id = doc.get("id")
@@ -292,9 +440,14 @@ def sync_knowledge_base(force: bool = False, doc_id_filter: Optional[str] = None
                 print(f"   ⚠️ El documento '{doc_title}' está vacío. Omitiendo.")
                 continue
                 
-            # Chunking jerárquico
-            chunks = hierarchical_chunk_markdown(raw_markdown)
-            print(f"   ✂️ Troceado en {len(chunks)} fragmentos estructurados.")
+            # Chunking jerárquico con fronteras de oración y solapamiento
+            chunks = hierarchical_chunk_markdown(
+                raw_markdown,
+                max_chars=max_chars,
+                min_chars=min_chars,
+                overlap_chars=overlap_chars
+            )
+            print(f"   ✂️ Troceado en {len(chunks)} fragmentos estructurados con solapamiento ({overlap_chars}c).")
             
             # Preparar textos enriquecidos para embedding y lectura del LLM
             enriched_texts = []
@@ -328,9 +481,9 @@ def sync_knowledge_base(force: bool = False, doc_id_filter: Optional[str] = None
                     "text": enriched
                 })
                 
-            # Generar vectores con Qwen3-Embedding en lotes seguros
+            # Generar vectores con Qwen3-Embedding en lotes seguros (batch_size=6 para evitar picos de VRAM)
             print(f"   🧠 Vectorizando {len(enriched_texts)} fragmentos con Qwen3-Embedding...")
-            vectors = generate_embeddings_batch(enriched_texts, batch_size=16, timeout=30.0)
+            vectors = generate_embeddings_batch(enriched_texts, batch_size=6, timeout=30.0)
             
             # Asignar vector a cada registro
             for rec, vec in zip(chunk_records, vectors):
@@ -399,6 +552,15 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Sincronizador Teccam PDF -> LanceDB")
     parser.add_argument("--force", action="store_true", help="Re-indexar todos los documentos desde cero")
     parser.add_argument("--doc-id", type=str, default=None, help="Sincronizar un único documento por su ID")
+    parser.add_argument("--max-chars", type=int, default=1100, help="Tamaño máximo por fragmento (default: 1100 chars ~ 220 tokens)")
+    parser.add_argument("--min-chars", type=int, default=100, help="Tamaño mínimo para fusionar micro-fragmentos (default: 100 chars)")
+    parser.add_argument("--overlap-chars", type=int, default=180, help="Solapamiento deslizante entre fragmentos de la misma sección (default: 180 chars)")
     args = parser.parse_args()
     
-    sync_knowledge_base(force=args.force, doc_id_filter=args.doc_id)
+    sync_knowledge_base(
+        force=args.force,
+        doc_id_filter=args.doc_id,
+        max_chars=args.max_chars,
+        min_chars=args.min_chars,
+        overlap_chars=args.overlap_chars
+    )

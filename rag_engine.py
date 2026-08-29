@@ -66,8 +66,11 @@ def generate_embedding(text: str, timeout: float = 15.0) -> List[float]:
         print(f"❌ [RAG Engine] Error generando embedding: {e}", file=sys.stderr)
         raise
 
-def generate_embeddings_batch(texts: List[str], batch_size: int = 32, timeout: float = 30.0) -> List[List[float]]:
-    """Genera embeddings en lotes seguros llamando al microservicio vllm-embeddings."""
+def generate_embeddings_batch(texts: List[str], batch_size: int = 6, timeout: float = 30.0) -> List[List[float]]:
+    """
+    Genera embeddings en lotes seguros llamando al microservicio vllm-embeddings.
+    Incluye reducción adaptativa de tamaño de lote (Anti-OOM) y reintento automático si hay picos de VRAM.
+    """
     if not texts:
         return []
     url = f"http://127.0.0.1:{EMBEDDINGS_BACKEND_PORT}/v1/embeddings"
@@ -78,8 +81,10 @@ def generate_embeddings_batch(texts: List[str], batch_size: int = 32, timeout: f
     
     all_embeddings = []
     with httpx.Client(timeout=timeout) as client:
-        for i in range(0, len(texts), batch_size):
-            batch_slice = texts[i : i + batch_size]
+        i = 0
+        curr_batch_size = min(batch_size, 6)
+        while i < len(texts):
+            batch_slice = texts[i : i + curr_batch_size]
             payload = {
                 "model": "Qwen/Qwen3-Embedding-0.6B",
                 "input": batch_slice
@@ -90,12 +95,22 @@ def generate_embeddings_batch(texts: List[str], batch_size: int = 32, timeout: f
                     data = resp.json()
                     items = sorted(data.get("data", []), key=lambda x: x.get("index", 0))
                     all_embeddings.extend([item["embedding"] for item in items])
+                    i += len(batch_slice)
+                    # Restaurar batch size normal progresivamente sin exceder batch_size
+                    if curr_batch_size < batch_size:
+                        curr_batch_size = min(batch_size, curr_batch_size + 1)
                 else:
-                    raise RuntimeError(f"Error HTTP {resp.status_code} desde vllm-embeddings: {resp.text}")
+                    raise RuntimeError(f"Error HTTP {resp.status_code}: {resp.text}")
             except Exception as e:
-                print(f"❌ [RAG Engine] Error generando lote {i}-{i+len(batch_slice)}: {e}", file=sys.stderr)
-                raise
-                
+                # Si falló (ej: CUDA OOM por fragmentos densos), reducir a la mitad y reintentar
+                if curr_batch_size > 1:
+                    curr_batch_size = max(1, curr_batch_size // 2)
+                    print(f"⚠️ [RAG Engine] Reduciendo lote a {curr_batch_size} chunks por presión de VRAM y reintentando...", file=sys.stderr)
+                    time.sleep(0.3)
+                else:
+                    print(f"❌ [RAG Engine] Error irrecuperable en chunk {i}: {e}", file=sys.stderr)
+                    raise
+                    
     return all_embeddings
 
 def get_mongo_db():
