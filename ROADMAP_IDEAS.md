@@ -412,6 +412,16 @@ A partir de la evaluación empírica de consultas reales sobre procedimientos in
 
 ---
 
+### 8.6. Decisión de Diseño (ADR): Prevención del 'Sesgo de Falta de Confirmación' y Desacoplamiento de Tools Nativas
+* **Problema:** En modelos compactos (como Gemma 4 E4B), la coexistencia de `search_knowledge_files` (nativa de Open-WebUI) y `buscar_en_base_de_conocimiento` (LanceDB) genera fallos cuando el LLM consulta primero la nativa, recibe `[]` y concluye prematuramente que el documento no existe en toda la base.
+* **Evaluación de Alternativas:**
+  1. *Alternativa A (Filtro/Pipe Interceptor):* Interceptar `search_knowledge_files` en Open-WebUI y redirigirla a LanceDB. **Descartada** por introducir acoplamientos ocultos y deuda técnica si a futuro se desea usar el almacén nativo de Open-WebUI para archivos temporales del chat.
+  2. *Alternativa B (Sync de Metadatos vía API):* Sincronizar el catálogo a SQLite de Open-WebUI. **Descartada** por duplicar estados y mantenimiento entre LanceDB y Open-WebUI.
+  3. *Alternativa C (Perfilado Explícito de Herramientas en el Modelo - SELECCIONADA ✅):* Desactivar el switch nativo de conocimiento en el perfil del modelo y asignar exclusivamente la Tool de LanceDB.
+* **Justificación:** Es la solución más limpia, robusta y con 0% de deuda técnica, garantizando que el modelo jamás sufra colisiones ni falsos negativos.
+
+---
+
 ## 9. Optimización de Inferencia y Atención: FlashInfer Condicional vs FlashAttention
 
 Este módulo define la estrategia técnica para maximizar los tokens por segundo y reducir el *Time To First Token (TTFT)* en la GPU **NVIDIA GeForce RTX 3090 (Ampere CC 8.6)**, combinando selección automática de kernels y control manual mediante variables de entorno.

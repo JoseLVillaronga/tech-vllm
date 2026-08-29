@@ -870,6 +870,30 @@ class Tools:
             return f"Error de conexión con el Gateway RAG ({url}): {str(e)}"
 ```
 
+### 5.3. Buenas Prácticas: Prevención del "Sesgo de Falta de Confirmación" (Herramientas Nativas vs Tool RAG)
+
+#### A. El Problema Identificado:
+Cuando se integran modelos compactos (como Gemma 4 E4B) o modelos en fase de exploración inicial, si en el perfil del modelo en Open-WebUI se encuentran activas simultáneamente:
+1. Las herramientas nativas de archivos de Open-WebUI (`search_knowledge_files` / `search_files`).
+2. Nuestra herramienta personalizada de LanceDB (`buscar_en_base_de_conocimiento`).
+
+El LLM puede decidir invocar en primer lugar `search_knowledge_files`. Dado que dicha función nativa solo inspecciona la base interna SQLite/ChromaDB de Open-WebUI (que se encuentra vacía para el repositorio corporativo centralizado), recibe una lista vacía `[]`. 
+
+En modelos pequeños, este retorno vacío produce un **"Sesgo de Falta de Confirmación"**: el modelo asume erróneamente que el documento *no existe en absoluto*, descarta el uso de las demás herramientas y procede a alucinar o a recurrir a la web externa (a diferencia de modelos de gran escala como DeepSeek V4 que pueden recuperarse y probar la herramienta secundaria).
+
+#### B. La Solución Arquitectónica (Opción Limpia y Sin Deuda Técnica):
+Para garantizar un comportamiento determinista y libre de fricciones sin crear parches o acoplamientos ocultos:
+
+1. Ve a **Workspace ➔ Modelos** en Open-WebUI y edita el modelo en uso.
+2. En la sección **Capacidades / Herramientas**:
+   * **DESMARCA** el interruptor de *Conocimiento / Archivos Internos* de Open-WebUI.
+   * **MARCA ÚNICAMENTE** la herramienta personalizada **`Búsqueda y Lectura Documental RAG (LanceDB + Teccam)`**.
+3. **¿Por qué esta solución?**
+   * **Preserva la arquitectura limpia:** No altera ni puentea las funciones nativas de Open-WebUI mediante interceptores ("Pipes") que podrían romper funcionalidades futuras si el usuario sube archivos individuales al chat.
+   * **Cero ambigüedad para el LLM:** El modelo recibe un esquema de funciones unívoco, forzando la consulta directa a LanceDB desde el primer intento.
+
+---
+
 ### 6. Ejemplos de Consulta Directa por API (cURL)
 
 #### A. Búsqueda Vectorial Híbrida (`/api/tools/rag-search`):
