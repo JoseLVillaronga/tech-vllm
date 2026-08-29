@@ -29,7 +29,7 @@ echo "============================================================"
 echo "📍 Directorio del Proyecto: ${PROJECT_DIR}"
 echo "👤 Usuario del Servicio:   root (requerido para gestionar vllm.service)"
 echo "📜 Script Orquestador:     ${APP_SCRIPT}"
-echo "⏰ Frecuencia de Sincronía: Cada 12 horas (00:00 y 12:00)"
+echo "⏰ Frecuencia de Sincronía: 1 vez al día a la medianoche (00:00:00)"
 echo "============================================================"
 
 # Verificar entorno virtual y script
@@ -72,10 +72,10 @@ EOF
 # Crear archivo de temporizador (Timer)
 cat <<EOF > "${TIMER_PATH}"
 [Unit]
-Description=Timer para Sincronización Periódica de Base de Conocimiento RAG (2 veces al día)
+Description=Timer para Sincronización Periódica de Base de Conocimiento RAG (Medianoche - 00:00)
 
 [Timer]
-OnCalendar=*-*-* 00,12:00:00
+OnCalendar=*-*-* 00:00:00
 Persistent=true
 RandomizedDelaySec=60
 
