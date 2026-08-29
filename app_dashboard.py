@@ -1624,25 +1624,28 @@ def api_rag_stats():
 
 @app.route("/api/rag/sync", methods=["POST"])
 def api_rag_sync():
-    """Dispara una sincronización diferencial de Teccam PDF -> LanceDB en segundo plano."""
+    """Dispara una sincronización diferencial de Teccam PDF -> LanceDB en segundo plano utilizando el orquestador de VRAM."""
     try:
         import threading
-        from app_rag_sync import sync_knowledge_base
+        import subprocess
         
         force = request.json.get("force", False) if request.is_json else False
         
         def run_sync():
             try:
-                sync_knowledge_base(force=force)
+                cmd = ["sudo", "/bin/bash", "/home/jose/vllm/sync_rag_scheduled.sh"]
+                if force:
+                    cmd.append("--force")
+                subprocess.run(cmd, check=True)
             except Exception as se:
-                print(f"❌ Error en background sync: {se}", file=sys.stderr)
+                print(f"❌ Error en background sync con orquestador: {se}", file=sys.stderr)
                 
         thread = threading.Thread(target=run_sync, daemon=True)
         thread.start()
         
         return jsonify({
             "status": "started",
-            "message": "Sincronización de base de conocimiento iniciada en segundo plano."
+            "message": "Sincronización RAG iniciada. El LLM se pausará brevemente para proteger la VRAM y se reanudará automáticamente."
         })
     except Exception as e:
         return jsonify({"error": f"Error al iniciar sincronización: {str(e)}"}), 500

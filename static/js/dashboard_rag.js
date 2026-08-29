@@ -269,13 +269,21 @@
         }
 
         async function triggerRagSync(force = false) {
+            const confirmMsg = force 
+                ? "⚠️ Aviso de Memoria GPU (Re-indexación Completa):\n\nPara garantizar máxima aceleración CUDA y proteger la VRAM, el servicio del LLM se pausará temporalmente durante la sincronización (~1-2 min) y se reactivará automáticamente al finalizar.\n\n¿Deseas iniciar la re-indexación forzada ahora?"
+                : "⚠️ Aviso de Memoria GPU:\n\nPara sincronizar con máxima aceleración CUDA y proteger la VRAM, el servicio del LLM se pausará brevemente durante la sincronización (~15-45s) y se reactivará automáticamente al terminar.\n\n¿Deseas iniciar la sincronización ahora?";
+                
+            if (!confirm(confirmMsg)) {
+                return;
+            }
+
             const btn = document.getElementById('btn-sync-rag');
             const icon = document.getElementById('icon-sync-rag');
             const text = document.getElementById('text-sync-rag');
             
             btn.disabled = true;
             if (icon) icon.classList.add('animate-spin');
-            if (text) text.innerText = "Sincronizando con Teccam PDF...";
+            if (text) text.innerText = "Sincronizando (LLM pausado temporalmente)...";
             
             try {
                 const res = await fetch('/api/rag/sync', {
@@ -285,18 +293,18 @@
                 });
                 const data = await res.json();
                 
-                // Polling cada 2 segundos hasta que termine
+                // Polling cada 3 segundos hasta que termine
                 let attempts = 0;
                 const interval = setInterval(async () => {
                     attempts++;
                     await loadRagStats();
-                    if (attempts >= 10) {
+                    if (attempts >= 15) {
                         clearInterval(interval);
                         btn.disabled = false;
                         if (icon) icon.classList.remove('animate-spin');
                         if (text) text.innerText = "Sincronizar Base RAG Ahora";
                     }
-                }, 2500);
+                }, 3000);
                 
             } catch (err) {
                 alert("Error al iniciar sincronización: " + err.message);
