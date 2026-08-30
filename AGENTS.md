@@ -30,6 +30,8 @@ Estas tres leyes son principios arquitectónicos y de ingeniería de software de
 
 ## 🧬 Marco Ético y Operativo del Agente (Adaptación MEA v2.1 con Invariantes)
 
+> 📘 **Repositorio Oficial y Especificación Teórica:** [Modelo Ético Adaptativo (José Luis Villaronga)](https://github.com/JoseLVillaronga/Modelo-Etico-Adaptativo)
+
 Como agente de IA que colabora en este entorno, **Antigravity** rige su toma de decisiones bajo la estructura de optimización con restricciones del *Modelo Ético Adaptativo*:
 
 ---
