@@ -2641,6 +2641,48 @@ docling.midominio.com {
 
 ---
 
+### 🏛️ Arquitectura Modular del Gateway v2.0 (`gateway/`) y Lecciones de Integración
+
+En la versión 2.0, el Gateway de seguridad fue refactorizado y desacoplado de un único archivo monolítico (`app_gateway.py` de ~1.700 líneas) a un paquete modular de alta cohesión y bajo acoplamiento (`gateway/`), con suite de pruebas unitarias automatizadas y soporte para producción continua:
+
+```
+gateway/
+├── core/         # Seguridad: resolución de IPs confiables, Fail2ban y RBAC multi-cabecera.
+├── telemetry/    # Auditoría: registro asíncrono no bloqueante de tokens y bloqueos en MongoDB.
+├── tools/        # Micro-routers desacoplados: búsqueda web, PDF con TTL, Docling y RAG.
+├── cloud/        # Catálogo unificado de modelos en la nube y resolución inteligente.
+├── proxy/        # Motor de streaming SSE, pool de conexiones HTTP y failover a CPU.
+└── server.py     # Orquestador multi-puerto (8000, 8001, 8002, 8003, 8005, 8006, 8020).
+```
+
+#### 🧪 Resumen de Pruebas y Estado Operativo de la Suite:
+
+| Componente / Servicio | Puerto / Endpoint | Verificación Realizada | Estado |
+| :--- | :--- | :--- | :---: |
+| **Inferencia Gemma 4** | `8000 -> 18000` | Chat streaming, prefijo `local/`, inyección de fecha/hora y `<turn\|>` stripping. | ✅ Operativo |
+| **Razonamiento en 2 Fases** | System Prompt | Delimitación `<think>` (0 ms en saludos simples, razonamiento limpio en tareas complejas). | ✅ Operativo |
+| **Generador de PDF** | `8000 -> /api/tools/generate-pdf` | Fórmulas químicas limpias (`CO2, CH4, N2O`), sin emojis rotos y centrado multilínea. | ✅ Operativo |
+| **Búsqueda Web en Vivo** | `8000 -> /api/tools/web-search` | Inyección de noticias y hechos en tiempo real vía Ollama Cloud. | ✅ Operativo |
+| **Embeddings Semánticos** | `8005 -> 18005` | Vectorización 1024D con `Qwen3-Embedding` y cabeceras `X-Api-Key` / `Bearer`. | ✅ Operativo |
+| **RAG LanceDB (Búsqueda)** | `8000 -> /api/tools/rag-search` | Búsqueda híbrida (vectorial + BM25) sobre procedimientos de Teccam y leyes. | ✅ Operativo |
+| **RAG LanceDB (Lectura)** | `8000 -> /api/tools/rag-document` | Recuperación íntegra 1:1 de documentos extensos paginados o completos. | ✅ Operativo |
+| **Docling Document Parser** | `8020 -> 5020` | Extracción Markdown de PDFs vía reverse proxy Caddy con autenticación RBAC. | ✅ Operativo |
+| **Seguridad & Fail2ban** | Todos los puertos | Ventana deslizante (3 fallos/300s -> ban 48h con índice TTL) y Anti-Spoofing. | ✅ Operativo |
+
+#### 💡 Lecciones Críticas de Integración en Clientes (Open-WebUI):
+
+1. **Evitar Contaminación de Contexto entre Temas:**
+   * Al adjuntar un PDF directamente a un mensaje de Open-WebUI, el cliente inyecta todo el contenido del archivo (~8.000+ tokens) en cada turno subsiguiente del mismo hilo.
+   * Si en el mismo chat se cambia bruscamente de tema hacia la base RAG de Teccam, el LLM sufrirá conflicto cognitivo (intentará forzar el contenido del PDF adjunto o confundirá los UUIDs del chat con los `doc_id` de LanceDB).
+   * **Recomendación:** Utilizar un chat nuevo y limpio cuando se pase de consultar un PDF temporal a realizar investigaciones en la base de conocimiento documental permanente.
+
+2. **Blindaje de Herramientas de Open-WebUI contra `FieldInfo`:**
+   * En funciones personalizadas de Open-WebUI, **nunca** utilizar `Field(...)` de Pydantic como valor por defecto en los argumentos de la función (`def mi_tool(self, arg: str = Field(...)):`).
+   * Si el modelo omite el argumento opcional, Python le pasa el objeto `FieldInfo`, provocando un fallo de serialización JSON (`Object of type FieldInfo is not JSON serializable`).
+   * **Solución:** Usar argumentos estándar (`arg: Optional[str] = None`) y documentar los tipos mediante docstrings estándar, agregando sanitización defensiva en el cuerpo del método.
+
+---
+
 ## 📄 Licencia
 
 Este proyecto está distribuido bajo la [Licencia MIT](LICENSE).
