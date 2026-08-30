@@ -207,12 +207,12 @@ async def resolve_cloud_model(req_model: str, token: str, key_doc: dict) -> tupl
     if req_model in ["local/gemma-4-web", "gemma-4-web"]:
         is_cloud_request = False
         actual_model = "gemma-4-web"
-        base_vllm_model = os.getenv("MODEL", "google/gemma-4-E4B-it").strip('"').strip("'")
+        base_vllm_model = get_env_setting("MODEL", "google/gemma-4-E4B-it").strip('"').strip("'")
     elif req_model in ["local/gemma-4-rag", "gemma-4-rag"]:
         is_cloud_request = False
         actual_model = "gemma-4-rag"
         apply_rag_injection = True
-        base_vllm_model = os.getenv("MODEL", "google/gemma-4-E4B-it").strip('"').strip("'")
+        base_vllm_model = get_env_setting("MODEL", "google/gemma-4-E4B-it").strip('"').strip("'")
     elif req_model in ["cloud-rag", "local/cloud-rag", "cloud/rag"]:
         from rag_engine import get_rag_settings
         rag_sett = get_rag_settings()
@@ -313,7 +313,7 @@ async def resolve_cloud_model(req_model: str, token: str, key_doc: dict) -> tupl
                         is_cloud_request = False
                         actual_model = clean_req_model
                         if clean_req_model in ["gemma-4-web", "gemma-4-rag"]:
-                            base_vllm_model = os.getenv("MODEL", "google/gemma-4-E4B-it").strip('"').strip("'")
+                            base_vllm_model = get_env_setting("MODEL", "google/gemma-4-E4B-it").strip('"').strip("'")
                     elif authorized_candidate:
                         is_cloud_request = True
                         cloud_provider = authorized_candidate
