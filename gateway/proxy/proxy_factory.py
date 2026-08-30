@@ -217,7 +217,7 @@ def create_proxy_app(service_name: str, target_port: int, fallback_port: Optiona
 
                 if base_vllm_model:
                     data["model"] = base_vllm_model
-                elif is_cloud_request and cloud_provider:
+                else:
                     data["model"] = actual_model
 
                 model_name = actual_model or service_name
