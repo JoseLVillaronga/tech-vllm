@@ -1292,10 +1292,22 @@ Durante el proceso de configuración y depuración de este proyecto se identific
 * **Causa:** Intentar cargar adaptadores LoRA compilados para el framework **MLX (Apple Silicon)** en un entorno de inferencia basado en Linux/Nvidia (PyTorch). MLX almacena tensores con formatos y nombres de claves de configuración de bajo nivel distintos (ej. `"rank"` y `"alpha"` en vez de `"r"` y `"lora_alpha"`).
 * **Solución:** Utilizar la versión nativa del adaptador portada a formato **PyTorch PEFT estándar** (como `josuediazflores/gemma-4-e4b-opus-reasoning-lora`), que incluye las matrices de bajo rango en ficheros Safetensors estándar estructuradas para el cargador de vLLM.
 
-### 10. Inyección de Prompts de Sistema en Caliente para Razonamiento
+### 10. Inyección y Delimitación Estricta de Prompts de Sistema para Razonamiento (`<think>`)
 
-* **Problema:** Los modelos de razonamiento (como Gemma 4 con LoRA de razonamiento) requieren tokens de disparo de pensamientos estructurados (como `<|think|>`), que no se inyectan automáticamente en todas las aplicaciones externas de cliente (como scripts automatizados o clientes API), causando que el modelo devuelva directamente la respuesta final sin pasar por la fase de cadena de pensamiento.
-* **Solución:** Implementar un **interceptor de cuerpo de petición** en el Gateway Proxy (`app_gateway.py`). Si la llamada `POST` a `/v1/chat/completions` va dirigida a `gemma-4-reasoning`, el Gateway analiza el JSON e inyecta o concatena de manera transparente la directiva del sistema (`"Eres un modelo de razonamiento. Debes escribir tu proceso de pensamiento paso a paso envuelto dentro de etiquetas <think>...</think>..."`). Esto garantiza que el comportamiento de razonamiento colapsable sea universal y funcione de manera inmediata en todo el ecosistema de red.
+* **Problema:** Los modelos de razonamiento (como Gemma 4 con LoRA de razonamiento o al sintetizar datos de herramientas) requieren delimitadores precisos para su proceso deductivo. Si el prompt de sistema no establece una frontera estricta entre el pensamiento y la respuesta, el modelo puede continuar redactando la respuesta final dentro del mismo flujo de pensamiento o sin cerrar etiquetas, haciendo que Open-WebUI formatee todo el mensaje en cursiva (*itálica*) dentro del bloque colapsado de *"Pensando"*.
+* **Solución:** Establecer la **arquitectura de prompt en dos fases (Pensamiento vs. Respuesta Final)** tanto en el Gateway como en los perfiles de Open-WebUI:
+  ```text
+  Eres un asistente de inteligencia artificial con capacidad de razonamiento avanzado y uso de herramientas.
+
+  Sigue estrictamente esta estructura de dos fases en tus respuestas:
+
+  1. FASE DE PENSAMIENTO (Razonamiento Interno):
+  Si requieres analizar información, planificar la respuesta o procesar datos de herramientas, escribe todo tu proceso deductivo paso a paso EXCLUSIVAMENTE envuelto dentro de las etiquetas <think> y </think>.
+
+  2. FASE DE RESPUESTA FINAL (Al Usuario):
+  Inmediatamente después de cerrar la etiqueta </think>, escribe tu respuesta final dirigida al usuario en español, con redacción natural, limpia y bien estructurada. Jamás incluyas la respuesta final dentro de las etiquetas de pensamiento ni continúes razonando fuera de ellas.
+  ```
+  Esto garantiza que el bloque `<think>` se colapse limpiamente en la interfaz de usuario y la respuesta final se renderice en texto normal sin mezclarse.
 
 ### 11. Eliminación del Token de Fin de Turno (`<turn|>`) en Respuestas de Cliente
 
@@ -1673,11 +1685,18 @@ La suite integra un sistema desacoplado de búsqueda web en internet utilizando 
   1. **Modelo Virtual Directo (`local/gemma-4-web`):**
      * Aparece en el catálogo `/v1/models` como `local/gemma-4-web`.
      * Al enviar una consulta a este modelo (desde Open-WebUI, cURL, scripts, o el Dashboard), el Gateway extrae la pregunta del usuario, consulta a Ollama Cloud en segundo plano, inyecta los snippets y URLs de las fuentes en el prompt del sistema y envía la petición a vLLM en un solo pase ultrarrápido.
-     * **Prompt de Sistema Recomendado (Razonamiento + Búsqueda Estricta sin Alucinación):**
-       Para obtener respuestas estructuradas, con citas precisas y razonamiento visible (`<think>`) en Open-WebUI o clientes compatibles, se recomienda el siguiente prompt de sistema:
+     * **Prompt de Sistema Recomendado (Estructura de Dos Fases + Búsqueda Estricta sin Alucinación):**
+       Para obtener respuestas estructuradas, con citas precisas y razonamiento visible (`<think>`) perfectamente colapsado en Open-WebUI o clientes compatibles:
        ```text
-       Eres un modelo de razonamiento. Debes escribir tu proceso de pensamiento paso a paso envuelto dentro de etiquetas <think>...</think>
-       Tu función principal es buscar lo que el usuario te pida, como un buscador en Internet inteligente, siempre muestra las fuentes detallando nombre y URL junto con la contestación, si no tienes la respuesta y/o los resultados de la búsqueda no son fiables solo di, "no tengo información confiable para proporcionar una respuesta".
+       Eres un asistente de inteligencia artificial con capacidad de razonamiento avanzado y búsqueda web en tiempo real.
+
+       Sigue estrictamente esta estructura de dos fases en tus respuestas:
+
+       1. FASE DE PENSAMIENTO (Razonamiento Interno):
+       Escribe tu análisis de los resultados web y la planificación de la respuesta EXCLUSIVAMENTE envuelto dentro de las etiquetas <think> y </think>.
+
+       2. FASE DE RESPUESTA FINAL (Al Usuario):
+       Inmediatamente después de cerrar la etiqueta </think>, escribe tu respuesta final dirigida al usuario en español, con redacción limpia y estructurada, citando siempre las fuentes (nombre y URL). Si no hay información confiable, indícalo con claridad. Jamás incluyas la respuesta final dentro de las etiquetas de pensamiento ni continúes razonando fuera de ellas.
        ```
      * **Ajuste Crítico en Open-WebUI (`max_tokens` / Contexto):**
        Al combinar razonamiento paso a paso (`<think>`) con snippets extensos de búsqueda web, si la ventana de generación o contexto de Open-WebUI es muy baja por defecto (ej. 2048 o 4096 tokens), el modelo consumirá todo el presupuesto en el proceso de pensamiento y truncará la respuesta antes de mostrar el resultado final.
