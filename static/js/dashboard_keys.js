@@ -30,25 +30,80 @@
                 if (listContainer && listContainer.getAttribute('data-loaded') !== 'true') {
                     listContainer.innerHTML = '<span class="text-[10px] text-indigo-400 animate-pulse">Consultando modelos del proveedor...</span>';
                     const models = await getProviderModels(providerId);
-                    if (models.length === 0) {
-                        listContainer.innerHTML = '<span class="text-[10px] text-slate-500">No se encontraron modelos disponibles o el proveedor no responde.</span>';
+                    const existingModelIds = new Set(models.map(m => m.id));
+                    const customPreselected = (preselectedModels || []).filter(mId => mId !== '*' && !existingModelIds.has(mId));
+
+                    if (models.length === 0 && customPreselected.length === 0) {
+                        listContainer.innerHTML = '<span class="text-[10px] text-slate-500">No se encontraron modelos automáticos. Puedes declarar modelos manualmente abajo.</span>';
                     } else {
                         listContainer.setAttribute('data-loaded', 'true');
-                        listContainer.innerHTML = models.map(m => {
+                        let htmlItems = '';
+
+                        // Renderizar modelos preseleccionados personalizados / manuales
+                        customPreselected.forEach(mId => {
+                            htmlItems += `
+                                <label data-model-item class="flex items-center gap-2 text-[11px] text-cyan-300 hover:text-white cursor-pointer py-0.5 px-1 rounded bg-cyan-950/20 border border-cyan-500/20 hover:bg-cyan-900/30 transition-all">
+                                    <input type="checkbox" data-context="${context}" data-provider-id="${providerId}" value="${escapeHtml(mId)}" checked onchange="updateProviderModelCountBadge('${context}', '${providerId}')" class="rounded border-slate-700 text-cyan-500 focus:ring-cyan-500 bg-slate-950">
+                                    <span class="font-mono text-cyan-200 truncate flex-1" title="${escapeHtml(mId)}">✨ ${escapeHtml(mId)} <span class="text-[9px] text-cyan-400 font-sans font-semibold">(Manual)</span></span>
+                                    <button type="button" onclick="this.closest('label').remove(); updateProviderModelCountBadge('${context}', '${providerId}')" class="text-slate-500 hover:text-rose-400 text-[10px] px-1" title="Eliminar">✕</button>
+                                </label>
+                            `;
+                        });
+
+                        // Renderizar modelos descubiertos del proveedor
+                        models.forEach(m => {
                             const isChecked = preselectedModels.includes(m.id) || preselectedModels.includes(m.prefixed_id) || preselectedModels.includes('*');
-                            return `
+                            htmlItems += `
                                 <label data-model-item class="flex items-center gap-2 text-[11px] text-slate-300 hover:text-white cursor-pointer py-0.5 px-1 rounded hover:bg-slate-800/50 transition-all">
                                     <input type="checkbox" data-context="${context}" data-provider-id="${providerId}" value="${escapeHtml(m.id)}" ${isChecked ? 'checked' : ''} onchange="updateProviderModelCountBadge('${context}', '${providerId}')" class="rounded border-slate-700 text-cyan-500 focus:ring-cyan-500 bg-slate-950">
                                     <span class="font-mono text-slate-200 truncate" title="${escapeHtml(m.id)}">${escapeHtml(m.id)}</span>
                                 </label>
                             `;
-                        }).join('');
+                        });
+
+                        listContainer.innerHTML = htmlItems;
                     }
                     updateProviderModelCountBadge(context, providerId);
                 }
             } else {
                 panel.classList.add('hidden');
             }
+        }
+
+        function addCustomProviderModel(context, providerId) {
+            const input = document.getElementById(`${context}-custom-model-${providerId}`);
+            if (!input) return;
+            const modelId = input.value.trim();
+            if (!modelId) return;
+
+            const listContainer = document.getElementById(`${context}-prov-models-list-${providerId}`);
+            if (!listContainer) return;
+
+            // Si la lista contenía el mensaje de estado vacío o de carga, limpiarlo
+            if (listContainer.querySelector('span.text-slate-500, span.text-indigo-400')) {
+                listContainer.innerHTML = '';
+            }
+
+            // Evitar duplicados
+            const existingCb = Array.from(listContainer.querySelectorAll(`input[data-context="${context}"][data-provider-id="${providerId}"]`)).find(cb => cb.value === modelId);
+            if (existingCb) {
+                existingCb.checked = true;
+                input.value = '';
+                updateProviderModelCountBadge(context, providerId);
+                return;
+            }
+
+            const newLabel = document.createElement('label');
+            newLabel.setAttribute('data-model-item', '');
+            newLabel.className = 'flex items-center gap-2 text-[11px] text-cyan-300 hover:text-white cursor-pointer py-0.5 px-1 rounded bg-cyan-950/20 border border-cyan-500/20 hover:bg-cyan-900/30 transition-all';
+            newLabel.innerHTML = `
+                <input type="checkbox" data-context="${context}" data-provider-id="${providerId}" value="${escapeHtml(modelId)}" checked onchange="updateProviderModelCountBadge('${context}', '${providerId}')" class="rounded border-slate-700 text-cyan-500 focus:ring-cyan-500 bg-slate-950">
+                <span class="font-mono text-cyan-200 truncate flex-1" title="${escapeHtml(modelId)}">✨ ${escapeHtml(modelId)} <span class="text-[9px] text-cyan-400 font-sans font-semibold">(Manual)</span></span>
+                <button type="button" onclick="this.closest('label').remove(); updateProviderModelCountBadge('${context}', '${providerId}')" class="text-slate-500 hover:text-rose-400 text-[10px] px-1" title="Eliminar">✕</button>
+            `;
+            listContainer.prepend(newLabel);
+            input.value = '';
+            updateProviderModelCountBadge(context, providerId);
         }
 
         function filterProviderModels(context, providerId, query) {
@@ -119,6 +174,12 @@
                         <div id="create-prov-models-list-${p.id}" class="flex flex-col gap-0.5 max-h-32 overflow-y-auto pr-1">
                             <span class="text-[10px] text-slate-500">Cargando modelos...</span>
                         </div>
+                        <div class="flex items-center gap-1 mt-1 pt-1 border-t border-slate-850">
+                            <input type="text" id="create-custom-model-${p.id}" placeholder="ID de modelo manual / no listado (ej: gemma4:31b)..." onkeydown="if(event.key==='Enter'){event.preventDefault(); addCustomProviderModel('create', '${p.id}');}" class="flex-1 bg-slate-900 border border-slate-800 rounded px-2 py-0.5 text-[10px] text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-cyan-500 font-mono">
+                            <button type="button" onclick="addCustomProviderModel('create', '${p.id}')" class="text-[9px] px-2 py-0.5 bg-cyan-950/60 hover:bg-cyan-900/80 text-cyan-300 border border-cyan-500/30 rounded font-medium flex items-center gap-1 transition-colors">
+                                <span>➕ Agregar</span>
+                            </button>
+                        </div>
                     </div>
                 </div>
             `).join('');
@@ -152,6 +213,12 @@
                             </div>
                             <div id="edit-prov-models-list-${p.id}" class="flex flex-col gap-0.5 max-h-32 overflow-y-auto pr-1">
                                 <span class="text-[10px] text-slate-500">Cargando modelos...</span>
+                            </div>
+                            <div class="flex items-center gap-1 mt-1 pt-1 border-t border-slate-850">
+                                <input type="text" id="edit-custom-model-${p.id}" placeholder="ID de modelo manual / no listado (ej: gemma4:31b)..." onkeydown="if(event.key==='Enter'){event.preventDefault(); addCustomProviderModel('edit', '${p.id}');}" class="flex-1 bg-slate-900 border border-slate-800 rounded px-2 py-0.5 text-[10px] text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-cyan-500 font-mono">
+                                <button type="button" onclick="addCustomProviderModel('edit', '${p.id}')" class="text-[9px] px-2 py-0.5 bg-cyan-950/60 hover:bg-cyan-900/80 text-cyan-300 border border-cyan-500/30 rounded font-medium flex items-center gap-1 transition-colors">
+                                    <span>➕ Agregar</span>
+                                </button>
                             </div>
                         </div>
                     </div>

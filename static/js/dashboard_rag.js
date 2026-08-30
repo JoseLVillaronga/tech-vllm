@@ -462,15 +462,17 @@
                 const data = await res.json();
                 const models = data.models || [];
 
-                if (models.length === 0) {
-                    modelSelect.innerHTML = '<option value="">No se encontraron modelos para este proveedor</option>';
-                    return;
-                }
-
-                modelSelect.innerHTML = models.map(m => {
+                const found = models.some(m => m.id === targetModelId || m.prefixed_id === targetModelId);
+                let optionsHtml = models.map(m => {
                     const isSel = (m.id === targetModelId || m.prefixed_id === targetModelId) ? 'selected' : '';
                     return `<option value="${m.id}" ${isSel}>${escapeHtml(m.name || m.id)}</option>`;
                 }).join('');
+
+                if (targetModelId && !found) {
+                    optionsHtml = `<option value="${targetModelId}" selected>✨ ${escapeHtml(targetModelId)} (Manual)</option>` + optionsHtml;
+                }
+
+                modelSelect.innerHTML = optionsHtml;
             } catch (err) {
                 modelSelect.innerHTML = `<option value="">Error cargando modelos: ${escapeHtml(err.message)}</option>`;
             }
