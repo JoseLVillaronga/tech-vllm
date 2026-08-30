@@ -2564,6 +2564,10 @@ class Tools:
 2. Haz clic en el engranaje **⚙️ (Valves)** y configura tu `API_KEY` (tu clave autorizada) y `GATEWAY_URL` en `http://192.168.1.47:8000`.
 3. Asigna la herramienta a tu modelo personalizado (ej. `local/gemma-4-teccam`).
 
+#### C. Captura de Verificación en Producción:
+* **Lectura y Análisis Estructurado de Archivo PDF Adjunto en el Chat con `Gemma 4` (vía Docling):**
+![Lectura de Documentos Adjuntos en Open-WebUI](screenshots/openwebui_custom_doc_reader_success.png)
+
 ---
 
 ### ⚙️ Administración del Servicio de Gateway (Systemd)
