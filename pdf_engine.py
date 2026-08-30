@@ -3,7 +3,8 @@
 """
 Motor de Generación de Documentos y Contratos en PDF para vLLM Suite Gateway.
 Genera documentos PDF estándar A4 sin dependencias externas pesadas, con soporte
-de caracteres en español, paginación exacta y descarga directa vía HTTP.
+de caracteres en español, fórmulas químicas/matemáticas limpias, eliminación de emojis,
+paginación exacta, centrado simétrico y descarga directa vía HTTP.
 """
 
 import io
@@ -11,15 +12,57 @@ import os
 import zlib
 import re
 import uuid
-import base64
 from typing import Optional, Dict, Any, List
 
 PDF_STORAGE_DIR = "/home/jose/vllm/outputs/pdfs"
 os.makedirs(PDF_STORAGE_DIR, exist_ok=True)
 
+# Métricas aproximadas de ancho de caracteres para fuentes estándar Helvetica / Helvetica-Bold
+HELVETICA_WIDTHS = {
+    ' ': 278, '!': 278, '"': 355, '#': 556, '$': 556, '%': 889, '&': 667, '\'': 191,
+    '(': 333, ')': 333, '*': 389, '+': 584, ',': 278, '-': 333, '.': 278, '/': 278,
+    ':': 278, ';': 278, '<': 584, '=': 584, '>': 584, '?': 556, '@': 1015,
+    '[': 278, '\\': 278, ']': 278, '^': 469, '_': 556, '{': 334, '|': 260, '}': 334, '~': 584
+}
+
+HELVETICA_BOLD_WIDTHS = {
+    ' ': 278, '!': 333, '"': 474, '#': 556, '$': 556, '%': 889, '&': 722, '\'': 238,
+    '(': 333, ')': 333, '*': 389, '+': 584, ',': 278, '-': 333, '.': 278, '/': 278,
+    ':': 333, ';': 333, '<': 584, '=': 584, '>': 584, '?': 611, '@': 975,
+    '[': 333, '\\': 278, ']': 333, '^': 584, '_': 556, '{': 389, '|': 280, '}': 389, '~': 584
+}
+
+
+def clean_latex(text: str) -> str:
+    """Convierte fórmulas matemáticas y químicas LaTeX (ej: $\text{CO}_2$, $\text{CH}_4$) a texto legible."""
+    # Eliminar envoltorios \text{...}
+    text = re.sub(r'\\text\{([^}]+)\}', r'\1', text)
+    # Limpiar subíndices (ej: CO_2 o N_{2}O -> CO2, N2O)
+    text = re.sub(r'([A-Za-z0-9]+)_\{?([0-9A-Za-z]+)\}?', r'\1\2', text)
+    # Limpiar superíndices (ej: CO^2 o m^3 -> CO^2, m^3)
+    text = re.sub(r'([A-Za-z0-9]+)\^\{?([0-9A-Za-z]+)\}?', r'\1^\2', text)
+    # Remover símbolos delimitadores $
+    text = text.replace('$', '')
+    return text
+
+
+def clean_emojis(text: str) -> str:
+    """Remueve emojis y caracteres especiales fuera del mapa WinAnsi/Latin-1 para evitar signos '?' en el PDF."""
+    emoji_pattern = re.compile(
+        '['
+        '\U00010000-\U0010ffff'  # Emojis suplementarios
+        '\u2600-\u27bf'          # Símbolos misceláneos
+        '\u2300-\u23ff'          # Símbolos técnicos
+        '\u2b50\u2b55\u2934\u2935\u200d\ufe0f\ufe0e'
+        ']+', flags=re.UNICODE
+    )
+    return emoji_pattern.sub('', text)
+
 
 def sanitize_text_for_pdf(text: str) -> str:
-    """Reemplaza caracteres tipográficos Unicode que no existen en Latin-1 / WinAnsi."""
+    """Limpia fórmulas LaTeX, emojis y reemplaza caracteres tipográficos para compatibilidad con WinAnsi/Latin-1."""
+    text = clean_latex(text)
+    text = clean_emojis(text)
     replacements = {
         "—": " - ",
         "–": "-",
@@ -38,7 +81,34 @@ def sanitize_text_for_pdf(text: str) -> str:
     }
     for k, v in replacements.items():
         text = text.replace(k, v)
-    return text
+
+    # Filtrar caracteres no encodables en latin-1 para evitar signos '?' arbitrarios
+    clean_chars = []
+    for ch in text:
+        try:
+            ch.encode("latin-1")
+            clean_chars.append(ch)
+        except UnicodeEncodeError:
+            pass
+    return "".join(clean_chars)
+
+
+def get_text_width(text: str, font: str = "F1", size: float = 10.5) -> float:
+    """Calcula el ancho exacto en puntos tipográficos de un string."""
+    is_bold = font in ("F2", "F4")
+    w_table = HELVETICA_BOLD_WIDTHS if is_bold else HELVETICA_WIDTHS
+    total_units = 0
+    for ch in text:
+        if ch.isupper():
+            w = w_table.get(ch, 722 if is_bold else 667)
+        elif ch.islower():
+            w = w_table.get(ch, 556 if is_bold else 500)
+        elif ch.isdigit():
+            w = 556
+        else:
+            w = w_table.get(ch, 350)
+        total_units += w
+    return (total_units / 1000.0) * size
 
 
 class PDFDocumentBuilder:
@@ -64,25 +134,31 @@ class PDFDocumentBuilder:
         if self.y - needed_height < self.margin_y + 35:
             self.new_page()
 
-    def wrap_text(self, text: str, font: str = "F1", size: float = 10.5) -> List[str]:
-        char_width = size * 0.50
-        max_chars = max(10, int(self.printable_width / char_width))
+    def wrap_text_precise(self, text: str, font: str = "F1", size: float = 10.5, max_width: Optional[float] = None) -> List[str]:
+        """Ajusta el texto a líneas múltiples calculando el ancho real de cada palabra."""
+        if max_width is None:
+            max_width = self.printable_width
+
         words = text.split(" ")
         lines = []
         current_line = []
-        current_len = 0
+        current_w = 0.0
+        space_w = get_text_width(" ", font, size)
+
         for word in words:
             if not word:
                 continue
-            word_len = len(word)
-            if current_len + word_len + (1 if current_line else 0) <= max_chars:
+            word_w = get_text_width(word, font, size)
+            needed = word_w if not current_line else (current_w + space_w + word_w)
+            if needed <= max_width:
                 current_line.append(word)
-                current_len += word_len + (1 if len(current_line) > 1 else 0)
+                current_w = needed
             else:
                 if current_line:
                     lines.append(" ".join(current_line))
                 current_line = [word]
-                current_len = word_len
+                current_w = word_w
+
         if current_line:
             lines.append(" ".join(current_line))
         return lines if lines else [""]
@@ -92,19 +168,25 @@ class PDFDocumentBuilder:
         clean = re.sub(r"\*\*(.*?)\*\*", r"\1", clean)
         clean = re.sub(r"\*(.*?)\*", r"\1", clean)
         clean = re.sub(r"`(.*?)`", r"\1", clean)
-        
-        lines = self.wrap_text(clean, font, size)
+        clean = clean.strip()
+        if not clean:
+            return
+
+        avail_width = self.printable_width - indent
+        lines = self.wrap_text_precise(clean, font, size, max_width=avail_width)
+
         for i, line in enumerate(lines):
             self.check_page_break(line_height)
             safe_line = line.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
-            x = self.margin_x + (indent if i == 0 else 0)
+            line_w = get_text_width(line, font, size)
+
             if align == "center":
-                approx_w = len(line) * size * 0.50
-                x = max(self.margin_x, (self.width - approx_w) / 2)
+                x = self.margin_x + max(0.0, (self.printable_width - line_w) / 2.0)
             elif align == "right":
-                approx_w = len(line) * size * 0.50
-                x = max(self.margin_x, self.width - self.margin_x - approx_w)
-                
+                x = self.margin_x + max(0.0, self.printable_width - line_w)
+            else:
+                x = self.margin_x + (indent if i == 0 else 0)
+
             self.current_page_stream.append(f"BT /{font} {size} Tf {x:.2f} {self.y:.2f} Td ({safe_line}) Tj ET")
             self.y -= line_height
 
@@ -118,64 +200,68 @@ class PDFDocumentBuilder:
         self.check_page_break(85)
         self.y -= 40
         w_box = (self.printable_width - 40) / 2
-        
+
         x_left_start = self.margin_x
         x_left_end = self.margin_x + w_box
-        
+
         x_right_start = self.width - self.margin_x - w_box
         x_right_end = self.width - self.margin_x
-        
+
         self.current_page_stream.append(f"0.7 w 0 0 0 RG {x_left_start:.2f} {self.y:.2f} m {x_left_end:.2f} {self.y:.2f} l S")
         self.current_page_stream.append(f"0.7 w 0 0 0 RG {x_right_start:.2f} {self.y:.2f} m {x_right_end:.2f} {self.y:.2f} l S")
-        
+
         self.y -= 14
         lbl_l = sanitize_text_for_pdf(name_left).replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
         lbl_r = sanitize_text_for_pdf(name_right).replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
-        
+
         self.current_page_stream.append(f"BT /F1 8.5 Tf {x_left_start:.2f} {self.y:.2f} Td ({lbl_l}) Tj ET")
         self.current_page_stream.append(f"BT /F1 8.5 Tf {x_right_start:.2f} {self.y:.2f} Td ({lbl_r}) Tj ET")
         self.y -= 15
 
     def render_markdown(self, md_text: str, title: str = ""):
-        clean_title = sanitize_text_for_pdf(title)
+        clean_title = sanitize_text_for_pdf(title).strip()
         if clean_title:
-            self.add_wrapped_paragraph(clean_title.upper(), font="F2", size=14, line_height=18, align="center")
+            self.add_wrapped_paragraph(clean_title.upper(), font="F2", size=13.0, line_height=17.0, align="center")
             self.add_separator_line()
-            self.y -= 6
-            
+            self.y -= 4
+
         raw_lines = md_text.split("\n")
         has_signatures = False
-        
+
         for raw in raw_lines:
             line = raw.strip()
             if not line:
-                self.y -= 5
+                self.y -= 4
                 continue
-                
+
             if line.startswith("# "):
-                self.y -= 6
-                self.add_wrapped_paragraph(line[2:], font="F2", size=13, line_height=16, align="center")
+                h1_text = line[2:].strip()
+                # Evitar duplicar el título principal si es idéntico al encabezado superior
+                if clean_title and h1_text.upper() == clean_title.upper():
+                    continue
+                self.y -= 5
+                self.add_wrapped_paragraph(h1_text, font="F2", size=12.0, line_height=15.5, align="center")
                 self.add_separator_line()
-                self.y -= 3
+                self.y -= 2
             elif line.startswith("## "):
                 self.y -= 5
-                self.add_wrapped_paragraph(line[3:], font="F2", size=11.5, line_height=15, align="left")
+                self.add_wrapped_paragraph(line[3:].strip(), font="F2", size=11.0, line_height=14.5, align="left")
                 self.y -= 2
             elif line.startswith("### "):
                 self.y -= 3
-                self.add_wrapped_paragraph(line[4:], font="F2", size=10.5, line_height=13.5, align="left")
-                self.y -= 2
+                self.add_wrapped_paragraph(line[4:].strip(), font="F2", size=10.0, line_height=13.0, align="left")
+                self.y -= 1
             elif line.startswith("---") or line.startswith("___") or line.startswith("***"):
                 self.add_separator_line()
             elif line.startswith("* ") or line.startswith("- ") or line.startswith("+ "):
-                self.add_wrapped_paragraph("• " + line[2:], font="F1", size=10, line_height=13, indent=12.0)
+                self.add_wrapped_paragraph("* " + line[2:].strip(), font="F1", size=9.5, line_height=13.0, indent=12.0)
             elif re.match(r"^\d+\.\s", line):
-                self.add_wrapped_paragraph(line, font="F1", size=10, line_height=13, indent=12.0)
+                self.add_wrapped_paragraph(line, font="F1", size=9.5, line_height=13.0, indent=12.0)
             elif "FIRMA" in line.upper() and ("LOCATARIO" in line.upper() or "CLIENTE" in line.upper() or "PARTE" in line.upper() or "CONFORMIDAD" in line.upper()):
                 has_signatures = True
             else:
-                self.add_wrapped_paragraph(line, font="F1", size=10, line_height=13.5)
-                
+                self.add_wrapped_paragraph(line, font="F1", size=9.5, line_height=13.0)
+
         if has_signatures:
             self.add_signatures()
 
@@ -183,9 +269,9 @@ class PDFDocumentBuilder:
         if self.current_page_stream:
             self.pages.append(self.current_page_stream)
             self.current_page_stream = []
-            
+
         total_pages = max(1, len(self.pages))
-        
+
         for idx, p_stream in enumerate(self.pages):
             p_num = idx + 1
             footer_str = f"{self.footer_text}  |  Pagina {p_num} de {total_pages}"
@@ -200,26 +286,26 @@ class PDFDocumentBuilder:
         catalog_id = 1
         pages_id = 3
         page_ids = []
-        
+
         f1_id = add_obj("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>")
         f2_id = add_obj("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>")
         f3_id = add_obj("<< /Type /Font /Subtype /Type1 /BaseFont /Times-Roman /Encoding /WinAnsiEncoding >>")
         f4_id = add_obj("<< /Type /Font /Subtype /Type1 /BaseFont /Times-Bold /Encoding /WinAnsiEncoding >>")
-        
+
         font_dict = f"<< /F1 {f1_id} 0 R /F2 {f2_id} 0 R /F3 {f3_id} 0 R /F4 {f4_id} 0 R >>"
-        
+
         for p_stream in self.pages:
             stream_data = "\n".join(p_stream).encode("latin-1", "replace")
             compressed = zlib.compress(stream_data)
             c_id = add_obj(f"<< /Length {len(compressed)} /Filter /FlateDecode >>\nstream\n".encode("latin-1") + compressed + b"\nendstream")
             p_id = add_obj(f"<< /Type /Page /Parent {pages_id} 0 R /MediaBox [0 0 {self.width} {self.height}] /Contents {c_id} 0 R /Resources << /Font {font_dict} >> >>")
             page_ids.append(p_id)
-            
+
         objs[0] = f"<< /Type /Catalog /Pages {pages_id} 0 R >>"
         objs[1] = "<< /Type /Outlines /Count 0 >>"
         kids = " ".join(f"{pid} 0 R" for pid in page_ids)
         objs[2] = f"<< /Type /Pages /Kids [{kids}] /Count {len(page_ids)} >>"
-        
+
         out = io.BytesIO()
         out.write(b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n")
         offsets = []
@@ -229,7 +315,7 @@ class PDFDocumentBuilder:
                 out.write(f"{i+1} 0 obj\n".encode("latin-1") + obj + b"\nendobj\n")
             else:
                 out.write(f"{i+1} 0 obj\n{obj}\nendobj\n".encode("latin-1"))
-                
+
         xref_pos = out.tell()
         out.write(f"xref\n0 {len(objs)+1}\n0000000000 65535 f \n".encode("latin-1"))
         for off in offsets:
@@ -264,11 +350,10 @@ def create_pdf_from_markdown(
     title: str,
     markdown_content: str,
     filename: Optional[str] = None,
-    company_name: str = "Documento Oficial",
+    company_name: str = "Teccam S.R.L.",
     base_url: str = "http://127.0.0.1:8000"
 ) -> Dict[str, Any]:
     """Genera un archivo PDF, lo guarda en disco para descarga directa y devuelve metadata + URL."""
-    # Limpieza preventiva de archivos con más de 24 hs de antigüedad
     cleanup_old_pdfs(max_age_hours=24)
 
     clean_title = (title or "").strip()
@@ -283,24 +368,22 @@ def create_pdf_from_markdown(
     clean_filename = filename.strip() if filename else f"{re.sub(r'[^a-zA-Z0-9_-]', '_', clean_title.lower())}.pdf"
     if not clean_filename.lower().endswith(".pdf"):
         clean_filename += ".pdf"
-        
+
     builder = PDFDocumentBuilder(company_name=company_name)
     builder.render_markdown(markdown_content, title=clean_title)
     pdf_bytes = builder.build_pdf()
-    
-    # Guardar en disco para descarga HTTP directa
+
     file_id = uuid.uuid4().hex[:12]
     saved_name = f"{file_id}_{clean_filename}"
     file_path = os.path.join(PDF_STORAGE_DIR, saved_name)
     with open(file_path, "wb") as f:
         f.write(pdf_bytes)
-        
+
     size_kb = round(len(pdf_bytes) / 1024, 1)
     page_count = len(builder.pages)
-    
-    # URL de descarga directa limpia (sin base64 gigante)
-    download_url = f"{base_url.rstrip("/")}/api/tools/pdf/download/{file_id}/{clean_filename}"
-    
+
+    download_url = f"{base_url.rstrip('/')}/api/tools/pdf/download/{file_id}/{clean_filename}"
+
     formatted_card = f"""✅ Archivo PDF compilado exitosamente.
 
 Enlace de descarga para el usuario:
