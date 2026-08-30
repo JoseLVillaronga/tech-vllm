@@ -4,6 +4,9 @@
 
 Servidor de Inferencia de Modelos de Lenguaje (LLM) de alto rendimiento basado en **vLLM**, configurado para desplegar el modelo **NVIDIA Gemma 4 26B-A4B-NVFP4** con soporte **Multimodal (Visión/OCR)**, **Razonamiento** y **Llamadas a Herramientas (*Tool Choice*)**, totalmente integrado con clientes como **Open-WebUI**.
 
+> 📘 **¿Buscás la guía rápida para usuarios y operadores de Open-WebUI?**  
+> Consultá el nuevo [**Manual de Integración y Guía de Uso: vLLM Suite + Open-WebUI (`MANUAL_OPENWEBUI.md`)**](MANUAL_OPENWEBUI.md) con catálogo de herramientas listas para usar (RAG LanceDB, Generador PDF A4, Búsqueda Web y Clima).
+
 ---
 
 ## 🛠️ Especificaciones del Entorno
