@@ -277,7 +277,13 @@ def create_proxy_app(service_name: str, target_port: int, fallback_port: Optiona
                 # Inyectar contexto RAG si corresponde
                 if (apply_rag_injection or actual_model == "gemma-4-rag") and path.strip("/") == "v1/chat/completions" and "messages" in data:
                     try:
-                        from rag_engine import search_knowledge_base, format_rag_context_for_llm, get_rag_settings
+                        from rag_engine import (
+                            search_knowledge_base,
+                            format_rag_context_for_llm,
+                            get_rag_settings,
+                            find_documents_by_fuzzy_title,
+                            get_document_full_content
+                        )
                         rag_sett = get_rag_settings()
                         if rag_sett.get("enabled", True):
                             messages = data["messages"]
@@ -292,14 +298,45 @@ def create_proxy_app(service_name: str, target_port: int, fallback_port: Optiona
                                     user_query = " ".join(text_parts)
 
                             if user_query:
-                                rag_results = search_knowledge_base(query=user_query, top_k=4)
-                                if rag_results:
-                                    rag_context_str = format_rag_context_for_llm(rag_results)
+                                rag_context_str = ""
+                                matched_docs = find_documents_by_fuzzy_title(user_query)
+
+                                # 1. Si la consulta menciona un documento o libro específico de la biblioteca
+                                if matched_docs and matched_docs[0].get("score", 0) >= 0.5:
+                                    top_doc = matched_docs[0]
+                                    full_res = get_document_full_content(top_doc["doc_id"], token_threshold=30000)
+                                    total_tokens = full_res.get("total_doc_tokens", 0)
+
+                                    # Si cabe en la ventana (<= 30.000 tokens), inyectar el documento completo 1:1
+                                    if total_tokens <= 30000 and full_res.get("content"):
+                                        rag_context_str = (
+                                            f"--- DOCUMENTO COMPLETO OFICIAL DE LA BIBLIOTECA (Fidelidad 100%): \"{top_doc['title']}\" ---\n"
+                                            f"(Tema: {top_doc.get('topic', 'General')} | Autor: {top_doc.get('author', 'Desconocido')})\n\n"
+                                            f"{full_res.get('content')}\n\n"
+                                            f"--- FIN DEL DOCUMENTO OFICIAL ---"
+                                        )
+                                    else:
+                                        # Documento muy extenso (ej: Código Civil): búsqueda focalizada en su tema con top_k=8
+                                        rag_results = search_knowledge_base(
+                                            query=user_query,
+                                            temas=[top_doc.get("topic")] if top_doc.get("topic") else None,
+                                            top_k=8
+                                        )
+                                        if rag_results:
+                                            rag_context_str = format_rag_context_for_llm(rag_results)
+
+                                # 2. Si no se detectó un documento único, realizar búsqueda híbrida con top_k=8
+                                if not rag_context_str:
+                                    rag_results = search_knowledge_base(query=user_query, top_k=8)
+                                    if rag_results:
+                                        rag_context_str = format_rag_context_for_llm(rag_results)
+
+                                if rag_context_str:
                                     rag_prompt = (
                                         f"\n\n[CONTEXTO DE LA BASE DE CONOCIMIENTO DOCUMENTAL (LANCEDB - TECCAM)]:\n"
                                         f"{rag_context_str}\n"
                                         f"--------------------------------------------------\n"
-                                        f"Instrucciones: Responde a la pregunta del usuario utilizando de manera prioritaria y rigurosa la información y fuentes proporcionadas arriba. Cita los documentos y secciones de donde proviene la información cuando sea relevante."
+                                        f"Instrucciones: Responde a la pregunta del usuario utilizando de manera prioritaria y rigurosa la información y fuentes proporcionadas arriba. Cita los artículos, documentos y secciones de donde proviene la información."
                                     )
                                     system_msg = next((m for m in messages if m.get("role") == "system"), None)
                                     if system_msg:
