@@ -144,7 +144,7 @@ def get_key_doc(token: str):
     if token == MASTER_KEY:
         return {
             "name": "Master Key",
-            "services": ["gemma", "whisper", "tts", "diarization", "embeddings"],
+            "services": ["gemma", "whisper", "tts", "diarization", "embeddings", "image", "docling"],
             "allowed_providers": ["*"],
             "is_active": True
         }
@@ -513,13 +513,38 @@ def create_proxy_app(service_name: str, target_port: int, fallback_port: Optiona
             except Exception as dl_err:
                 raise HTTPException(status_code=500, detail=f"Error al descargar PDF: {dl_err}")
             
-        # Obtener token de Bearer o parámetro query
-        auth_header = request.headers.get("Authorization")
+        # Obtener token de cabeceras Authorization, X-Api-Key (Open-WebUI / Docling) o parámetro query
+        auth_header = request.headers.get("authorization") or request.headers.get("Authorization") or ""
+        auth_header = auth_header.strip()
+        
+        x_api_key = (
+            request.headers.get("x-api-key")
+            or request.headers.get("X-Api-Key")
+            or request.headers.get("X-API-Key")
+            or request.headers.get("X-API-KEY")
+            or request.headers.get("api-key")
+            or request.headers.get("apikey")
+            or request.headers.get("x-auth-token")
+            or ""
+        ).strip()
+        
         token = ""
-        if auth_header and auth_header.startswith("Bearer "):
-            token = auth_header.split(" ", 1)[1]
+        if auth_header:
+            if auth_header.lower().startswith("bearer "):
+                token = auth_header.split(" ", 1)[1].strip()
+            elif auth_header.lower().startswith("api-key "):
+                token = auth_header.split(" ", 1)[1].strip()
+            else:
+                token = auth_header
+        elif x_api_key:
+            token = x_api_key
         else:
-            token = request.query_params.get("api_key", "")
+            token = (
+                request.query_params.get("api_key")
+                or request.query_params.get("token")
+                or request.query_params.get("key")
+                or ""
+            ).strip()
             
         if not token:
             # Registrar intento de autenticación fallido
@@ -527,7 +552,7 @@ def create_proxy_app(service_name: str, target_port: int, fallback_port: Optiona
             asyncio.create_task(asyncio.to_thread(save_blocked_request_log, client_ip, current_service, path, "api_key"))
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="API Key faltante. Debe proporcionarse en la cabecera 'Authorization: Bearer <key>'"
+                detail="API Key faltante. Debe proporcionarse en la cabecera 'Authorization: Bearer <key>' o 'X-Api-Key: <key>'."
             )
             
         # Validar token
