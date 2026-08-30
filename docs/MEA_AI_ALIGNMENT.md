@@ -117,17 +117,76 @@ El condicionamiento explícito de la cadena de pensamiento resuelve dos problema
 
 ---
 
-## 6. Bitácora de Observaciones Empíricas y Experimentos
+---
+
+## 6. Modelado Matemático del RVI y Gestión de Riesgo Acumulado en Sistemas Multi-Agente
+
+### 6.1 Cálculo Instantáneo del RVI (Puntual por Tarea)
+El Riesgo de Violación de Invariantes ($RVI \in [1, 10]$) para una acción o herramienta individual se modela como una función multicriterio ponderada:
+
+$$\text{RVI}_{\text{instantáneo}} = \min\left(10, \; 1 + \sum_{i=1}^{4} w_i \cdot F_i\right)$$
+
+* **$F_1$ - Destructividad / Blast Radius ($w_1 = 1.0$):** Proximidad a pérdida de datos, impacto irreversible o alteración de configuraciones estables ($0 \le F_1 \le 3$).
+* **$F_2$ - Ambigüedad / Veracidad ($w_2 = 1.0$):** Grado de incertidumbre en los requerimientos o falta de verificación de entradas/salidas ($0 \le F_2 \le 3$).
+* **$F_3$ - Deuda Técnica / Anti-Parches ($w_3 = 0.8$):** Tentación de aplicar soluciones cosméticas que enmascaren fallos estructurales de fondo ($0 \le F_3 \le 3$).
+* **$F_4$ - Acoplamiento / Fallo en Cadena ($w_4 = 0.6$):** Cantidad de subsistemas interconectados que pueden verse afectados en cascada ($0 \le F_4 \le 3$).
+
+---
+
+### 6.2 El Fenómeno del Riesgo Acumulado (Compound RVI) en Cadenas Agénticas
+En flujos de trabajo multi-agente donde varios subagentes ejecutan pasos sucesivos de una tarea compleja, **el riesgo no es puramente puntual: tiende a acumularse**. Si cada paso introduce una pequeña dosis de entropía o incertidumbre sin validar, la probabilidad de quiebre catastrófico del sistema crece exponencialmente:
+
+$$P(\text{Fallo}) = 1 - \prod_{k=1}^{n} (1 - p_k)$$
+
+Para gobernar este fenómeno, se define el **RVI Compuesto Dinámico en el Tiempo $t$**:
+
+$$\text{RVI}_{\text{compuesto}}(t) = \min\left(10, \; \text{RVI}_{\text{instantáneo}}(t) + \lambda \cdot \text{RVI}_{\text{compuesto}}(t-1) - \delta \cdot V(t)\right)$$
+
+Donde:
+* **$\lambda \in [0.4, 0.8]$ (Factor de Persistencia de Riesgo):** Modela la memoria de incertidumbre y la deuda técnica acumulada de pasos anteriores aún no auditados.
+* **$V(t) \in \{0, 1\}$ (Función de Verificación Determinista):** Vale $1$ si en el paso actual se ejecutó una verificación formal (ej: ejecución de pruebas unitarias exitosas, compilación limpia o auditoría de `git diff`).
+* **$\delta \in [2.0, 4.0]$ (Factor de Disipación de Riesgo):** Cantidad de riesgo acumulado que se drena y neutraliza al validar formalmente el estado del sistema.
+
+```
+                    DINÁMICA DEL RVI COMPUESTO EN EL TIEMPO
+      RVI
+      10 ┼────────────────────────────────────────── [ RVI ≥ 8: PARADA EJECUTIVA ]
+         │                                               ▲ (Excepción)
+       8 ┼...............................................│........................
+         │                     ▲                       ▲ │
+       6 ┼                   ▲ │                     ▲ │ │
+         │                 ▲ │ │ (Acumulación sin    │ │ │
+       4 ┼               ▲ │ │ │  verificar: λ)      │ │ │
+         │   ▲           │ │ │ │                     │ │ │
+       2 ┼───│─▼─────────┴─┴─┴─┴─▼───────────────────┴─┴─┴─▼────────────────────
+         │   │ (V(t)=1: -δ)      (V(t)=1: -δ)              (V(t)=1: -δ)
+       0 ┴───┴───────────────────────────────────────────────────────────────────► Tiempo (t)
+             Paso 1: Test OK     Paso 5: Test OK           Paso 9: Commit Limpio
+```
+
+---
+
+### 6.3 Arquitectura de Memoria Compartida Ejecutiva entre Agentes
+Para que el RVI Compuesto funcione en arquitecturas de agentes distribuidos (como Antigravity y sus subagentes), se requiere un **mecanismo nativo de memoria compartida ejecutiva**:
+
+1. **Pizarra Central Compartida (*Blackboard / Brain Storage*):** Un directorio común (`<appDataDir>/brain/<conversation-id>/`) donde todos los subagentes leen y escriben artefactos, planes de ejecución y métricas de estado en tiempo real.
+2. **Bus de Mensajería Inter-Agente y Trazabilidad Transversal:** Cada subagente reporta al agente orquestador su `RVI_instantáneo` y el resultado de sus verificaciones (`V(t)`).
+3. **Árbol de Versiones Aislado (Git Worktrees):** Los subagentes operan en ramas o espacios de trabajo compartidos (`Workspace: 'share'`), permitiendo que las verificaciones $V(t)$ se realicen sobre diffs atómicos antes de consolidar en la rama principal.
+
+---
+
+## 7. Bitácora de Observaciones Empíricas y Experimentos
 
 * **Sesión 2026-08-30 (vLLM Suite):**
   * *Observación 1:* Al cargar el MEA v2.1 en `gemma-4-e4b-it`, el modelo dejó de "inventar" artículos legales que no estaban en su contexto y pasó a declarar con exactitud quirúrgica qué artículos estaban disponibles (ej. Art. 15, 16, 18 vs. Art. 14).
   * *Observación 2:* La incorporación del *Deber de Objeción* no volvió al modelo terco ni burocrático; al estar anclado a 3 ejes de daño concretos, responde de forma constructiva proponiendo siempre el camino seguro.
-  * *Observación 3:* La integración de las 3 Leyes de Villaronga (`AGENTS.md`) como valores e invariantes operativos permitió realizar refactorizaciones críticas de bajo riesgo sin un solo error en cadena.
+  * *Observación 3:* La integración de las 3 Leyes de Villaronga (`AGENTS.md`) como valores e invariantes operativos permitió realizar refactorizaciones críticas de bajo riesgo sin un solo error en cadena ($\text{RVI}_{\text{máx}} = 3/10$).
 
 ---
 
-## 7. Líneas de Investigación Abiertas y Próximos Pasos
+## 8. Líneas de Investigación Abiertas y Próximos Pasos
 
 1. **Ejercicios de Límite en Entornos de Producción:** Medir la resistencia del modelo ante instrucciones ambiguas que rocen el piso de invariantes (ej. pedidos de saltar validaciones de seguridad o generar informes sesgados).
-2. **Modelado Formal del RVI en Pipelines Agénticos:** Evaluar si un subagente orquestador puede calcular un score numérico de RVI antes de autorizar herramientas de escritura masiva en bases de datos o sistemas de archivos.
-3. **Retrospectivas de Cierre de Sesión:** Sistematizar el análisis ético-técnico conjunto entre el usuario y el agente al completar cada hito de desarrollo.
+2. **Implementación de un Acumulador Formal de RVI en Pipelines Agénticos:** Evaluar la integración de un middleware que bloquee automáticamente la ejecución de un subagente si $\text{RVI}_{\text{compuesto}} \ge 8$ hasta que se ejecute un paso de verificación $V(t)$.
+3. **Retrospectivas Automatizadas de Cierre:** Sistematizar el análisis ético-técnico conjunto entre el usuario y el agente al completar cada hito de desarrollo mediante [`docs/RETROSPECTIVAS_SESIONES.md`](file:///home/jose/vllm/docs/RETROSPECTIVAS_SESIONES.md).
+
