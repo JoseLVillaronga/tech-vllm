@@ -2663,6 +2663,9 @@ gateway/
 | Componente / Servicio | Puerto / Endpoint | Verificación Realizada | Estado |
 | :--- | :--- | :--- | :---: |
 | **Inferencia Gemma 4** | `8000 -> 18000` | Chat streaming, prefijo `local/`, inyección de fecha/hora y `<turn\|>` stripping. | ✅ Operativo |
+| **Reconocimiento Voz (STT)** | `8001 -> 18001` | Transcripción en tiempo real con Whisper-large-v3-turbo y modo llamada Open-WebUI. | ✅ Operativo |
+| **Síntesis de Voz (TTS)** | `8002 -> 18002` | Generación de audio interactivo con F5-TTS y clonación de voz. | ✅ Operativo |
+| **Generador de Imágenes** | `8006 -> 18006` | Generación por difusión (SDXL-Turbo / Flux) en alta definición desde Open-WebUI. | ✅ Operativo |
 | **Razonamiento en 2 Fases** | System Prompt | Delimitación `<think>` (0 ms en saludos simples, razonamiento limpio en tareas complejas). | ✅ Operativo |
 | **Generador de PDF** | `8000 -> /api/tools/generate-pdf` | Fórmulas químicas limpias (`CO2, CH4, N2O`), sin emojis rotos y centrado multilínea. | ✅ Operativo |
 | **Búsqueda Web en Vivo** | `8000 -> /api/tools/web-search` | Inyección de noticias y hechos en tiempo real vía Ollama Cloud. | ✅ Operativo |
