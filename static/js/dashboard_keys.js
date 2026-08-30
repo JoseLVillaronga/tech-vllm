@@ -271,7 +271,8 @@
                         'tts': { name: 'TTS', color: 'bg-emerald-500/10 text-emerald-400' },
                         'diarization': { name: 'DIAR', color: 'bg-amber-500/10 text-amber-400' },
                         'embeddings': { name: 'EMBEDDINGS', color: 'bg-purple-500/10 text-purple-400' },
-                        'image': { name: 'IMAGEN', color: 'bg-pink-500/10 text-pink-400' }
+                        'image': { name: 'IMAGEN', color: 'bg-pink-500/10 text-pink-400' },
+                        'docling': { name: 'DOCLING / OCR', color: 'bg-teal-500/10 text-teal-400' }
                     };
                     (k.services || []).forEach(s => {
                         const info = svcMap[s] || { name: s, color: 'bg-slate-500/10 text-slate-400' };
@@ -494,6 +495,8 @@
             document.getElementById('edit-key-service-diarization').checked = services.includes('diarization');
             document.getElementById('edit-key-service-embeddings').checked = services.includes('embeddings');
             document.getElementById('edit-key-service-image').checked = services.includes('image');
+            const doclingEl = document.getElementById('edit-key-service-docling');
+            if (doclingEl) doclingEl.checked = services.includes('docling');
             
             // Consultar modelos existentes asignados a esta clave API
             let keyModelsByProv = {};
@@ -536,6 +539,8 @@
             if (document.getElementById('edit-key-service-diarization').checked) services.push('diarization');
             if (document.getElementById('edit-key-service-embeddings').checked) services.push('embeddings');
             if (document.getElementById('edit-key-service-image').checked) services.push('image');
+            const doclingElUpdate = document.getElementById('edit-key-service-docling');
+            if (doclingElUpdate && doclingElUpdate.checked) services.push('docling');
 
             const allowed_providers = [];
             const allowed_models = {};

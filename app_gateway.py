@@ -1601,6 +1601,8 @@ async def run_servers():
     image_port = int(os.getenv("IMAGE_BACKEND_PORT", "18004"))
     embeddings_port = int(os.getenv("EMBEDDINGS_BACKEND_PORT", "18005"))
     image_gateway_port = int(os.getenv("IMAGE_GATEWAY_PORT", "8006"))
+    docling_port = int(os.getenv("DOCLING_BACKEND_PORT", "5020"))
+    docling_gateway_port = int(os.getenv("DOCLING_GATEWAY_PORT", "8020"))
     
     whisper_fallback_port = int(os.getenv("STT_FALLBACK_PORT", "18011"))
     tts_fallback_port = int(os.getenv("TTS_FALLBACK_PORT", "18012"))
@@ -1611,6 +1613,7 @@ async def run_servers():
     diarization_app = create_proxy_app("diarization", diarization_port)
     embeddings_app = create_proxy_app("embeddings", embeddings_port)
     image_app = create_proxy_app("image", image_port)
+    docling_app = create_proxy_app("docling", docling_port)
     
     # Configurar uvicorn para cada puerto público
     config_gemma = uvicorn.Config(gemma_app, host="0.0.0.0", port=8000, log_level="warning")
@@ -1619,6 +1622,7 @@ async def run_servers():
     config_diarization = uvicorn.Config(diarization_app, host="0.0.0.0", port=8003, log_level="warning")
     config_embeddings = uvicorn.Config(embeddings_app, host="0.0.0.0", port=8005, log_level="warning")
     config_image = uvicorn.Config(image_app, host="0.0.0.0", port=image_gateway_port, log_level="warning")
+    config_docling = uvicorn.Config(docling_app, host="0.0.0.0", port=docling_gateway_port, log_level="warning")
     
     server_gemma = uvicorn.Server(config_gemma)
     server_whisper = uvicorn.Server(config_whisper)
@@ -1626,6 +1630,7 @@ async def run_servers():
     server_diarization = uvicorn.Server(config_diarization)
     server_embeddings = uvicorn.Server(config_embeddings)
     server_image = uvicorn.Server(config_image)
+    server_docling = uvicorn.Server(config_docling)
     
     print("=" * 60)
     print("🛡️ Iniciando Gateway de Autenticación y Proxy...")
@@ -1635,6 +1640,7 @@ async def run_servers():
     print(f"🟢 Diarización Proxy: 8003 -> {diarization_port}")
     print(f"🟢 Embeddings Proxy:  8005 -> {embeddings_port}")
     print(f"🟢 Imagen Proxy:      {image_gateway_port} -> {image_port}")
+    print(f"🟢 Docling Proxy:     {docling_gateway_port} -> {docling_port}")
     print("=" * 60)
     
     try:
@@ -1646,7 +1652,8 @@ async def run_servers():
             server_tts.serve(),
             server_diarization.serve(),
             server_embeddings.serve(),
-            server_image.serve()
+            server_image.serve(),
+            server_docling.serve()
         )
     finally:
         await close_http_client()

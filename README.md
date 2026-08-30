@@ -2576,6 +2576,21 @@ class Tools:
 * **Conversación y Consulta Focalizada en Documento Adjunto (100% de Contexto con `Gemma 4`):**
 ![Conversación con Documento Completo en Open-WebUI](screenshots/openwebui_full_context_doc_chat_success.png)
 
+#### D. Exposición Segura del Servicio Docling: Puerto 5020 (Puro) vs Puerto 8020 (Gateway):
+
+| Puerto | Tipo de Acceso | Autenticación | Destinado a |
+| :--- | :--- | :--- | :--- |
+| **`5020`** | **Interno Puro** | Sin clave (Acceso directo) | Microservicios internos en la misma red LAN (ej. `TECCAM_PDF`, scripts de backend locales). |
+| **`8020`** | **Gateway Seguro** | **`Bearer <API_KEY>` Obligatorio** | Clientes externos, Open-WebUI y publicación segura en Internet mediante reverse proxy (Caddy/Nginx). |
+
+* **Ejemplo de configuración en Caddyfile para publicar Docling de forma segura:**
+```caddyfile
+docling.midominio.com {
+    reverse_proxy 127.0.0.1:8020
+}
+```
+* Todas las peticiones a `docling.midominio.com` requerirán una clave API autorizada con el permiso `docling` habilitado en el Dashboard, protegidas automáticamente por el motor de intrusión Fail2ban y las listas de control de IP de la suite.
+
 ---
 
 ### ⚙️ Administración del Servicio de Gateway (Systemd)

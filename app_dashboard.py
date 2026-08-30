@@ -85,9 +85,9 @@ SERVICE_PORTS = {
     "diarization": 8003,
     "embeddings": 8005,
     "image": 8006,
-    "rag_sync": "08:00/20:00",
-    "gateway": "8000-8006",
-    "docling": 5020
+    "rag_sync": "00:00:00",
+    "gateway": "8000-8020",
+    "docling": "5020 / 8020"
 }
 
 # Puertos internos de los motores reales detrás del Gateway
@@ -99,7 +99,8 @@ BACKEND_PORTS = {
     "fallback_tts": int(os.getenv("TTS_FALLBACK_PORT", "18012")),
     "diarization": int(os.getenv("DIARIZATION_BACKEND_PORT", "18003")),
     "image": int(os.getenv("IMAGE_BACKEND_PORT", "18004")),
-    "embeddings": int(os.getenv("EMBEDDINGS_BACKEND_PORT", "18005"))
+    "embeddings": int(os.getenv("EMBEDDINGS_BACKEND_PORT", "18005")),
+    "docling": int(os.getenv("DOCLING_BACKEND_PORT", "5020"))
 }
 
 def get_gpu_info():
