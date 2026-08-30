@@ -2681,10 +2681,12 @@ gateway/
    * Si el modelo omite el argumento opcional, Python le pasa el objeto `FieldInfo`, provocando un fallo de serialización JSON (`Object of type FieldInfo is not JSON serializable`).
    * **Solución:** Usar argumentos estándar (`arg: Optional[str] = None`) y documentar los tipos mediante docstrings estándar, agregando sanitización defensiva en el cuerpo del método.
 
-3. **Presupuesto de Salida (`max_tokens`) al Encadenar Documentos con Generación de PDF:**
-   * Al pedirle al modelo que recupere un documento completo desde RAG y lo convierta a PDF (`generate_pdf_document`), el LLM debe generar el texto completo dentro de un argumento JSON (`markdown_content`).
-   * Si el límite `max_tokens` del modelo en Open-WebUI está fijado en el valor por defecto (`2048`), la generación del JSON se truncará al alcanzar los 2.014 tokens antes de poder cerrar las comillas y la llave (`Unterminated string starting at line 1 column...`).
-   * **Solución:** Configurar `max_tokens` en **`16384`** o **`65536`** en los controles del chat o en los parámetros avanzados del modelo en Open-WebUI. Esto permite compilar documentos de múltiples páginas sin cortes.
+3. **Distinción Crítica en Open-WebUI: Tamaño de Contexto (Entrada) vs. `max_tokens` en Controles (Salida):**
+   * En Open-WebUI existen dos parámetros distintos que no deben confundirse:
+     * **Tamaño de Contexto / Context Length (Configuración General del Modelo):** Define cuántos tokens de historial, prompts y documentos RAG puede **leer / recibir** el modelo como entrada (*Input Context Window*, ej. 65.536 tokens).
+     * **Tokens Máximos / `max_tokens` (Menú de Chat ➔ Controles):** Define cuántos tokens como máximo puede **escribir / emitir** el modelo en una única respuesta o llamada a herramienta (*Output / Generation Tokens*).
+   * Al pedirle al modelo que recupere un documento completo desde RAG y lo convierta a PDF (`generate_pdf_document`), el LLM debe emitir el texto íntegro dentro del argumento JSON `markdown_content`. Aunque el modelo tenga 60.000 tokens de contexto de entrada, si en el panel **Controles del Chat** el deslizador `max_tokens` de salida permanece en el valor por defecto (`2048`), la generación del JSON se truncará al alcanzar los 2.014 tokens antes de cerrar las llaves (`Unterminated string starting at line 1 column...`).
+   * **Solución:** Elevar el deslizador **`max_tokens`** en **Controles del Chat** (o fijarlo en los parámetros avanzados del modelo) a **`16384`** o **`65536`**. Esto destraba la ventana de generación de salida y permite compilar documentos de múltiples páginas sin cortes.
 
 ---
 
