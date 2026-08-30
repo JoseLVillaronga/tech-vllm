@@ -445,6 +445,21 @@ A partir de la evaluación empírica de consultas reales sobre procedimientos in
 
 ---
 
+### 8.9. Arquitectura Dual de Procesamiento de Documentos: Contexto Completo vs RAG Masivo (IMPLEMENTADO ✅)
+* **Estado:** Implementado y operativo en producción (agosto 2026).
+* **Definición de Límites y Flujos Operativos:**
+  1. **Nivel 1: Documentos Rápidos y Adjuntos del Chat (1 a ~30 páginas / $\le 20.000$ tokens):**
+     * **Mecánica:** Arrastre directo en la interfaz de Open-WebUI con `Modo Contexto Completo: ON` y extracción vía `docling-serve` (`:5020`).
+     * **Rendimiento:** Latencia de 2 a 3 segundos, inyección 100% íntegra del Markdown con tablas y sin pérdidas de fragmentación por Top-K.
+     * **Límite de Seguridad:** Documentos que superen ~30-40 páginas disparan el límite de protección de ventana de contexto en Open-WebUI.
+  2. **Nivel 2: Documentos Extensos, Libros y Normativas Masivas (> 30 páginas, hasta 500+ páginas):**
+     * **Mecánica:** Ingesta centralizada en la biblioteca **TECCAM PDF (`:5022`) ➔ Sincronización LanceDB**.
+     * **Rendimiento:** Indexación vectorial 1024D + BM25 con chunking de oraciones y solapamiento de 180c.
+     * **Consulta:** Acceso mediante la Tool `Búsqueda RAG Teccam (LanceDB)` y lectura masiva paginada `leer_documento_completo` con presupuesto dinámico de 60.000 tokens (~50% de la ventana de 128K).
+* **Justificación de Diseño:** Ofrece una experiencia de usuario ágil para el trabajo cotidiano con contratos y reportes cortos en el chat, reservando la potencia del motor RAG vectorial para la biblioteca y obras de gran escala.
+
+---
+
 ## 9. Optimización de Inferencia y Atención: FlashInfer Condicional vs FlashAttention
 
 Este módulo define la estrategia técnica para maximizar los tokens por segundo y reducir el *Time To First Token (TTFT)* en la GPU **NVIDIA GeForce RTX 3090 (Ampere CC 8.6)**, combinando selección automática de kernels y control manual mediante variables de entorno.

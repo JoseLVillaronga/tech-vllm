@@ -2434,12 +2434,45 @@ class Tools:
 
 ---
 
-### 📑 15. Herramienta de Lectura y Análisis de Documentos Adjuntos (*Document Reader Tool - Docling*)
+### 📑 15. Estrategia de Procesamiento y Análisis de Documentos (Dos Niveles)
 
-Para permitir que el LLM lea, analice y resuma cualquier archivo adjunto o temporal que el usuario arrastre al chat (PDFs, documentos DOCX, hojas de cálculo, textos escaneados), la suite desacopla la extracción a través del endpoint `POST /api/tools/read-file` conectado directamente a **`docling-serve`** en el puerto `:5020`.
+La suite implementa una **arquitectura híbrida de dos niveles** para la lectura y análisis de documentos, delimitando con precisión los flujos según el tamaño del archivo para garantizar máxima fidelidad y eficiencia operativa:
 
-#### A. Código Completo de la Herramienta para Open-WebUI:
-Copia y pega este script en **Espacio de Trabajo ➔ Herramientas ➔ + (Crear Herramienta)**:
+```
++---------------------------------------------------------------------------------------------------+
+|              ARQUITECTURA DE PROCESAMIENTO DE DOCUMENTOS (DOS NIVELES)                            |
++---------------------------------------------------------------------------------------------------+
+|                                                                                                   |
+|  NIVEL 1: DOCUMENTOS RÁPIDOS Y ADJUNTOS DEL CHAT (1 a ~30 Páginas | <= 20.000 tokens):           |
+|     * Flujo: Arrastrar el archivo directamente a la ventana de chat en Open-WebUI.               |
+|     * Extracción: 'docling-serve' (:5020) extrae el Markdown estructurado (con tablas y OCR).    |
+|     * Inyección: 'Modo Contexto Completo' inyecta el 100% del documento en la ventana de 128K.   |
+|     * Latencia: 2 a 3 segundos. Cero fragmentación por Top-K.                                    |
+|     * Límite Operativo: Archivos > ~30 páginas activan el límite de protección de Open-WebUI.     |
+|                                                                                                   |
+|  NIVEL 2: LIBROS MASIVOS, NORMAS Y BIBLIOTECAS (> 30 Páginas | Libros de 100 a 500+ Páginas):     |
+|     * Flujo: Ingesta permanente en la biblioteca TECCAM PDF (:5022) -> LanceDB.                   |
+|     * Vectorización: Microservicio de Embeddings (:8005) con 1024D + BM25 y overlap de 180c.     |
+|     * Consulta: El LLM invoca la Tool 'Búsqueda RAG Teccam' (presupuesto dinámico de 60K tokens). |
+|     * Paginación: Lectura por bloques masivos ('leer_documento_completo' Parte X de Y).           |
++---------------------------------------------------------------------------------------------------+
+```
+
+#### A. Configuración Requerida en Open-WebUI para el Nivel 1 (Modo Contexto Completo):
+Para habilitar la inyección íntegra de documentos adjuntos sin recortes de Top-K:
+
+1. Ve a **Panel de Control ➔ Ajustes ➔ Documentos** en Open-WebUI:
+   * **Motor del Modelo de Incrustación:** `OpenAI`
+   * **URL Base API:** `http://192.168.1.47:8005/v1` (puerto del microservicio de embeddings).
+   * **Modelo de Incrustación:** `Qwen/Qwen3-Embedding-0.6B`
+   * **Modo Contexto Completo:** **ACTIVADO (ON)**.
+2. En la sección de extracción de documentos:
+   * Configura la URL de Docling Server en `http://192.168.1.47:5020`.
+
+![Configuración de Documentos y Modo Contexto Completo en Open-WebUI](screenshots/openwebui_settings_full_context_mode.png)
+
+#### B. Tool Complementaria para Análisis de Archivos en el Gateway (`/api/tools/read-file`):
+Si se desea que el LLM o clientes externos procesen archivos por ruta del servidor o API:
 
 ```python
 """
@@ -2492,27 +2525,19 @@ class Tools:
         if not clean_target:
             return "Error: Debes indicar el nombre o ruta del archivo a analizar."
 
-        # 1. Resolver la ubicación del archivo en el sistema
         resolved_path = None
-        
-        # Si es una ruta absoluta existente
         if os.path.isabs(clean_target) and os.path.exists(clean_target):
             resolved_path = clean_target
         else:
-            # Buscar en el directorio de uploads de Open-WebUI
             base_name = os.path.basename(clean_target)
             search_dir = self.valves.UPLOADS_DIR
-            
             if os.path.exists(search_dir):
-                # Coincidencia por patrón *nombre_archivo
                 pattern = os.path.join(search_dir, f"*{base_name}*")
                 matches = glob.glob(pattern)
                 if matches:
-                    # Ordenar por fecha de modificación más reciente
                     matches.sort(key=os.path.getmtime, reverse=True)
                     resolved_path = matches[0]
                 else:
-                    # Búsqueda insensible a mayúsculas
                     all_files = glob.glob(os.path.join(search_dir, "*"))
                     target_lower = base_name.lower()
                     for f in sorted(all_files, key=os.path.getmtime, reverse=True):
@@ -2521,24 +2546,16 @@ class Tools:
                             break
 
         if not resolved_path or not os.path.exists(resolved_path):
-            return f"No se pudo localizar el archivo '{clean_target}' en el almacén de adjuntos de Open-WebUI ({self.valves.UPLOADS_DIR}). Por favor verifica que el archivo haya sido cargado correctamente."
+            return f"No se pudo localizar el archivo '{clean_target}' en el almacén de adjuntos de Open-WebUI ({self.valves.UPLOADS_DIR})."
 
-        # 2. Enviar el archivo al Gateway para extracción mediante Docling
         url = f"{self.valves.GATEWAY_URL.rstrip('/')}/api/tools/read-file"
-        headers = {
-            "Authorization": f"Bearer {self.valves.API_KEY}"
-        }
+        headers = {"Authorization": f"Bearer {self.valves.API_KEY}"}
 
         try:
             filename = os.path.basename(resolved_path)
             with open(resolved_path, "rb") as f_data:
-                files_payload = {
-                    "file": (filename, f_data, "application/octet-stream")
-                }
+                files_payload = {"file": (filename, f_data, "application/octet-stream")}
                 response = requests.post(url, files=files_payload, headers=headers, timeout=45.0)
-
-            if response.status_code == 503:
-                return "Aviso: El servicio de Extracción de Documentos está temporalmente desactivado globalmente."
 
             if response.status_code != 200:
                 return f"Error en la extracción de documento (HTTP {response.status_code}): {response.text}"
@@ -2549,24 +2566,15 @@ class Tools:
 
             markdown_text = data.get("markdown_content") or data.get("content") or ""
             chars = data.get("length_chars", len(markdown_text))
-
-            if not markdown_text:
-                return f"El documento '{filename}' fue procesado pero no contiene texto legible."
-
             return f"--- CONTENIDO EXTRAÍDO DEL DOCUMENTO '{filename}' ({chars} caracteres) ---\n\n{markdown_text}\n\n--- FIN DEL DOCUMENTO ADJUNTO ---"
 
         except Exception as e:
             return f"Error de conexión con el Gateway de Extracción ({url}): {str(e)}"
 ```
 
-#### B. Configuración de Credenciales (*Valves*):
-1. Guarda la herramienta con el nombre **`Lector y Analizador de Documentos`**.
-2. Haz clic en el engranaje **⚙️ (Valves)** y configura tu `API_KEY` (tu clave autorizada) y `GATEWAY_URL` en `http://192.168.1.47:8000`.
-3. Asigna la herramienta a tu modelo personalizado (ej. `local/gemma-4-teccam`).
-
-#### C. Captura de Verificación en Producción:
-* **Lectura y Análisis Estructurado de Archivo PDF Adjunto en el Chat con `Gemma 4` (vía Docling):**
-![Lectura de Documentos Adjuntos en Open-WebUI](screenshots/openwebui_custom_doc_reader_success.png)
+#### C. Capturas de Verificación en Producción:
+* **Conversación y Consulta Focalizada en Documento Adjunto (100% de Contexto con `Gemma 4`):**
+![Conversación con Documento Completo en Open-WebUI](screenshots/openwebui_full_context_doc_chat_success.png)
 
 ---
 
