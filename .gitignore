@@ -26,6 +26,7 @@ torch_compile_cache/
 *.wav
 *.flac
 *.mp3
+!tests/samples/*.wav
 
 # Bases de datos y almacenamiento vectorial local
 data/
