@@ -2434,6 +2434,138 @@ class Tools:
 
 ---
 
+### 📑 15. Herramienta de Lectura y Análisis de Documentos Adjuntos (*Document Reader Tool - Docling*)
+
+Para permitir que el LLM lea, analice y resuma cualquier archivo adjunto o temporal que el usuario arrastre al chat (PDFs, documentos DOCX, hojas de cálculo, textos escaneados), la suite desacopla la extracción a través del endpoint `POST /api/tools/read-file` conectado directamente a **`docling-serve`** en el puerto `:5020`.
+
+#### A. Código Completo de la Herramienta para Open-WebUI:
+Copia y pega este script en **Espacio de Trabajo ➔ Herramientas ➔ + (Crear Herramienta)**:
+
+```python
+"""
+title: Lector y Analizador de Documentos (Docling + vLLM Gateway)
+author: Jose Luis Villaronga
+author_url: https://tech-support.com.ar
+version: 1.0.0
+license: MIT
+description: Extrae y analiza en tiempo real el contenido completo de archivos y documentos adjuntos en el chat (PDF, DOCX, etc.) convirtiéndolos a Markdown estructurado con tablas mediante Docling Server.
+requirements: requests, pydantic
+"""
+
+import os
+import glob
+import requests
+from typing import Optional
+from pydantic import BaseModel, Field
+
+
+class Tools:
+    class Valves(BaseModel):
+        GATEWAY_URL: str = Field(
+            default="http://192.168.1.47:8000",
+            description="URL base del API Gateway de la suite vLLM (usar 192.168.1.47 si Open-WebUI corre en Docker)."
+        )
+        API_KEY: str = Field(
+            default="TU_CLAVE_API_VLLM_AQUI",
+            description="Clave API autorizada generada en el Dashboard para consultar los servicios de la suite."
+        )
+        UPLOADS_DIR: str = Field(
+            default="/app/backend/data/uploads",
+            description="Directorio interno de archivos subidos en Open-WebUI."
+        )
+
+    def __init__(self):
+        self.valves = self.Valves()
+
+    def analizar_documento_adjunto(
+        self,
+        nombre_o_ruta_archivo: str
+    ) -> str:
+        """
+        Extrae y lee el texto completo, tablas y estructura de un archivo o documento (PDF, DOCX, TXT, etc.) subido o adjuntado en la conversación.
+        Úsala SIEMPRE que el usuario adjunte un archivo en el chat o te pida leer, resumir, analizar o hacer preguntas sobre un documento que te acaba de pasar.
+
+        :param nombre_o_ruta_archivo: Nombre del archivo adjunto (ej: 'Resumen Modelo Etico.pdf') o su ruta completa.
+        :return: Contenido íntegro extraído en formato Markdown limpio y estructurado.
+        """
+        clean_target = str(nombre_o_ruta_archivo).strip() if nombre_o_ruta_archivo and not str(type(nombre_o_ruta_archivo)).endswith("FieldInfo'>") else ""
+        if not clean_target:
+            return "Error: Debes indicar el nombre o ruta del archivo a analizar."
+
+        # 1. Resolver la ubicación del archivo en el sistema
+        resolved_path = None
+        
+        # Si es una ruta absoluta existente
+        if os.path.isabs(clean_target) and os.path.exists(clean_target):
+            resolved_path = clean_target
+        else:
+            # Buscar en el directorio de uploads de Open-WebUI
+            base_name = os.path.basename(clean_target)
+            search_dir = self.valves.UPLOADS_DIR
+            
+            if os.path.exists(search_dir):
+                # Coincidencia por patrón *nombre_archivo
+                pattern = os.path.join(search_dir, f"*{base_name}*")
+                matches = glob.glob(pattern)
+                if matches:
+                    # Ordenar por fecha de modificación más reciente
+                    matches.sort(key=os.path.getmtime, reverse=True)
+                    resolved_path = matches[0]
+                else:
+                    # Búsqueda insensible a mayúsculas
+                    all_files = glob.glob(os.path.join(search_dir, "*"))
+                    target_lower = base_name.lower()
+                    for f in sorted(all_files, key=os.path.getmtime, reverse=True):
+                        if target_lower in os.path.basename(f).lower():
+                            resolved_path = f
+                            break
+
+        if not resolved_path or not os.path.exists(resolved_path):
+            return f"No se pudo localizar el archivo '{clean_target}' en el almacén de adjuntos de Open-WebUI ({self.valves.UPLOADS_DIR}). Por favor verifica que el archivo haya sido cargado correctamente."
+
+        # 2. Enviar el archivo al Gateway para extracción mediante Docling
+        url = f"{self.valves.GATEWAY_URL.rstrip('/')}/api/tools/read-file"
+        headers = {
+            "Authorization": f"Bearer {self.valves.API_KEY}"
+        }
+
+        try:
+            filename = os.path.basename(resolved_path)
+            with open(resolved_path, "rb") as f_data:
+                files_payload = {
+                    "file": (filename, f_data, "application/octet-stream")
+                }
+                response = requests.post(url, files=files_payload, headers=headers, timeout=45.0)
+
+            if response.status_code == 503:
+                return "Aviso: El servicio de Extracción de Documentos está temporalmente desactivado globalmente."
+
+            if response.status_code != 200:
+                return f"Error en la extracción de documento (HTTP {response.status_code}): {response.text}"
+
+            data = response.json()
+            if not data.get("success", False):
+                return f"Aviso: {data.get('error', 'No se pudo procesar el documento.')}"
+
+            markdown_text = data.get("markdown_content") or data.get("content") or ""
+            chars = data.get("length_chars", len(markdown_text))
+
+            if not markdown_text:
+                return f"El documento '{filename}' fue procesado pero no contiene texto legible."
+
+            return f"--- CONTENIDO EXTRAÍDO DEL DOCUMENTO '{filename}' ({chars} caracteres) ---\n\n{markdown_text}\n\n--- FIN DEL DOCUMENTO ADJUNTO ---"
+
+        except Exception as e:
+            return f"Error de conexión con el Gateway de Extracción ({url}): {str(e)}"
+```
+
+#### B. Configuración de Credenciales (*Valves*):
+1. Guarda la herramienta con el nombre **`Lector y Analizador de Documentos`**.
+2. Haz clic en el engranaje **⚙️ (Valves)** y configura tu `API_KEY` (tu clave autorizada) y `GATEWAY_URL` en `http://192.168.1.47:8000`.
+3. Asigna la herramienta a tu modelo personalizado (ej. `local/gemma-4-teccam`).
+
+---
+
 ### ⚙️ Administración del Servicio de Gateway (Systemd)
 
 * **Instalar/Registrar el Servicio:**
