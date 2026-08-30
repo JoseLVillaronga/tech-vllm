@@ -15,6 +15,8 @@ from f5_tts.api import F5TTS
 # Cargar variables de entorno
 load_dotenv()
 
+from config import API_KEY
+
 # Puerto predeterminado: 18002 (interno detrás de gateway)
 PORT = int(os.getenv("TTS_BACKEND_PORT", "18002"))
 
@@ -192,7 +194,7 @@ security = HTTPBearer()
 
 def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
     token = credentials.credentials
-    expected_token = os.getenv("API_KEY", "tu_clave_api_aqui")
+    expected_token = API_KEY
     if token != expected_token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -249,15 +251,12 @@ async def text_to_speech(request: SpeechRequest, token: str = Depends(verify_tok
     
     try:
         from pymongo import MongoClient
-        mongo_user = os.getenv("MONGO_USER", "admin")
-        mongo_pass = os.getenv("MONGO_PASS", "joseMDB365$")
-        mongo_host = os.getenv("MONGO_HOST", "127.0.0.1")
-        mongo_db = os.getenv("MONGO_DB", "vllm")
-        mongo_uri = f"mongodb://{mongo_user}:{mongo_pass}@{mongo_host}:27017/{mongo_db}?authSource=admin"
+        from config import get_mongo_uri, MONGO_DB
+        mongo_uri = get_mongo_uri()
         
         # Conexión rápida con timeout de 1.5s
         client = MongoClient(mongo_uri, serverSelectionTimeoutMS=1500)
-        db = client[mongo_db]
+        db = client[MONGO_DB]
         active_voice = db.reference_voices.find_one({"is_active": True})
         if active_voice and active_voice.get("audio_path") and os.path.exists(active_voice["audio_path"]):
             ref_file = active_voice["audio_path"]

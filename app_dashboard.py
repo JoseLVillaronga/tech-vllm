@@ -20,13 +20,9 @@ load_dotenv()
 
 # Helper de conexión a MongoDB
 def get_db():
-    user = os.getenv("MONGO_USER", "admin")
-    password = os.getenv("MONGO_PASS", "joseMDB365$")
-    host = os.getenv("MONGO_HOST", "127.0.0.1")
-    db_name = os.getenv("MONGO_DB", "vllm")
-    uri = f"mongodb://{user}:{password}@{host}:27017/{db_name}?authSource=admin"
-    client = MongoClient(uri, serverSelectionTimeoutMS=2000)
-    return client[db_name]
+    from config import get_mongo_uri, MONGO_DB
+    client = MongoClient(get_mongo_uri(), serverSelectionTimeoutMS=2000)
+    return client[MONGO_DB]
 
 def slugify_provider_name(name: str) -> str:
     slug = re.sub(r'[^a-zA-Z0-9_\-]', '_', name.strip().lower()).strip('_')
@@ -50,7 +46,7 @@ def resample_audio_to_24k_mono(input_path, output_path):
         return False
 
 PORT = int(os.getenv("DASHBOARD_PORT", "8004"))
-API_KEY = os.getenv("API_KEY", "tu_clave_api_aqui")
+from config import API_KEY
 
 app = Flask(
     __name__,
@@ -1456,7 +1452,7 @@ def api_save_config():
         # Recargar variables de entorno locales de la app Flask
         load_dotenv(override=True)
         global API_KEY
-        API_KEY = os.getenv("API_KEY", "tu_clave_api_aqui")
+        API_KEY = os.getenv("API_KEY", "")
         
         return jsonify({"success": True})
     except Exception as e:

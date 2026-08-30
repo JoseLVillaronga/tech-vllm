@@ -36,7 +36,7 @@ def slugify_provider_name(name: str) -> str:
     return slug or "cloud"
 
 # Clave API Maestra
-MASTER_KEY = os.getenv("API_KEY", "token-abc123")
+from config import API_KEY as MASTER_KEY, get_mongo_uri, MONGO_DB
 
 # Cliente HTTP compartido globalmente para evitar fugas de sockets y memoria
 _http_client = None
@@ -131,13 +131,8 @@ async def perform_ollama_web_search(query: str, max_results: int = 3) -> list:
 
 # Helper de conexión a MongoDB (timeout de 1s para evitar esperas infinitas)
 def get_db():
-    user = os.getenv("MONGO_USER", "admin")
-    password = os.getenv("MONGO_PASS", "joseMDB365$")
-    host = os.getenv("MONGO_HOST", "127.0.0.1")
-    db_name = os.getenv("MONGO_DB", "vllm")
-    uri = f"mongodb://{user}:{password}@{host}:27017/{db_name}?authSource=admin"
-    client = MongoClient(uri, serverSelectionTimeoutMS=1000)
-    return client[db_name]
+    client = MongoClient(get_mongo_uri(), serverSelectionTimeoutMS=1000)
+    return client[MONGO_DB]
 
 # Helper para obtener el documento de clave API y verificar reinicios periódicos de cupo
 def get_key_doc(token: str):

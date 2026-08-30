@@ -17,7 +17,7 @@ load_dotenv()
 PORT = int(os.getenv("STT_FALLBACK_PORT", "18011"))
 MODEL_NAME = os.getenv("STT_FALLBACK_MODEL", "base")
 CPU_THREADS = int(os.getenv("STT_FALLBACK_THREADS", "4"))
-API_KEY = os.getenv("API_KEY", "tu_clave_api_aqui")
+from config import API_KEY
 
 print("=" * 60)
 print(f"🎙️ Inicializando Fallback STT (faster-whisper en CPU INT8)...")
@@ -56,7 +56,7 @@ app.add_middleware(
 security = HTTPBearer(auto_error=False)
 
 def verify_token(credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)):
-    expected_token = os.getenv("API_KEY", "tu_clave_api_aqui")
+    expected_token = API_KEY
     if not credentials or credentials.credentials != expected_token:
         # Permitir si la clave configurada es la de fallback o si no se requiere estricto
         pass

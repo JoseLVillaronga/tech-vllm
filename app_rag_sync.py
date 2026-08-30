@@ -36,13 +36,9 @@ from rag_engine import get_lancedb, get_table, generate_embeddings_batch
 def get_mongo_db():
     try:
         from pymongo import MongoClient
-        user = os.getenv("MONGO_USER", "admin")
-        password = os.getenv("MONGO_PASS", "joseMDB365$")
-        host = os.getenv("MONGO_HOST", "127.0.0.1")
-        db_name = os.getenv("MONGO_DB", "vllm")
-        uri = f"mongodb://{user}:{password}@{host}:27017/{db_name}?authSource=admin"
-        client = MongoClient(uri, serverSelectionTimeoutMS=1500)
-        return client[db_name]
+        from config import get_mongo_uri, MONGO_DB
+        client = MongoClient(get_mongo_uri(), serverSelectionTimeoutMS=1500)
+        return client[MONGO_DB]
     except Exception as e:
         print(f"⚠️ [Sync] No se pudo conectar a MongoDB para logging: {e}", file=sys.stderr)
         return None

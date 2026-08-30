@@ -6,8 +6,10 @@ from dotenv import load_dotenv
 # Cargar variables de entorno del proyecto
 load_dotenv()
 
+from config import API_KEY
+
 def main():
-    api_key = os.getenv("API_KEY", "token-abc123")
+    api_key = API_KEY
     host = "127.0.0.1" # Forzar localhost por seguridad (detrás de gateway)
     port = os.getenv("WHISPER_BACKEND_PORT", "18001")
     model = "openai/whisper-large-v3-turbo"

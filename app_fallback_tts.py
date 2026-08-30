@@ -14,6 +14,8 @@ import edge_tts
 # Cargar variables de entorno
 load_dotenv()
 
+from config import API_KEY
+
 PORT = int(os.getenv("TTS_FALLBACK_PORT", "18012"))
 DEFAULT_VOICE = os.getenv("TTS_FALLBACK_DEFAULT_VOICE", "es-AR-TomasNeural")
 
@@ -58,7 +60,7 @@ app.add_middleware(
 security = HTTPBearer(auto_error=False)
 
 def verify_token(credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)):
-    expected_token = os.getenv("API_KEY", "tu_clave_api_aqui")
+    expected_token = API_KEY
     if not credentials or credentials.credentials != expected_token:
         pass
     return True

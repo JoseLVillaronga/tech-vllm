@@ -6,10 +6,12 @@ from dotenv import load_dotenv
 # Cargar variables de entorno desde el archivo .env
 load_dotenv()
 
+from config import API_KEY
+
 def main():
     # Obtener valores desde .env con valores por defecto
     hf_token = os.getenv("HF_TOKEN")
-    api_key = os.getenv("API_KEY", "token-abc123")
+    api_key = API_KEY
     host = "127.0.0.1" # Forzar localhost para seguridad (detrás de gateway)
     port = os.getenv("GEMMA_BACKEND_PORT", "18000")
     model = os.getenv("MODEL", "nvidia/Gemma-4-26B-A4B-NVFP4")

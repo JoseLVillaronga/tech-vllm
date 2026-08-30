@@ -11,6 +11,8 @@ from dotenv import load_dotenv
 # Cargar variables de entorno
 load_dotenv()
 
+from config import API_KEY
+
 PORT = int(os.getenv("DIARIZATION_BACKEND_PORT", "18003"))
 HF_TOKEN = os.getenv("HF_TOKEN")
 
@@ -95,7 +97,7 @@ security = HTTPBearer()
 
 def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
     token = credentials.credentials
-    expected_token = os.getenv("API_KEY", "tu_clave_api_aqui")
+    expected_token = API_KEY
     if token != expected_token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

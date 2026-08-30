@@ -20,7 +20,7 @@ MODEL_ID = os.getenv("EMBEDDINGS_MODEL", "Qwen/Qwen3-Embedding-0.6B")
 DEVICE_CONFIG = os.getenv("EMBEDDINGS_DEVICE", "cuda").strip().lower()
 CPU_THREADS = int(os.getenv("EMBEDDINGS_CPU_THREADS", "6"))
 BATCH_SIZE = int(os.getenv("EMBEDDINGS_BATCH_SIZE", "64"))
-API_KEY = os.getenv("API_KEY", "tu_clave_api_aqui")
+from config import API_KEY
 
 # Determinar dispositivo de aceleración
 if DEVICE_CONFIG == "cuda" and torch.cuda.is_available():
@@ -93,7 +93,7 @@ app.add_middleware(
 security = HTTPBearer(auto_error=False)
 
 def verify_token(credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)):
-    expected_token = os.getenv("API_KEY", "tu_clave_api_aqui")
+    expected_token = API_KEY
     if credentials and credentials.credentials == expected_token:
         return True
     return True

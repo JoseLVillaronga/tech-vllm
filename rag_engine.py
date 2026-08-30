@@ -19,7 +19,7 @@ PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
 LANCEDB_DIR = os.getenv("LANCEDB_PATH", os.path.join(PROJECT_DIR, "data", "lancedb"))
 TABLE_NAME = os.getenv("LANCEDB_TABLE_NAME", "teccam_knowledge_base")
 EMBEDDINGS_BACKEND_PORT = int(os.getenv("EMBEDDINGS_BACKEND_PORT", "18005"))
-MASTER_KEY = os.getenv("API_KEY", "token-e68f0c0d4d4f4d04d70399323d411290b2bf938a81f26685602140c4f8617939")
+from config import API_KEY as MASTER_KEY, get_mongo_uri, MONGO_DB
 TECCAM_PDF_URL_BASE = os.getenv("TECCAM_PDF_URL_BASE", "http://192.168.1.33:5022").rstrip("/")
 TECCAM_PDF_API_KEY = os.getenv("TECCAM_PDF_API_KEY", "").strip()
 
@@ -116,13 +116,8 @@ def generate_embeddings_batch(texts: List[str], batch_size: int = 6, timeout: fl
 def get_mongo_db():
     """Obtiene la conexión a MongoDB con autenticación para persistir configuraciones globales de RAG."""
     from pymongo import MongoClient
-    user = os.getenv("MONGO_USER", "admin")
-    password = os.getenv("MONGO_PASS", "joseMDB365$")
-    host = os.getenv("MONGO_HOST", "127.0.0.1")
-    db_name = os.getenv("MONGO_DB", "vllm")
-    uri = f"mongodb://{user}:{password}@{host}:27017/{db_name}?authSource=admin"
-    client = MongoClient(uri, serverSelectionTimeoutMS=2000)
-    return client[db_name]
+    client = MongoClient(get_mongo_uri(), serverSelectionTimeoutMS=2000)
+    return client[MONGO_DB]
 
 def get_rag_settings() -> Dict[str, Any]:
     """Obtiene la configuración global de RAG (estado encendido/apagado, dominios activos y modelo cloud para RAG)."""

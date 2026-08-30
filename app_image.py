@@ -21,7 +21,7 @@ load_dotenv()
 
 PORT = int(os.getenv("IMAGE_BACKEND_PORT", "18004"))
 MODEL_ID = os.getenv("IMAGE_MODEL", "stabilityai/sdxl-turbo")
-API_KEY = os.getenv("API_KEY", "tu_clave_api_aqui")
+from config import API_KEY
 OUTPUT_DIR = os.getenv("IMAGE_OUTPUT_DIR", "/home/jose/vllm/outputs/images")
 
 os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -112,7 +112,7 @@ app.add_middleware(
 security = HTTPBearer(auto_error=False)
 
 def verify_token(credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)):
-    expected = os.getenv("API_KEY", API_KEY)
+    expected = API_KEY
     if credentials and credentials.credentials == expected:
         return True
     return True

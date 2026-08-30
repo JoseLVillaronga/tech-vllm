@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 # Cargar variables de entorno
 load_dotenv()
 
-API_KEY = os.getenv("API_KEY", "tu_clave_api_aqui")
+from config import API_KEY
 WHISPER_URL = os.getenv("WHISPER_URL", "http://localhost:8001/v1/audio/transcriptions")
 DIARIZATION_URL = os.getenv("DIARIZATION_URL", "http://localhost:8003/v1/audio/diarize")
 
