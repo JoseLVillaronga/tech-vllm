@@ -5,26 +5,10 @@ import httpx
 from fastapi import Request, Response
 
 
-def get_env_setting(key: str, default: str = "") -> str:
-    val = os.getenv(key)
-    if val is not None and val.strip() != "":
-        return val.strip()
-    try:
-        env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), ".env")
-        if os.path.exists(env_path):
-            with open(env_path, "r", encoding="utf-8") as f:
-                for line in f:
-                    line = line.strip()
-                    if line and not line.startswith("#") and "=" in line:
-                        k, v = line.split("=", 1)
-                        if k.strip() == key:
-                            clean_v = v.strip()
-                            if (clean_v.startswith('"') and clean_v.endswith('"')) or (clean_v.startswith("'") and clean_v.endswith("'")):
-                                clean_v = clean_v[1:-1]
-                            return clean_v
-    except Exception:
-        pass
-    return default
+from config import env
+
+# Alias unificado hacia config.env
+get_env_setting = env
 
 
 async def perform_ollama_web_search(query: str, max_results: int = 3) -> list:

@@ -5,8 +5,8 @@ import time
 import httpx
 from datetime import datetime
 from fastapi import Response, HTTPException, status
-from config import API_KEY as MASTER_KEY, get_mongo_uri, MONGO_DB
 from pymongo import MongoClient
+from config import API_KEY as MASTER_KEY, get_mongo_uri, MONGO_DB, env
 from gateway.cloud.cloud_sync import cached_cloud_models, cached_cloud_models_by_raw, cached_cloud_models_lock, slugify_provider_name
 
 
@@ -15,26 +15,8 @@ def get_db():
     return client[MONGO_DB]
 
 
-def get_env_setting(key: str, default: str = "") -> str:
-    val = os.getenv(key)
-    if val is not None and val.strip() != "":
-        return val.strip()
-    try:
-        env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), ".env")
-        if os.path.exists(env_path):
-            with open(env_path, "r", encoding="utf-8") as f:
-                for line in f:
-                    line = line.strip()
-                    if line and not line.startswith("#") and "=" in line:
-                        k, v = line.split("=", 1)
-                        if k.strip() == key:
-                            clean_v = v.strip()
-                            if (clean_v.startswith('"') and clean_v.endswith('"')) or (clean_v.startswith("'") and clean_v.endswith("'")):
-                                clean_v = clean_v[1:-1]
-                            return clean_v
-    except Exception:
-        pass
-    return default
+# Alias unificado hacia config.env
+get_env_setting = env
 
 
 async def handle_models_list(token: str, key_doc: dict, current_target_port: int) -> Response:
