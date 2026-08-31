@@ -28,14 +28,27 @@ Al finalizar cada sesión de trabajo, el agente y el usuario realizan una audito
 
 | Fecha | ID Sesión | Turnos Usuario | Llamadas Agénticas (Tools) | Commits Git | Invariantes Violados | RVI Máx | Blast Radius | Estado Global |
 | :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **2026-08-31** | `18593369` | 9 | ~25 | 1 | **0** | 2/10 | Bajo (Cirugía) | 🟢 **100% Exitoso** |
 | **2026-08-30** | `b034eae5` | 192 | 970 | 23 | **0** | 3/10 | Bajo (Modular) | 🟢 **100% Exitoso** |
 
 ---
 
 ## 📝 Fichas Detalladas por Sesión
 
-### 🔹 Sesión: 2026-08-30 (`b034eae5-9dc4-4b4a-96d1-ea3276b3c9c5`)
+### 🔹 Sesión: 2026-08-31 (`18593369-44c7-4fe1-a2f9-f6706111274d`)
 * **Hitos Principales:**
+  1. **Interoperabilidad LLM en PDF Gateway:** Incorporación del enrutado público de descarga de 1 parámetro (`/api/tools/pdf/download/{dl_filename}`) manteniendo compatibilidad total con la ruta de 2 parámetros (`{file_id}/{dl_filename}`) para evitar fallos de invocación con modelos como **Gemma 4 12B-it**.
+  2. **Resolución Inteligente de Archivos:** Búsqueda por prefijo o sufijo con ordenamiento determinista por `mtime` más reciente en `gateway/tools/pdf_generator.py`.
+  3. **Renderizado de Tablas Markdown en PDFs (`pdf_engine.py`):** Implementación del componente nativo `add_table` con cabecera estilizada `#1E293B`, rejilla, fondo zebra `#F8FAFC`, cálculo dinámico de ancho de columnas y control de paginación.
+  4. **Procesamiento de LaTeX & Grados:** Limpieza y conversión de expresiones de grados (ej. `1.5^{\circ}C` ➔ `1.5°C`) y operadores matemáticos (`\pm`, `\cdot`, `\le`, `\ge`).
+  5. **Configuración Condicional de Cuantización `LOAD_8_BITS`:** Integración en `app.py` para permitir la conmutación fluida de `bitsandbytes` entre 4-bit (por defecto) y 8-bit (`{"load_in_8bit": true}`).
+  6. **Suite de Pruebas Unitarias:** 7/7 tests ejecutados y pasados exitosamente en `tests/test_gateway_tools.py`.
+* **Evaluación MEA v2.1 & Leyes de Ingeniería:**
+  * **Invariantes (Gate 1):** **0 violaciones**. Veracidad 100% en ejecuciones reales de pruebas, cero destructividad y transparencia absoluta.
+  * **Ley 1 (Modularización):** Cumplida al 100%. Las nuevas funcionalidades fueron aisladas en sus respectivos dominios (`proxy_factory`, `pdf_generator`, `pdf_engine`, `app`).
+  * **Ley 2 (Causa Raíz):** Cumplida al 100%. Se resolvieron los problemas estructurales de enrutamiento y compilación documental en lugar de aplicar parches cosméticos.
+  * **Ley 3 (Mínimo Blast Radius):** Cumplida al 100%. Todas las modificaciones mantuvieron la compatibilidad descendente sin regresiones.
+  * **RVI Máximo:** `2/10` (Riesgo bajo contención total).
   1. Refactorización modular completa del Gateway v2.0 (separación en `gateway/core`, `gateway/tools`, `gateway/cloud`, `gateway/proxy`, `gateway/telemetry`).
   2. Unificación determinista de variables de entorno con `load_dotenv` en la raíz.
   3. Optimización del generador de PDFs (`openwebui_pdf_tool.py`), buscador web y base documental RAG (LanceDB).
