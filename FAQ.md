@@ -18,6 +18,7 @@ Este documento compila las preguntas más frecuentes, lecciones operativas apren
 6. [¿Cómo pruebo rápidamente la Diarización de Voz (PyAnnote 3.1) desde la consola?](#6-cómo-pruebo-rápidamente-la-diarización-de-voz-pyannote-31-desde-la-consola)
 7. [¿Cómo decide la suite si inyectar un documento completo oficial o hacer búsqueda por fragmentos (chunks)?](#7-cómo-decide-la-suite-si-inyectar-un-documento-completo-oficial-o-hacer-búsqueda-por-fragmentos-chunks)
 8. [¿Qué son las Tres Leyes de Villaronga y el Modelo Ético Adaptativo (MEA v2.1)?](#8-qué-son-las-tres-leyes-de-villaronga-y-el-modelo-ético-adaptativo-mea-v21)
+9. [¿Por qué un modelo como Gemma 4 12B alucina o falla al usar herramientas y cómo solucionarlo con 8 bits?](#9-por-qué-un-modelo-como-gemma-4-12b-alucina-o-falla-al-usar-herramientas-y-cómo-solucionarlo-con-8-bits)
 
 ---
 
@@ -101,3 +102,17 @@ Este documento compila las preguntas más frecuentes, lecciones operativas apren
   3. **Ley 3:** Principio del mínimo cambio posible (*Navaja de Ockham / Mínimo Blast Radius*).
 * **Modelo Ético Adaptativo ([`docs/MEA_AI_ALIGNMENT.md`](file:///home/jose/vllm/docs/MEA_AI_ALIGNMENT.md)):**  
   Estructura de optimización con restricciones ($\max \text{Valores}$ sujeto a $\text{Invariantes} = \text{True}$) con cálculo formal de RVI y deber de objeción ante daño potencial. Repositorio teórico: [Modelo-Etico-Adaptativo](https://github.com/JoseLVillaronga/Modelo-Etico-Adaptativo).
+
+---
+
+### 9. ¿Por qué un modelo como Gemma 4 12B alucina o falla al usar herramientas y cómo solucionarlo con 8 bits?
+
+* **Causa Raíz:** La cuantización de 4 bits (`bitsandbytes` NF4) es excesivamente agresiva para modelos densos de ~12B parámetros. Comprimir los pesos a solo 16 niveles discretos colapsa los *outliers* de activación en las capas de atención responsables del parsing JSON, la delimitación de argumentos y la memoria a corto plazo, provocando pérdida de contexto, alucinaciones y llamadas rotas en cadenas multi-herramienta.
+* **Solución:** Activar la cuantización de **8 bits (`LLM.int8()`)**, que conserva los 256 niveles de precisión y aísla los vectores *outliers* en 16 bits sin disparar el consumo de VRAM.
+  1. En tu archivo `.env`, configurá:
+     ```env
+     LOAD_8_BITS=true
+     ```
+  2. Reiniciá el servicio del motor (`vllm-app.service` o `sudo systemctl restart vllm-app.service`).
+  3. El modelo recuperará inmediatamente la fidelidad deductiva, el seguimiento estricto de esquemas de herramientas y la memoria de contexto.
+

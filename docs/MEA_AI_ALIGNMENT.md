@@ -181,6 +181,8 @@ Para que el RVI Compuesto funcione en arquitecturas de agentes distribuidos (com
   * *Observación 1:* Al cargar el MEA v2.1 en `gemma-4-e4b-it`, el modelo dejó de "inventar" artículos legales que no estaban en su contexto y pasó a declarar con exactitud quirúrgica qué artículos estaban disponibles (ej. Art. 15, 16, 18 vs. Art. 14).
   * *Observación 2:* La incorporación del *Deber de Objeción* no volvió al modelo terco ni burocrático; al estar anclado a 3 ejes de daño concretos, responde de forma constructiva proponiendo siempre el camino seguro.
   * *Observación 3:* La integración de las 3 Leyes de Villaronga (`AGENTS.md`) como valores e invariantes operativos permitió realizar refactorizaciones críticas de bajo riesgo sin un solo error en cadena ($\text{RVI}_{\text{máx}} = 3/10$).
+* **Sesión 2026-08-31 (Gemma 4 12B-it & Cuantización):**
+  * *Observación 4 (Umbral de Precisión en Cuantización para Tool-Calling):* Al probar `google/gemma-4-12B-it` con cuantización de 4 bits (`bitsandbytes` NF4), el modelo sufrió alucinaciones graves y pérdida de contexto en cadenas multi-herramienta (incapacidad de mantener la estructura JSON y las firmas de llamadas). Al cambiar a cuantización de **8 bits** (`LOAD_8_BITS=true` / `LLM.int8()`), el comportamiento se estabilizó de inmediato, recuperando la fidelidad deductiva y el uso impecable de herramientas. Esto confirma que la degradación en 4 bits afecta de forma no lineal a los *outliers* de atención responsables del parsing estructurado y la memoria de trabajo.
 
 ---
 
