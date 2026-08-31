@@ -34,13 +34,30 @@ HELVETICA_BOLD_WIDTHS = {
 
 
 def clean_latex(text: str) -> str:
-    """Convierte fórmulas matemáticas y químicas LaTeX (ej: $\text{CO}_2$, $\text{CH}_4$) a texto legible."""
+    r"""Convierte fórmulas matemáticas y químicas LaTeX (ej: $\text{CO}_2$, $1.5^{\circ}\text{C}$) a texto legible."""
+    latex_symbols = {
+        r'^{\circ}': '°',
+        r'^\circ': '°',
+        r'\circ': '°',
+        r'\degree': '°',
+        r'\pm': '±',
+        r'\cdot': '*',
+        r'\times': 'x',
+        r'\div': '/',
+        r'\approx': '≈',
+        r'\le': '<=',
+        r'\ge': '>=',
+        r'\neq': '!=',
+    }
+    for k, v in latex_symbols.items():
+        text = text.replace(k, v)
+
     # Eliminar envoltorios \text{...}
     text = re.sub(r'\\text\{([^}]+)\}', r'\1', text)
     # Limpiar subíndices (ej: CO_2 o N_{2}O -> CO2, N2O)
-    text = re.sub(r'([A-Za-z0-9]+)_\{?([0-9A-Za-z]+)\}?', r'\1\2', text)
+    text = re.sub(r'([A-Za-z0-9°]+)_\{?([0-9A-Za-z]+)\}?', r'\1\2', text)
     # Limpiar superíndices (ej: CO^2 o m^3 -> CO^2, m^3)
-    text = re.sub(r'([A-Za-z0-9]+)\^\{?([0-9A-Za-z]+)\}?', r'\1^\2', text)
+    text = re.sub(r'([A-Za-z0-9°]+)\^\{?([0-9A-Za-z]+)\}?', r'\1^\2', text)
     # Remover símbolos delimitadores $
     text = text.replace('$', '')
     return text
@@ -218,6 +235,137 @@ class PDFDocumentBuilder:
         self.current_page_stream.append(f"BT /F1 8.5 Tf {x_right_start:.2f} {self.y:.2f} Td ({lbl_r}) Tj ET")
         self.y -= 15
 
+    def add_table(self, table_lines: List[str]):
+        """Renderiza una tabla Markdown con diseño profesional, bordes y cabecera destacada."""
+        if not table_lines:
+            return
+
+        parsed_rows = []
+        for line in table_lines:
+            # Saltar la línea separadora (ej: | :--- | :--- |)
+            if re.match(r"^\s*\|?\s*:?-+:?\s*(?:\|\s*:?-+:?\s*)*\|?\s*$", line):
+                continue
+            parts = [p.strip() for p in line.split("|")]
+            if parts and parts[0] == "":
+                parts.pop(0)
+            if parts and parts[-1] == "":
+                parts.pop()
+            if parts:
+                parsed_rows.append(parts)
+
+        if not parsed_rows:
+            return
+
+        header_row = parsed_rows[0]
+        num_cols = len(header_row)
+        if num_cols == 0:
+            return
+
+        # Normalizar número de columnas en todas las filas
+        normalized_rows = []
+        for r in parsed_rows:
+            row_cells = r[:num_cols]
+            while len(row_cells) < num_cols:
+                row_cells.append("")
+            normalized_rows.append(row_cells)
+
+        header_cells = normalized_rows[0]
+        content_rows = normalized_rows[1:]
+
+        # 1. Calcular anchos proporcionales de columnas
+        col_max_lens = [max(1, len(header_cells[c])) for c in range(num_cols)]
+        for r in content_rows:
+            for c in range(num_cols):
+                col_max_lens[c] = max(col_max_lens[c], len(r[c]))
+
+        sum_lens = sum(col_max_lens)
+        avail_w = self.printable_width
+        col_widths = []
+
+        for c in range(num_cols):
+            prop_w = (col_max_lens[c] / sum_lens) * avail_w
+            min_w = max(40.0, avail_w / (num_cols * 2))
+            col_widths.append(max(min_w, prop_w))
+
+        total_calc_w = sum(col_widths)
+        scale_factor = avail_w / total_calc_w
+        col_widths = [w * scale_factor for w in col_widths]
+
+        font_header = "F2"
+        size_header = 9.0
+        font_body = "F1"
+        size_body = 8.5
+        cell_padding_h = 5.0
+        cell_padding_v = 4.0
+        line_height_body = 11.5
+
+        def render_single_row(row_items: List[str], is_header: bool = False, is_even: bool = False):
+            wrapped_cells = []
+            max_lines = 1
+            curr_font = font_header if is_header else font_body
+            curr_size = size_header if is_header else size_body
+
+            for c_idx, cell_text in enumerate(row_items):
+                clean_cell = sanitize_text_for_pdf(cell_text)
+                cell_w = col_widths[c_idx] - (2 * cell_padding_h)
+                lines = self.wrap_text_precise(clean_cell, curr_font, curr_size, max_width=max(10.0, cell_w))
+                wrapped_cells.append(lines)
+                if len(lines) > max_lines:
+                    max_lines = len(lines)
+
+            row_h = (max_lines * line_height_body) + (2 * cell_padding_v)
+            self.check_page_break(row_h + 5)
+
+            y_top = self.y
+            y_bottom = self.y - row_h
+
+            # Fondo de la fila
+            if is_header:
+                self.current_page_stream.append(
+                    f"0.12 0.16 0.23 rg {self.margin_x:.2f} {y_bottom:.2f} {avail_w:.2f} {row_h:.2f} re f"
+                )
+            elif is_even:
+                self.current_page_stream.append(
+                    f"0.97 0.98 0.99 rg {self.margin_x:.2f} {y_bottom:.2f} {avail_w:.2f} {row_h:.2f} re f"
+                )
+
+            # Rejilla / Bordes
+            self.current_page_stream.append(f"0.80 0.83 0.88 RG 0.5 w")
+            self.current_page_stream.append(
+                f"{self.margin_x:.2f} {y_bottom:.2f} {avail_w:.2f} {row_h:.2f} re S"
+            )
+
+            # Líneas divisoras de columnas
+            curr_x = self.margin_x
+            for c_idx in range(num_cols - 1):
+                curr_x += col_widths[c_idx]
+                self.current_page_stream.append(
+                    f"{curr_x:.2f} {y_bottom:.2f} m {curr_x:.2f} {y_top:.2f} l S"
+                )
+
+            # Texto de las celdas
+            curr_x = self.margin_x
+            for c_idx, lines in enumerate(wrapped_cells):
+                cell_w = col_widths[c_idx]
+                text_color = "1 1 1 rg" if is_header else "0.1 0.1 0.1 rg"
+
+                for line_i, line_str in enumerate(lines):
+                    safe_line = line_str.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+                    text_y = y_top - cell_padding_v - (line_i * line_height_body) - (curr_size * 0.75)
+                    text_x = curr_x + cell_padding_h
+                    self.current_page_stream.append(
+                        f"{text_color} BT /{curr_font} {curr_size} Tf {text_x:.2f} {text_y:.2f} Td ({safe_line}) Tj ET"
+                    )
+                curr_x += cell_w
+
+            self.y = y_bottom
+
+        self.y -= 4
+        render_single_row(header_cells, is_header=True)
+        for row_i, data_row in enumerate(content_rows):
+            render_single_row(data_row, is_header=False, is_even=(row_i % 2 == 1))
+        self.y -= 8
+
     def render_markdown(self, md_text: str, title: str = ""):
         clean_title = sanitize_text_for_pdf(title).strip()
         if clean_title:
@@ -227,17 +375,34 @@ class PDFDocumentBuilder:
 
         raw_lines = md_text.split("\n")
         has_signatures = False
+        idx = 0
+        n_lines = len(raw_lines)
 
-        for raw in raw_lines:
+        while idx < n_lines:
+            raw = raw_lines[idx]
             line = raw.strip()
             if not line:
                 self.y -= 4
+                idx += 1
+                continue
+
+            # Detectar inicio de tabla Markdown (| col1 | col2 |)
+            if "|" in line and idx + 1 < n_lines and re.match(r"^\s*\|?\s*:?-+:?\s*(?:\|\s*:?-+:?\s*)*\|?\s*$", raw_lines[idx + 1].strip()):
+                table_lines = []
+                while idx < n_lines and "|" in raw_lines[idx]:
+                    t_line = raw_lines[idx].strip()
+                    if t_line:
+                        table_lines.append(t_line)
+                    idx += 1
+                if table_lines:
+                    self.add_table(table_lines)
                 continue
 
             if line.startswith("# "):
                 h1_text = line[2:].strip()
                 # Evitar duplicar el título principal si es idéntico al encabezado superior
                 if clean_title and h1_text.upper() == clean_title.upper():
+                    idx += 1
                     continue
                 self.y -= 5
                 self.add_wrapped_paragraph(h1_text, font="F2", size=12.0, line_height=15.5, align="center")
@@ -261,6 +426,8 @@ class PDFDocumentBuilder:
                 has_signatures = True
             else:
                 self.add_wrapped_paragraph(line, font="F1", size=9.5, line_height=13.0)
+
+            idx += 1
 
         if has_signatures:
             self.add_signatures()

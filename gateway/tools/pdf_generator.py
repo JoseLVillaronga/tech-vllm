@@ -2,20 +2,27 @@ import os
 import sys
 import json
 import time
+from typing import Optional
 from fastapi import Request, Response, HTTPException
 from fastapi.responses import FileResponse
 
 
-def handle_pdf_download(file_id: str, dl_filename: str):
+def handle_pdf_download(file_id: str, dl_filename: Optional[str] = None):
     """
     Descarga pública o autenticada de archivos PDF generados con auto-limpieza TTL.
+    Soporta tanto la sintaxis de 2 parámetros (file_id/filename) como la de 1 parámetro (filename directo).
     """
     try:
+        if not dl_filename:
+            dl_filename = file_id
+
         storage_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "outputs", "pdfs")
         matched_file = None
 
         if os.path.exists(storage_dir):
             now_ts = time.time()
+            candidates = []
+
             for fname in os.listdir(storage_dir):
                 fpath = os.path.join(storage_dir, fname)
                 try:
@@ -26,9 +33,20 @@ def handle_pdf_download(file_id: str, dl_filename: str):
                 except Exception:
                     pass
 
+                if not os.path.isfile(fpath):
+                    continue
+
+                # 1. Coincidencia exacta con prefijo file_id_
                 if fname.startswith(f"{file_id}_"):
-                    matched_file = os.path.join(storage_dir, fname)
-                    break
+                    candidates.append((os.path.getmtime(fpath), fpath))
+                # 2. Coincidencia por sufijo de nombre (_contrato.pdf o contrato.pdf)
+                elif fname.lower().endswith(f"_{dl_filename.lower()}") or fname.lower() == dl_filename.lower():
+                    candidates.append((os.path.getmtime(fpath), fpath))
+
+            if candidates:
+                # Tomar el archivo más reciente que coincida
+                candidates.sort(key=lambda x: x[0], reverse=True)
+                matched_file = candidates[0][1]
 
         if not matched_file or not os.path.exists(matched_file):
             raise HTTPException(status_code=404, detail="El documento PDF solicitado no existe o ha expirado.")

@@ -92,13 +92,16 @@ def create_proxy_app(service_name: str, target_port: int, fallback_port: Optiona
         except Exception as e:
             print(f"⚠️ Error validando IP del cliente '{client_ip}': {e}", file=sys.stderr, flush=True)
 
-        # 2. Descargas públicas de PDFs generados con TTL
+        # 2. Descargas públicas de PDFs generados con TTL (variante 2 params: file_id/filename, variante 1 param: filename)
         if current_service == "gemma" and path.startswith("api/tools/pdf/download/") and request.method == "GET":
             parts = path.split("/")
             if len(parts) >= 6:
                 file_id = parts[4]
                 dl_filename = parts[5]
                 return handle_pdf_download(file_id, dl_filename)
+            elif len(parts) == 5:
+                dl_filename = parts[4]
+                return handle_pdf_download(file_id=dl_filename, dl_filename=dl_filename)
 
         # 3. Autenticación y Extracción de Tokens
         token = extract_token(request)

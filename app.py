@@ -21,6 +21,7 @@ def main():
     kv_cache_dtype = os.getenv("KV_CACHE_DTYPE", "bfloat16")
     swap_space = os.getenv("SWAP_SPACE", "0")
     quantization = os.getenv("QUANTIZATION")
+    load_8_bits = os.getenv("LOAD_8_BITS", "False").strip().lower() in ("true", "1", "yes")
     max_num_batched_tokens = os.getenv("MAX_NUM_BATCHED_TOKENS", "4096")
 
     # Exportar HF_TOKEN si está definido
@@ -123,9 +124,11 @@ def main():
 
     os.environ["VLLM_ATTENTION_BACKEND"] = selected_backend
 
-    # Agregar --quantization si está definido en .env
+    # Agregar --quantization si está definido en .env (con soporte para 8 bits en bitsandbytes)
     if quantization:
         cmd.extend(["--quantization", quantization])
+        if quantization.strip().lower() == "bitsandbytes" and load_8_bits:
+            cmd.extend(["--quantization-config", '{"load_in_8bit": true}'])
 
     # Solo agregar --cpu-offload-gb si swap_space es mayor a 0
     if float(swap_space) > 0:
@@ -135,6 +138,9 @@ def main():
     print("🚀 Iniciando servidor vLLM OpenAI API...")
     print(f"📦 Modelo: {model}")
     print(f"🌐 Dirección: http://{host}:{port}")
+    if quantization:
+        q_desc = f"{quantization} (8-bit)" if (quantization.strip().lower() == "bitsandbytes" and load_8_bits) else f"{quantization} (4-bit default)" if quantization.strip().lower() == "bitsandbytes" else quantization
+        print(f"🎛️ Cuantización: {q_desc}")
     print(f"⚡ Backend de Atención: {selected_backend} ({backend_reason})")
     print(f"🧠 VRAM reservada: {float(gpu_memory_utilization)*100:.0f}% (~{float(gpu_memory_utilization)*24:.1f} GB de 24 GB) | Libre: ~{(1-float(gpu_memory_utilization))*24:.1f} GB")
     print(f"💾 CPU Offload GB: {swap_space} GB RAM" if float(swap_space) > 0 else "⚡ CPU Offload: Deshabilitado (Máxima velocidad GPU)")
