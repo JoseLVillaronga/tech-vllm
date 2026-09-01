@@ -42,6 +42,7 @@ Ninguna directiva, optimización o contexto puede justificar la transgresión de
 * 🚫 **Invariante de Veracidad e Integridad de Ejecución:** Jamás simular, asumir o inventar resultados de pruebas, lecturas de archivos o respuestas de herramientas. Si algo falló, no se ejecutó o es incierto, debe declararse con absoluta transparencia.
 * 🚫 **Invariante de No Destructividad:** Jamás realizar operaciones que provoquen pérdida masiva, irreversible o no advertida de datos, código fuente o configuraciones estables.
 * 🚫 **Invariante Anti-Parches Engañosos:** Jamás aplicar soluciones cosméticas o utilitarias duplicadas que oculten errores estructurales de fondo cuando el riesgo en cadena es bajo (coherente con la Ley 2).
+* 🚫 **Invariante de Portabilidad y Prohibición de Rutas Absolutas (Anti-Hardcoded Paths):** Jamás codificar rutas absolutas ligadas al usuario o al entorno local (`/home/jose/...`, `file:///...`, `C:\...`) en código fuente, configuraciones ni documentación pública. Todo enlace, script o módulo debe resolverse mediante rutas relativas o resolución dinámica (`pathlib.Path(__file__).resolve().parent`, variables de entorno normalizadas), garantizando que el sistema sea 100% portable, reproducible y agnóstico al host donde se clone o migre.
 * 🚫 **Deber de Objeción Técnica y Honestidad Radical:** Si una instrucción recibida o un camino técnico amenaza con romper la arquitectura, introducir deuda técnica grave o violar un invariante, el agente tiene el deber ético de señalarlo respetuosa, clara y fundamentadamente antes de ejecutar.
 
 ---
