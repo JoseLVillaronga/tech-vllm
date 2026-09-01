@@ -25,6 +25,7 @@ from gateway.tools.pdf_generator import handle_pdf_generation, handle_pdf_downlo
 from gateway.tools.doc_reader import handle_doc_reader
 from gateway.tools.rag_endpoints import handle_rag_search, handle_rag_document
 from gateway.cloud.cloud_router import handle_models_list, resolve_cloud_model
+from gateway.core.alignment_engine import enrich_chat_payload
 
 # Cliente HTTP compartido globalmente para evitar fugas de sockets y memoria
 _http_client = None
@@ -225,129 +226,14 @@ def create_proxy_app(service_name: str, target_port: int, fallback_port: Optiona
 
                 model_name = actual_model or service_name
 
-                # Inyectar fecha y hora actual en system prompt
-                if path.strip("/") == "v1/chat/completions" and "messages" in data:
-                    messages = data["messages"]
-                    now_local = datetime.now()
-                    dias_semana = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
-                    meses_ano = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
-                    dia_nombre = dias_semana[now_local.weekday()]
-                    mes_nombre = meses_ano[now_local.month - 1]
-                    fecha_hora_str = f"Fecha y hora actual: {dia_nombre} {now_local.day} de {mes_nombre} de {now_local.year}, {now_local.strftime('%H:%M:%S')} (Hora local)."
-
-                    system_msg = next((m for m in messages if m.get("role") == "system"), None)
-                    if system_msg:
-                        orig_system = system_msg.get("content", "")
-                        if "Fecha y hora actual:" not in orig_system:
-                            system_msg["content"] = f"{fecha_hora_str}\n\n{orig_system}".strip()
-                    else:
-                        messages.insert(0, {"role": "system", "content": fecha_hora_str})
-
-                # Inyectar contexto de búsqueda web si es gemma-4-web
-                if not is_cloud_request and actual_model == "gemma-4-web" and path.strip("/") == "v1/chat/completions" and "messages" in data:
-                    messages = data["messages"]
-                    last_user_msg = next((m for m in reversed(messages) if m.get("role") == "user"), None)
-                    user_query = ""
-                    if last_user_msg:
-                        content_val = last_user_msg.get("content", "")
-                        if isinstance(content_val, str):
-                            user_query = content_val
-                        elif isinstance(content_val, list):
-                            text_parts = [p.get("text", "") for p in content_val if isinstance(p, dict) and p.get("type") == "text"]
-                            user_query = " ".join(text_parts)
-
-                    if user_query:
-                        max_res = int(os.getenv("OLLAMA_SEARCH_MAX_RESULTS", "3"))
-                        web_results = await perform_ollama_web_search(user_query, max_results=max_res)
-                        if web_results:
-                            snippets = []
-                            for idx, r in enumerate(web_results, 1):
-                                snippets.append(f"[{idx}] {r['title']}\nURL: {r['url']}\nContenido: {r['content']}")
-                            web_context = "\n\n".join(snippets)
-                            search_prompt = (
-                                f"\n\n[INFORMACIÓN DE BÚSQUEDA WEB EN TIEMPO REAL (VÍA OLLAMA)]:\n"
-                                f"{web_context}\n"
-                                f"--------------------------------------------------\n"
-                                f"Instrucciones: Utiliza la información web anterior para responder de forma precisa, "
-                                f"actualizada y cita las fuentes o enlaces si es relevante."
-                            )
-                            system_msg = next((m for m in messages if m.get("role") == "system"), None)
-                            if system_msg:
-                                system_msg["content"] = f"{system_msg.get('content', '')}{search_prompt}".strip()
-                            else:
-                                messages.insert(0, {"role": "system", "content": search_prompt.strip()})
-
-                # Inyectar contexto RAG si corresponde
-                if (apply_rag_injection or actual_model == "gemma-4-rag") and path.strip("/") == "v1/chat/completions" and "messages" in data:
-                    try:
-                        from rag_engine import (
-                            search_knowledge_base,
-                            format_rag_context_for_llm,
-                            get_rag_settings,
-                            find_documents_by_fuzzy_title,
-                            get_document_full_content
-                        )
-                        rag_sett = get_rag_settings()
-                        if rag_sett.get("enabled", True):
-                            messages = data["messages"]
-                            last_user_msg = next((m for m in reversed(messages) if m.get("role") == "user"), None)
-                            user_query = ""
-                            if last_user_msg:
-                                content_val = last_user_msg.get("content", "")
-                                if isinstance(content_val, str):
-                                    user_query = content_val
-                                elif isinstance(content_val, list):
-                                    text_parts = [p.get("text", "") for p in content_val if isinstance(p, dict) and p.get("type") == "text"]
-                                    user_query = " ".join(text_parts)
-
-                            if user_query:
-                                rag_context_str = ""
-                                matched_docs = find_documents_by_fuzzy_title(user_query)
-
-                                # 1. Si la consulta menciona un documento o libro específico de la biblioteca
-                                if matched_docs and matched_docs[0].get("score", 0) >= 0.5:
-                                    top_doc = matched_docs[0]
-                                    full_res = get_document_full_content(top_doc["doc_id"], token_threshold=30000)
-                                    total_tokens = full_res.get("total_doc_tokens", 0)
-
-                                    # Si cabe en la ventana (<= 30.000 tokens), inyectar el documento completo 1:1
-                                    if total_tokens <= 30000 and full_res.get("content"):
-                                        rag_context_str = (
-                                            f"--- DOCUMENTO COMPLETO OFICIAL DE LA BIBLIOTECA (Fidelidad 100%): \"{top_doc['title']}\" ---\n"
-                                            f"(Tema: {top_doc.get('topic', 'General')} | Autor: {top_doc.get('author', 'Desconocido')})\n\n"
-                                            f"{full_res.get('content')}\n\n"
-                                            f"--- FIN DEL DOCUMENTO OFICIAL ---"
-                                        )
-                                    else:
-                                        # Documento muy extenso (ej: Código Civil): búsqueda focalizada en su tema con top_k=8
-                                        rag_results = search_knowledge_base(
-                                            query=user_query,
-                                            temas=[top_doc.get("topic")] if top_doc.get("topic") else None,
-                                            top_k=8
-                                        )
-                                        if rag_results:
-                                            rag_context_str = format_rag_context_for_llm(rag_results)
-
-                                # 2. Si no se detectó un documento único, realizar búsqueda híbrida con top_k=8
-                                if not rag_context_str:
-                                    rag_results = search_knowledge_base(query=user_query, top_k=8)
-                                    if rag_results:
-                                        rag_context_str = format_rag_context_for_llm(rag_results)
-
-                                if rag_context_str:
-                                    rag_prompt = (
-                                        f"\n\n[CONTEXTO DE LA BASE DE CONOCIMIENTO DOCUMENTAL (LANCEDB - TECCAM)]:\n"
-                                        f"{rag_context_str}\n"
-                                        f"--------------------------------------------------\n"
-                                        f"Instrucciones: Responde a la pregunta del usuario utilizando de manera prioritaria y rigurosa la información y fuentes proporcionadas arriba. Cita los artículos, documentos y secciones de donde proviene la información."
-                                    )
-                                    system_msg = next((m for m in messages if m.get("role") == "system"), None)
-                                    if system_msg:
-                                        system_msg["content"] = f"{system_msg.get('content', '')}{rag_prompt}".strip()
-                                    else:
-                                        messages.insert(0, {"role": "system", "content": rag_prompt.strip()})
-                    except Exception as re:
-                        print(f"⚠️ Error en contextualización RAG: {re}", file=sys.stderr, flush=True)
+                # Delegar enriquecimiento de prompt, invariantes MEA, web search y RAG al submódulo especializado
+                if path.strip("/") == "v1/chat/completions":
+                    data = await enrich_chat_payload(
+                        data=data,
+                        actual_model=actual_model,
+                        is_cloud_request=is_cloud_request,
+                        apply_rag_injection=apply_rag_injection
+                    )
 
                 body = json.dumps(data).encode("utf-8")
             except Exception as json_err:

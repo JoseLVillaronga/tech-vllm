@@ -1756,6 +1756,26 @@ def api_rag_delete_document(doc_id):
     except Exception as e:
         return jsonify({"error": f"Error al eliminar documento de LanceDB: {str(e)}"}), 500
 
+# ==============================================================================
+# ENDPOINTS: ALINEACIÓN Y POLÍTICAS MEA
+# ==============================================================================
+@app.route("/api/alignment/settings", methods=["GET", "POST"])
+def api_alignment_settings():
+    """Obtiene o actualiza las directivas y políticas de alineación MEA en MongoDB."""
+    try:
+        from gateway.core.alignment_engine import get_alignment_settings, save_alignment_settings
+        if request.method == "POST":
+            data = request.get_json() or {}
+            success = save_alignment_settings(data)
+            if success:
+                return jsonify({"success": True, "message": "Políticas de alineación guardadas y aplicadas en caliente."})
+            return jsonify({"success": False, "message": "Error al persistir en base de datos."}), 500
+        else:
+            settings = get_alignment_settings()
+            return jsonify({"success": True, "settings": settings})
+    except Exception as e:
+        return jsonify({"success": False, "error": f"Error en configuración de alineación: {str(e)}"}), 500
+
 if __name__ == "__main__":
     init_db_telemetry()
     start_telemetry_collector()

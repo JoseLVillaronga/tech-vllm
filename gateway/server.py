@@ -6,6 +6,7 @@ from pymongo import MongoClient
 
 from config import get_mongo_uri, MONGO_DB
 from gateway.core.ip_rules import sync_ip_rules_loop
+from gateway.core.alignment_engine import sync_alignment_settings_loop
 from gateway.cloud.cloud_sync import sync_cloud_providers_loop
 from gateway.proxy.proxy_factory import create_proxy_app, close_http_client
 
@@ -80,6 +81,7 @@ async def run_servers():
     try:
         await asyncio.gather(
             sync_ip_rules_loop(),
+            sync_alignment_settings_loop(),
             sync_cloud_providers_loop(),
             server_gemma.serve(),
             server_whisper.serve(),

@@ -82,6 +82,9 @@
             <!-- TAB 5: BASE DE CONOCIMIENTO RAG & LANCEDB -->
             {% include "tabs/tab_rag.html" %}
 
+            <!-- TAB: ALINEACIÓN Y POLÍTICAS MEA -->
+            {% include "tabs/tab_alignment.html" %}
+
             <!-- TAB 6: CLAVES API & SEGURIDAD -->
             {% include "tabs/tab_keys.html" %}
 
@@ -95,6 +98,7 @@
     <script src="{{ url_for('static', filename='js/dashboard_tests.js') }}"></script>
     <script src="{{ url_for('static', filename='js/dashboard_voices.js') }}"></script>
     <script src="{{ url_for('static', filename='js/dashboard_rag.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/dashboard_alignment.js') }}"></script>
     <script src="{{ url_for('static', filename='js/dashboard_keys.js') }}"></script>
     <script src="{{ url_for('static', filename='js/dashboard_metrics.js') }}"></script>
 </body>

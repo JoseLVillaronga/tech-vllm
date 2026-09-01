@@ -1,0 +1,133 @@
+            <!-- TAB: ALINEACIÓN Y POLÍTICAS MEA -->
+            <div id="tab-alignment" class="tab-content hidden flex flex-col gap-6">
+                <!-- Header Banner -->
+                <div class="glass-panel p-6 rounded-2xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                    <div>
+                        <h2 class="text-xl font-bold text-slate-100 flex items-center gap-2">
+                            <svg class="h-6 w-6 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                            </svg>
+                            Alineación y Políticas de Inferencia (MEA v2.1)
+                        </h2>
+                        <p class="text-xs text-slate-400 mt-1">Configuración en caliente de directivas del sistema, invariantes de ejecución real, topes de salida y protocolos de herramientas.</p>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <button onclick="loadAlignmentSettings()" class="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-xl transition-all border border-slate-700 flex items-center gap-2">
+                            <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                            </svg>
+                            Recargar
+                        </button>
+                        <button onclick="saveAlignmentSettings()" id="btn-save-alignment" class="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl transition-all shadow-lg shadow-emerald-900/30 flex items-center gap-2">
+                            <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                            </svg>
+                            Guardar y Aplicar Políticas
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Grid Configuration -->
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <!-- Left Column: Switches & Guards -->
+                    <div class="glass-panel p-5 rounded-2xl flex flex-col gap-5">
+                        <h3 class="text-sm font-bold text-slate-200 border-b border-slate-800 pb-2 flex items-center justify-between">
+                            <span>Interruptores de Control</span>
+                            <span class="text-[10px] bg-emerald-950/80 text-emerald-400 border border-emerald-800/60 px-2 py-0.5 rounded-full font-mono">GATEWAY LEVEL</span>
+                        </h3>
+
+                        <div class="flex flex-col gap-4">
+                            <!-- Switch 1: Master Enable -->
+                            <label class="flex items-start justify-between gap-3 cursor-pointer p-3 bg-slate-900/60 border border-slate-800/80 rounded-xl hover:border-slate-700 transition-all">
+                                <div>
+                                    <span class="text-xs font-semibold text-slate-200 block">Blindaje de Inferencia Activo</span>
+                                    <span class="text-[11px] text-slate-400">Aplica invariantes y directivas en todas las peticiones a /v1/chat/completions.</span>
+                                </div>
+                                <input type="checkbox" id="align-enabled" class="mt-1 h-4 w-4 rounded border-slate-800 text-emerald-600 focus:ring-emerald-500 bg-slate-950">
+                            </label>
+
+                            <!-- Switch 2: Temporalidad -->
+                            <label class="flex items-start justify-between gap-3 cursor-pointer p-3 bg-slate-900/60 border border-slate-800/80 rounded-xl hover:border-slate-700 transition-all">
+                                <div>
+                                    <span class="text-xs font-semibold text-slate-200 block">Sincronización Temporal</span>
+                                    <span class="text-[11px] text-slate-400">Inyecta automáticamente la fecha, día y hora local exacta en español.</span>
+                                </div>
+                                <input type="checkbox" id="align-inject-temporal" class="mt-1 h-4 w-4 rounded border-slate-800 text-emerald-600 focus:ring-emerald-500 bg-slate-950">
+                            </label>
+
+                            <!-- Switch 3: Invariantes MEA -->
+                            <label class="flex items-start justify-between gap-3 cursor-pointer p-3 bg-slate-900/60 border border-slate-800/80 rounded-xl hover:border-slate-700 transition-all">
+                                <div>
+                                    <span class="text-xs font-semibold text-slate-200 block">Invariantes MEA (Gate 1)</span>
+                                    <span class="text-[11px] text-slate-400">Inyecta el piso binario de veracidad, integridad y prohibición de enlaces falsos.</span>
+                                </div>
+                                <input type="checkbox" id="align-inject-invariants" class="mt-1 h-4 w-4 rounded border-slate-800 text-emerald-600 focus:ring-emerald-500 bg-slate-950">
+                            </label>
+
+                            <!-- Switch 4: Protocolo PDF -->
+                            <label class="flex items-start justify-between gap-3 cursor-pointer p-3 bg-slate-900/60 border border-slate-800/80 rounded-xl hover:border-slate-700 transition-all">
+                                <div>
+                                    <span class="text-xs font-semibold text-slate-200 block">Protocolo Estricto de PDF</span>
+                                    <span class="text-[11px] text-slate-400">Obliga al modelo a llamar a <code>generate_pdf_document</code> ante peticiones de archivos.</span>
+                                </div>
+                                <input type="checkbox" id="align-pdf-protocol" class="mt-1 h-4 w-4 rounded border-slate-800 text-emerald-600 focus:ring-emerald-500 bg-slate-950">
+                            </label>
+
+                            <!-- Switch 5: Protocolo Doc Reader -->
+                            <label class="flex items-start justify-between gap-3 cursor-pointer p-3 bg-slate-900/60 border border-slate-800/80 rounded-xl hover:border-slate-700 transition-all">
+                                <div>
+                                    <span class="text-xs font-semibold text-slate-200 block">Protocolo de Lectura Íntegra</span>
+                                    <span class="text-[11px] text-slate-400">Prioriza la invocación de <code>leer_documento_completo</code> para consultas documentales.</span>
+                                </div>
+                                <input type="checkbox" id="align-doc-protocol" class="mt-1 h-4 w-4 rounded border-slate-800 text-emerald-600 focus:ring-emerald-500 bg-slate-950">
+                            </label>
+
+                            <!-- Input: Max Response Tokens Cap -->
+                            <div class="p-3 bg-slate-900/60 border border-slate-800/80 rounded-xl flex flex-col gap-2">
+                                <div class="flex justify-between items-center">
+                                    <span class="text-xs font-semibold text-slate-200">Tope Máximo de Salida (Tokens Cap):</span>
+                                    <span id="align-cap-display" class="text-xs font-mono text-emerald-400 font-bold">8192</span>
+                                </div>
+                                <input type="number" id="align-max-tokens-cap" min="512" max="32768" step="512" value="8192" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs font-mono text-slate-200 focus:outline-none focus:border-emerald-500">
+                                <span class="text-[10px] text-slate-500">Previene errores de desbordamiento de contexto causados por clientes que solicitan todo el remanente de tokens (ej: OpenWebUI).</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right Columns: Prompt Editors -->
+                    <div class="lg:col-span-2 flex flex-col gap-6">
+                        <!-- Panel: Invariants System Prompt -->
+                        <div class="glass-panel p-5 rounded-2xl flex flex-col gap-3">
+                            <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                                <h3 class="text-sm font-bold text-slate-200 flex items-center gap-2">
+                                    <span class="text-emerald-400 font-mono">1.</span> Directivas Fundamentales e Invariantes MEA
+                                </h3>
+                                <button onclick="restoreDefaultInvariantsPrompt()" class="text-[11px] text-emerald-400 hover:text-emerald-300 transition-all font-mono underline">
+                                    Restaurar Invariantes Canónicos
+                                </button>
+                            </div>
+                            <p class="text-[11px] text-slate-400">Texto inyectado al inicio del System Prompt para forzar veracidad, integridad y ejecución real de herramientas.</p>
+                            <textarea id="align-invariants-prompt" rows="8" class="w-full bg-slate-950/80 border border-slate-800 rounded-xl p-3.5 text-xs font-mono text-slate-200 focus:outline-none focus:border-emerald-500 resize-y leading-relaxed" placeholder="Escribe aquí las directivas invariantes..."></textarea>
+                        </div>
+
+                        <!-- Panel: Custom System Prompt -->
+                        <div class="glass-panel p-5 rounded-2xl flex flex-col gap-3">
+                            <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                                <h3 class="text-sm font-bold text-slate-200 flex items-center gap-2">
+                                    <span class="text-emerald-400 font-mono">2.</span> Directivas Adicionales Personalizadas (Opcional)
+                                </h3>
+                            </div>
+                            <p class="text-[11px] text-slate-400">Instrucciones suplementarias específicas de tu negocio, tono de voz o reglas operativas globales.</p>
+                            <textarea id="align-custom-prompt" rows="4" class="w-full bg-slate-950/80 border border-slate-800 rounded-xl p-3.5 text-xs font-mono text-slate-200 focus:outline-none focus:border-emerald-500 resize-y leading-relaxed" placeholder="Ej: Responder siempre de forma concisa y en español rioplatense..."></textarea>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Toast Notification Container -->
+                <div id="align-toast" class="fixed bottom-6 right-6 hidden bg-emerald-600 text-white text-xs font-bold px-4 py-3 rounded-xl shadow-2xl flex items-center gap-2.5 transition-all z-50">
+                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                    </svg>
+                    <span id="align-toast-msg">Políticas guardadas y aplicadas en caliente.</span>
+                </div>
+            </div>

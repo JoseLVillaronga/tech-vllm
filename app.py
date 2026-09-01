@@ -1,5 +1,6 @@
 import os
 import sys
+import json
 import subprocess
 from dotenv import load_dotenv
 
@@ -24,9 +25,10 @@ def main():
     load_8_bits = os.getenv("LOAD_8_BITS", "False").strip().lower() in ("true", "1", "yes")
     max_num_batched_tokens = os.getenv("MAX_NUM_BATCHED_TOKENS", "4096")
 
-    # Exportar HF_TOKEN si está definido
+    # Exportar HF_TOKEN si está definido y permitir contextos extendidos
     if hf_token:
         os.environ["HF_TOKEN"] = hf_token
+    os.environ["VLLM_ALLOW_LONG_MAX_MODEL_LEN"] = "1"
 
     # Construir el comando vLLM
     cmd = [
@@ -45,6 +47,9 @@ def main():
         "--api-key", api_key
     ]
 
+    if hf_token:
+        cmd.extend(["--hf-token", hf_token])
+
     # Parsers específicos según la familia del modelo
     model_lower = model.lower()
     if "gemma" in model_lower:
@@ -58,6 +63,8 @@ def main():
             "--tool-call-parser", "hermes",
             "--enable-auto-tool-choice"
         ])
+        if "qwq" in model_lower:
+            cmd.extend(["--reasoning-parser", "deepseek_r1"])
     elif "deepseek" in model_lower:
         cmd.extend([
             "--tool-call-parser", "hermes",
@@ -128,7 +135,16 @@ def main():
     if quantization:
         cmd.extend(["--quantization", quantization])
         if quantization.strip().lower() == "bitsandbytes" and load_8_bits:
-            cmd.extend(["--quantization-config", '{"load_in_8bit": true}'])
+            cmd.extend([
+                "--hf-overrides",
+                json.dumps({
+                    "quantization_config": {
+                        "quant_method": "bitsandbytes",
+                        "load_in_8bit": True,
+                        "load_in_4bit": False
+                    }
+                })
+            ])
 
     # Solo agregar --cpu-offload-gb si swap_space es mayor a 0
     if float(swap_space) > 0:
@@ -140,7 +156,7 @@ def main():
     print(f"🌐 Dirección: http://{host}:{port}")
     if quantization:
         q_desc = f"{quantization} (8-bit)" if (quantization.strip().lower() == "bitsandbytes" and load_8_bits) else f"{quantization} (4-bit default)" if quantization.strip().lower() == "bitsandbytes" else quantization
-        print(f"🎛️ Cuantización: {q_desc}")
+        print(f"🎛️ quantización: {q_desc}")
     print(f"⚡ Backend de Atención: {selected_backend} ({backend_reason})")
     print(f"🧠 VRAM reservada: {float(gpu_memory_utilization)*100:.0f}% (~{float(gpu_memory_utilization)*24:.1f} GB de 24 GB) | Libre: ~{(1-float(gpu_memory_utilization))*24:.1f} GB")
     print(f"💾 CPU Offload GB: {swap_space} GB RAM" if float(swap_space) > 0 else "⚡ CPU Offload: Deshabilitado (Máxima velocidad GPU)")

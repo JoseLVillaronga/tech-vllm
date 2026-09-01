@@ -5,6 +5,13 @@ from gateway.core.ip_resolver import resolve_client_ip, TRUSTED_PROXIES
 from gateway.core.fail2ban import register_failed_attempt
 from gateway.core.ip_rules import sync_ip_rules_loop, is_ip_allowed
 from gateway.core.auth import get_db, get_key_doc, validate_token_doc, extract_token, MASTER_KEY
+from gateway.core.alignment_engine import (
+    enrich_chat_payload,
+    get_invariants_system_prompt,
+    get_alignment_settings,
+    save_alignment_settings,
+    sync_alignment_settings_loop
+)
 
 __all__ = [
     "resolve_client_ip",
@@ -16,5 +23,10 @@ __all__ = [
     "get_key_doc",
     "validate_token_doc",
     "extract_token",
-    "MASTER_KEY"
+    "MASTER_KEY",
+    "enrich_chat_payload",
+    "get_invariants_system_prompt",
+    "get_alignment_settings",
+    "save_alignment_settings",
+    "sync_alignment_settings_loop"
 ]
