@@ -638,12 +638,15 @@ graph TD
     end
 ```
 
-### 2. Ventajas del RAG Desacoplado frente al RAG tradicional
+### 2. Ventajas del RAG Jerárquico v2.1 frente al RAG tradicional
 
 * **Cero Retraso en Tiempo de Chat:** La vectorización de documentos pesados ocurre en segundo plano de forma asíncrona. Durante una consulta, sólo se vectoriza la pregunta del usuario (**~15-20 ms en CPU**), logrando una recuperación total en **menos de 30 milisegundos**.
-* **Chunking Jerárquico Enriquecido (*Contextual Retrieval*):** Cada fragmento preserva su ruta de encabezados (`DOCUMENTO > CAPÍTULO > SECCIÓN`), evitando la pérdida de contexto que sufren los troceadores ciegos por caracteres.
+* **GPS Documental (`get_document_structure` / `/v1/rag/structure`):** Para obras masivas (ej. Código Civil con ~850.000 tokens y 2.754 chunks), genera previamente un árbol estructurado de capítulos, rangos de chunks y tokens estimados, permitiendo al LLM y al usuario saber qué secciones existen antes de leer.
+* **Particionado Inteligente con Tolerancia Dinámica ($\pm 5\% - 8\%$):** Reemplaza el corte ciego de tokens por una búsqueda de límites naturales de capítulos/secciones en una ventana de tolerancia, garantizando que nunca se partan artículos o párrafos por la mitad.
+* **Extracción Quirúrgica por Sección (`seccion="..."`):** Permite recuperar directamente un capítulo o libro específico (ej. `seccion="Nuevos derechos"` o `seccion="Capítulo IV"`) con latencias de ~50 ms y fidelidad 100%.
 * **Indexación Híbrida (Vectorial 1024D + BM25):** Permite encontrar tanto conceptos semánticos abstractos como términos técnicos, números de artículo o leyes específicas con exactitud matemática.
 * **Sincronización Diferencial Automática:** Compara las marcas de tiempo e IDs de Teccam PDF para sincronizar únicamente documentos nuevos o editados, purgando automáticamente los obsoletos.
+* **Visor Interactivo en el Dashboard Web (`:8004`):** Cada documento cuenta con un botón violeta **"GPS"** que despliega un modal con el mapa de capítulos, métricas de tokens y la sintaxis de llamada para el LLM.
 
 ### 3. Instalación del Temporizador Systemd
 
@@ -729,34 +732,37 @@ Permite que tanto los modelos locales (Gemma 4) como los modelos de proveedores 
 2. Copia y pega el código Python de la herramienta presentado a continuación (también disponible en [`tools/openwebui_rag_tool.py`](tools/openwebui_rag_tool.py)).
 3. Haz clic en **Guardar**.
 4. Haz clic en el ícono de engranaje ⚙️ de la herramienta (**Valves / Válvulas**) y define:
-   * **`GATEWAY_URL`**: `http://192.168.1.47:8000/v1/rag/search` (utiliza la IP del host si Open-WebUI corre dentro de Docker).
+   * **`GATEWAY_URL`**: `http://192.168.1.47:8000` (utiliza la IP del host si Open-WebUI corre dentro de Docker).
    * **`API_KEY`**: Tu clave API maestra o una clave secundaria creada en el Dashboard con permiso de acceso.
    * **`DEFAULT_TOP_K`**: `4` (número de fragmentos de contexto a recuperar).
-5. Ve a **Workspace ➔ Modelos**, edita el modelo deseado (ej: `google/gemma-4-E4B-it`, `deepseek/deepseek-v4...`, etc.) y activa el interruptor de la herramienta **`Búsqueda RAG Teccam (LanceDB)`**.
+5. Ve a **Workspace ➔ Modelos**, edita el modelo deseado (ej: `google/gemma-4-E4B-it`, `deepseek/deepseek-v4...`, etc.) y activa el interruptor de la herramienta **`Búsqueda y Lectura RAG Teccam (LanceDB)`**.
 
-#### B. Código de la Herramienta (*Custom Tool*):
+#### B. Código de la Herramienta (*Custom Tool v2.0.0*):
 
 ```python
 """
-title: Búsqueda RAG Teccam (LanceDB)
+title: Búsqueda y Lectura RAG Teccam (LanceDB)
 author: Jose Luis Villaronga
-description: Consulta la base de conocimiento documental de Teccam en LanceDB con búsqueda híbrida 1024D (Qwen3 + BM25) y lectura de documentos completos para síntesis y análisis normativo.
+author_url: https://github.com/JoseLVillaronga/tech-vllm
+git_url: https://github.com/JoseLVillaronga/tech-vllm
+description: Consulta y lee documentos de la base de conocimiento documental de Teccam en LanceDB con vectores 1024D (Qwen3), BM25, GPS Documental y extracción por secciones.
 required_open_webui_version: 0.3.0
 requirements: requests, pydantic
-version: 1.2.2
+version: 2.0.0
+license: MIT
 """
 
 import os
 import requests
-from typing import Optional, List
+from typing import Optional, List, Union
 from pydantic import BaseModel, Field
 
 
 class Tools:
     class Valves(BaseModel):
         GATEWAY_URL: str = Field(
-            default="http://192.168.1.47:8000",
-            description="URL base del Gateway de la suite vLLM (usar 192.168.1.47 si corre en Docker)."
+            default="http://127.0.0.1:8000",
+            description="URL base del Gateway de la suite vLLM (ej: http://127.0.0.1:8000 o https://tech-support.com.ar:19000)."
         )
         API_KEY: str = Field(
             default="TU_CLAVE_API_VLLM_AQUI",
@@ -781,12 +787,18 @@ class Tools:
         :param consulta: Pregunta o términos de búsqueda específicos para consultar en los libros y procedimientos.
         :param dominios: Opcional: Tema o temas a filtrar separados por comas. Dejar vacío para buscar en toda la base.
         """
-        url = f"{self.valves.GATEWAY_URL.rstrip('/')}/api/tools/rag-search"
+        base_url = str(self.valves.GATEWAY_URL).rstrip("/")
+        if not base_url.endswith("/api/tools/rag-search") and not base_url.endswith("/v1/rag/search"):
+            url = f"{base_url}/api/tools/rag-search"
+        else:
+            url = base_url
+
         headers = {
             "Authorization": f"Bearer {self.valves.API_KEY}",
             "Content-Type": "application/json"
         }
-        
+
+        clean_query = str(consulta).strip() if consulta and not str(type(consulta)).endswith("FieldInfo'>") else ""
         temas_list = None
         if dominios and not str(type(dominios)).endswith("FieldInfo'>"):
             if isinstance(dominios, list):
@@ -794,10 +806,17 @@ class Tools:
             elif isinstance(dominios, str):
                 temas_list = [d.strip() for d in dominios.split(",") if d.strip()]
 
+        top_k_val = 4
+        if hasattr(self.valves, "DEFAULT_TOP_K") and not str(type(self.valves.DEFAULT_TOP_K)).endswith("FieldInfo'>"):
+            try:
+                top_k_val = int(self.valves.DEFAULT_TOP_K)
+            except Exception:
+                top_k_val = 4
+
         payload = {
-            "query": str(consulta).strip(),
+            "query": clean_query,
             "temas": temas_list,
-            "top_k": int(self.valves.DEFAULT_TOP_K)
+            "top_k": top_k_val
         }
 
         try:
@@ -814,31 +833,41 @@ class Tools:
             results_count = data.get("results_count", 0)
 
             if not context or results_count == 0:
-                return f"No se encontraron fragmentos relevantes en la base de conocimiento para la consulta: '{consulta}'."
+                return f"No se encontraron fragmentos relevantes en la base de conocimiento para la consulta: '{clean_query}'."
 
-            return f"--- CONTEXTO RECUPERADO DE LANCEDB ({results_count} fragmentos) ---\n\n{context}\n\n--- FIN DEL CONTEXTO RECUPERADO ---"
-
+            return (
+                f"[DOCUMENTOS ENCONTRADOS EN LANCEDB ({results_count} fragmentos recuperados en {data.get('latency_ms', 0)} ms)]:\n\n"
+                f"{context}\n\n"
+                f"Por favor responde fundamentando con estos fragmentos y cita las fuentes/artículos relevantes."
+            )
         except Exception as e:
             return f"Error de conexión con el Gateway RAG ({url}): {str(e)}"
 
     def leer_documento_completo(
         self,
         doc_id: str,
-        parte: int = 1
+        parte: int = 1,
+        seccion: Optional[str] = None
     ) -> str:
         """
-        Obtiene el texto completo o una parte masiva de un documento, procedimiento o libro oficial de Teccam para redactar resúmenes integrales, síntesis ejecutivas o análisis normativos exhaustivos sin omitir pasos ni incisos.
+        Obtiene el texto completo, por sección temática o paginado de un documento, procedimiento o libro oficial de Teccam para redactar resúmenes integrales, síntesis ejecutivas o análisis normativos exhaustivos sin omitir pasos ni incisos.
         Acepta tanto el doc_id hexadecimal como el título exacto o parcial del procedimiento/libro.
-        Si el documento tiene hasta 60.000 tokens (~50% de la ventana de 128K), entrega el texto original íntegro 1:1. Si es más extenso, entrega la parte solicitada con aviso de paginación.
+        Si el documento tiene hasta 60.000 tokens (~50% de la ventana de 128K), entrega el texto original íntegro 1:1. Si es más extenso, entrega la parte solicitada con límites limpios de sección o la sección indicada.
         :param doc_id: ID único del documento (ej: '67b2111008223c9b3c3e5608') o el título del documento (ej: 'Procedimiento General de Soporte en Puestos de Trabajo').
         :param parte: Número de parte a recuperar si es un libro extenso paginado (1 para la primera parte, 2 para la siguiente, etc.).
+        :param seccion: Opcional: Nombre del capítulo, libro o sección temática específica a extraer (ej: 'Libro Primero', 'Título II', 'DESARROLLO', 'Nuevos derechos').
         """
-        url = f"{self.valves.GATEWAY_URL.rstrip('/')}/api/tools/rag-document"
+        base_url = str(self.valves.GATEWAY_URL).rstrip("/")
+        if not base_url.endswith("/api/tools/rag-document") and not base_url.endswith("/v1/rag/document"):
+            url = f"{base_url}/api/tools/rag-document"
+        else:
+            url = base_url
+
         headers = {
             "Authorization": f"Bearer {self.valves.API_KEY}",
             "Content-Type": "application/json"
         }
-        
+
         clean_doc_id = str(doc_id).strip() if doc_id and not str(type(doc_id)).endswith("FieldInfo'>") else ""
         clean_parte = 1
         if parte is not None and not str(type(parte)).endswith("FieldInfo'>"):
@@ -847,10 +876,13 @@ class Tools:
             except Exception:
                 clean_parte = 1
 
+        clean_seccion = str(seccion).strip() if seccion and not str(type(seccion)).endswith("FieldInfo'>") else None
+
         payload = {
             "doc_id": clean_doc_id,
             "parte": clean_parte,
-            "token_threshold": 60000
+            "token_threshold": 60000,
+            "seccion": clean_seccion
         }
 
         try:
@@ -863,12 +895,44 @@ class Tools:
                 return f"Error al leer el documento (HTTP {response.status_code}): {response.text}"
 
             data = response.json()
-            content = data.get("content", "")
-            if not content:
-                return f"El documento con ID '{doc_id}' no contiene texto disponible."
+            return data.get("content", "")
+        except Exception as e:
+            return f"Error de conexión con el Gateway RAG ({url}): {str(e)}"
 
-            return content
+    def obtener_estructura_documento(
+        self,
+        doc_id: str
+    ) -> str:
+        """
+        Obtiene el 'GPS Documental' (Mapa y Árbol de Estructura de Secciones) de una obra, libro o código extenso (ej: Código Civil, Constitución Nacional, manuales técnicos).
+        Permite conocer todos los capítulos, títulos, artículos, rangos de fragmentos y volumen de tokens antes de leer o resumir partes específicas.
+        :param doc_id: ID único del documento (ej: '6a8b02cface6becbcb49b20d') o título de la obra (ej: 'Codigo Civil Argentino').
+        """
+        base_url = str(self.valves.GATEWAY_URL).rstrip("/")
+        if not base_url.endswith("/api/tools/rag-structure") and not base_url.endswith("/v1/rag/structure"):
+            url = f"{base_url}/api/tools/rag-structure"
+        else:
+            url = base_url
 
+        headers = {
+            "Authorization": f"Bearer {self.valves.API_KEY}",
+            "Content-Type": "application/json"
+        }
+
+        clean_doc_id = str(doc_id).strip() if doc_id and not str(type(doc_id)).endswith("FieldInfo'>") else ""
+        payload = {"doc_id": clean_doc_id}
+
+        try:
+            response = requests.post(url, json=payload, headers=headers, timeout=20.0)
+
+            if response.status_code == 503:
+                return "Aviso: El servicio de Base de Conocimiento RAG está temporalmente desactivado globalmente."
+
+            if response.status_code != 200:
+                return f"Error consultando estructura RAG (HTTP {response.status_code}): {response.text}"
+
+            data = response.json()
+            return data.get("content", "No se obtuvo contenido de estructura.")
         except Exception as e:
             return f"Error de conexión con el Gateway RAG ({url}): {str(e)}"
 ```
