@@ -29,7 +29,7 @@
             }
         }
 
-        function selectQuickModel(modelName, gpuMem = '', maxLen = '', quantization = '', loraVal = null, swapSpace = null) {
+        function selectQuickModel(modelName, gpuMem = '', maxLen = '', quantization = '', loraVal = null, swapSpace = null, load8Bits = null) {
             const input = document.getElementById('model-input');
             if (input) {
                 input.value = modelName;
@@ -63,6 +63,10 @@
             const swapInput = document.querySelector('input[name="SWAP_SPACE"]');
             if (swapInput && swapSpace !== null && swapSpace !== undefined) {
                 swapInput.value = swapSpace;
+            }
+            const load8BitsSelect = document.querySelector('select[name="LOAD_8_BITS"]');
+            if (load8BitsSelect && load8Bits !== null && load8Bits !== undefined) {
+                load8BitsSelect.value = String(load8Bits).toLowerCase() === 'true' ? 'true' : 'false';
             }
         }
 
@@ -196,7 +200,11 @@
                 for (const key in config) {
                     const input = form.elements[key];
                     if (input) {
-                        input.value = config[key];
+                        if (key === 'LOAD_8_BITS') {
+                            input.value = String(config[key]).toLowerCase() === 'true' ? 'true' : 'false';
+                        } else {
+                            input.value = config[key];
+                        }
                     }
                 }
             } catch (err) {
