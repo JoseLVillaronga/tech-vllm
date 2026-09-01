@@ -28,7 +28,7 @@ Al finalizar cada sesión de trabajo, el agente y el usuario realizan una audito
 
 | Fecha | ID Sesión | Turnos Usuario | Llamadas Agénticas (Tools) | Commits Git | Invariantes Violados | RVI Máx | Blast Radius | Estado Global |
 | :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **2026-09-01 (Mediodía)** | `bba5ef3a` | 4 | ~30 | 1 | **0** | 2/10 | Bajo (Modular) | 🟢 **100% Exitoso** |
+| **2026-09-01 (Mediodía/Tarde)** | `bba5ef3a` | 10 | ~55 | 6 | **0** | 2/10 | Bajo (Modular) | 🟢 **100% Exitoso** |
 | **2026-09-01 (Madrugada)** | `bba5ef3a` | 12 | ~40 | 1 | **0** | 2/10 | Bajo (Modular) | 🟢 **100% Exitoso** |
 | **2026-08-31 (Noche)** | `b034eae5` | 14 | ~35 | 3 | **0** | 2/10 | Bajo (Quirúrgico) | 🟢 **100% Exitoso** |
 | **2026-08-31 (Tarde)** | `18593369` | 9 | ~25 | 1 | **0** | 2/10 | Bajo (Cirugía) | 🟢 **100% Exitoso** |
@@ -38,30 +38,33 @@ Al finalizar cada sesión de trabajo, el agente y el usuario realizan una audito
 
 ## 📝 Fichas Detalladas por Sesión
 
-### 🔹 Sesión: 2026-09-01 Mediodía (`bba5ef3a-c9c3-41a0-9e67-95058f9b5fb1`)
+### 🔹 Sesión: 2026-09-01 Mediodía/Tarde (`bba5ef3a-c9c3-41a0-9e67-95058f9b5fb1`)
 * **Hitos Principales:**
-  1. **Motor RAG Jerárquico & GPS Documental ([`rag_engine.py`](../rag_engine.py)):**
+  1. **Motor RAG Jerárquico v2.1 & GPS Documental ([`rag_engine.py`](../rag_engine.py)):**
      - Creación de `get_document_structure(doc_id)`: Escaneo y agrupamiento del árbol de secciones (`section_path`), cálculo de tokens por capítulo/título y generación de un "GPS Documental" en Markdown.
      - Implementación de `_partition_chunks_dynamically`: Particionado inteligente con tolerancia dinámica ($\pm 5\% - 8\%$) para alinear cortes de paginación a límites naturales de capítulos/artículos en lugar de cortes ciegos de tokens.
-     - Extracción focalizada por sección: Parámetro `seccion` en `get_document_full_content(doc_id, seccion="...")` para consultas directas y quirúrgicas de capítulos o libros específicos.
-     - Mensajes de error orientativos con lista de secciones disponibles cuando una sección no es encontrada.
-  2. **Enrutamiento y Herramientas en el Gateway (:8000):**
+     - Extracción focalizada por sección: Parámetro `seccion` en `get_document_full_content(doc_id, seccion="...")` para consultas directas y quirúrgicas de capítulos o libros específicos (~50 ms de latencia).
      - Nuevos endpoints `POST /api/tools/rag-structure` y `POST /v1/rag/structure` en [`gateway/tools/rag_endpoints.py`](../gateway/tools/rag_endpoints.py) y [`gateway/proxy/proxy_factory.py`](../gateway/proxy/proxy_factory.py).
-     - Actualización de [`tools/openwebui_rag_tool.py`](../tools/openwebui_rag_tool.py) con `obtener_estructura_documento` y soporte de `seccion` en `leer_documento_completo`.
-     - Actualización de directivas en [`gateway/core/alignment_engine.py`](../gateway/core/alignment_engine.py) y `format_rag_context_for_llm`.
-  3. **Visualización en el Dashboard Web (:8004):**
-     - Botón "GPS" en la tabla de documentos de [`templates/tabs/tab_rag.html`](../templates/tabs/tab_rag.html).
-     - Modal interactivo *Glassmorphism* en [`static/js/dashboard_rag.js`](../static/js/dashboard_rag.js) conectado al endpoint `/api/rag/structure/<doc_id>`.
-  4. **Suite de Pruebas Automatizadas:**
+     - Actualización de [`tools/openwebui_rag_tool.py`](../tools/openwebui_rag_tool.py) a v2.0.0 con `obtener_estructura_documento` y soporte de `seccion`.
+     - Botón "GPS" y modal interactivo *Glassmorphism* en la pestaña Base RAG del Dashboard Web ([`templates/tabs/tab_rag.html`](../templates/tabs/tab_rag.html) y [`static/js/dashboard_rag.js`](../static/js/dashboard_rag.js)).
+  2. **Catálogo de Pruebas de Campo Empíricas ([`docs/pruebas_campo/`](pruebas_campo/README.md)):**
+     - 🧪 [`prueba_campo_62k_matrimonio_pdf_2026-09-01.md`](pruebas_campo/prueba_campo_62k_matrimonio_pdf_2026-09-01.md): Digestión masiva de 59.3K tokens en `Gemma 4 12B-it` (62.012 tokens acumulados) y generación del PDF `Informe_Nulidad_Matrimonio_Teccam.pdf` (2 páginas).
+     - 🧪 [`prueba_campo_rag_jerarquico_v2_2026-09-01.md`](pruebas_campo/prueba_campo_rag_jerarquico_v2_2026-09-01.md): Validación del ciclo de 3 pasos (Búsqueda ➔ GPS de 196 secciones ➔ Extracción quirúrgica de 5.7K tokens).
+     - 🧪 [`prueba_campo_deepseek_v4_evaluacion_rag_2026-09-01.md`](pruebas_campo/prueba_campo_deepseek_v4_evaluacion_rag_2026-09-01.md): Evaluación crítica por DeepSeek-V4, diagnóstico de vigencia temporal y generación de la Guía Oficial de 24 leyes en PDF de 4 páginas.
+  3. **Metodología del Embudo Progresivo (Sección 4 en [`MANUAL_OPENWEBUI.md`](../MANUAL_OPENWEBUI.md)):**
+     - Documentación de la técnica de 4 pasos (*Discovery ➔ GPS ➔ Deep-Dive ➔ Formal Output*) para guiar a modelos compactos locales sin saturar la memoria.
+  4. **Saneamiento Integral de Enlaces y Mermaid en GitHub:**
+     - Reparación de sintaxis en `README.md` (`flowchart TD` con IDs alfanuméricos) resolviendo el error *"Unable to render rich display"*.
+     - Eliminación total de rutas absolutas `file:///home/jose/vllm/` sustituidas por enlaces relativos nativos de GitHub en toda la documentación.
+  5. **Formalización del 5to Invariante Operativo MEA v2.1 ([`AGENTS.md`](../AGENTS.md) y [`GEMINI.md`](../GEMINI.md)):**
+     - *Invariante de Portabilidad y Prohibición de Rutas Absolutas (Anti-Hardcoded Paths)* para asegurar que el sistema sea 100% reproducible y desacoplado del entorno host.
+  6. **Suite de Pruebas Automatizadas:**
      - 19/19 tests unitarios pasando en verde (`Ran 19 tests in 1.539s - OK`) en `tests/test_gateway_core.py` y `tests/test_gateway_tools.py`.
-  5. **Pruebas de Campo Empíricas Registradas:**
-     - 🧪 [`docs/pruebas_campo/prueba_campo_rag_jerarquico_v2_2026-09-01.md`](pruebas_campo/prueba_campo_rag_jerarquico_v2_2026-09-01.md): Validación del ciclo de 3 pasos (Búsqueda ➔ GPS ➔ Extracción de 5.7K tokens).
-     - 🧪 [`docs/pruebas_campo/prueba_campo_62k_matrimonio_pdf_2026-09-01.md`](pruebas_campo/prueba_campo_62k_matrimonio_pdf_2026-09-01.md): Digestión masiva de 59.3K tokens del Código Civil y compilación PDF.
 * **Evaluación MEA v2.1 & Leyes de Ingeniería:**
-  * **Invariantes (Gate 1):** **0 violaciones**. Pacto de consenso mutuo y verificación determinista antes de confirmar cambios.
-  * **Ley 1 (Modularización):** Cumplida al 100%. Lógica de GPS encapsulada en `rag_engine.py`, enrutadores en `gateway/tools/rag_endpoints.py` y visor en `dashboard_rag.js`.
-  * **Ley 2 (Causa Raíz):** Cumplida al 100%. Se resolvió la causa de la pérdida de contexto y cortes arbitrarios en obras masivas con tolerancia dinámica y búsqueda estructural.
-  * **Ley 3 (Mínimo Blast Radius):** Cumplida al 100%. Total compatibilidad hacia atrás con todos los servicios y clientes existentes.
+  * **Invariantes (Gate 1):** **0 violaciones**. Veracidad 100%, cero destructividad, erradicación de parches y rutas absolutas, y cumplimiento del pacto de consenso mutuo.
+  * **Ley 1 (Modularización):** Cumplida al 100%. Módulos de GPS, endpoints, visor y catálogo de pruebas completamente desacoplados.
+  * **Ley 2 (Causa Raíz):** Cumplida al 100%. Resolución estructural de cortes de contexto, enlaces rotos y portabilidad ambiental.
+  * **Ley 3 (Mínimo Blast Radius):** Cumplida al 100%. Cambios quirúrgicos, retrocompatibilidad absoluta en APIs y servicios.
   * **RVI Máximo:** `2/10`.
 
 ### 🔹 Sesión: 2026-09-01 Madrugada (`bba5ef3a-c9c3-41a0-9e67-95058f9b5fb1`)
