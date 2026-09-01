@@ -28,14 +28,31 @@ Al finalizar cada sesión de trabajo, el agente y el usuario realizan una audito
 
 | Fecha | ID Sesión | Turnos Usuario | Llamadas Agénticas (Tools) | Commits Git | Invariantes Violados | RVI Máx | Blast Radius | Estado Global |
 | :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **2026-08-31** | `18593369` | 9 | ~25 | 1 | **0** | 2/10 | Bajo (Cirugía) | 🟢 **100% Exitoso** |
+| **2026-08-31 (Noche)** | `b034eae5` | 14 | ~35 | 3 | **0** | 2/10 | Bajo (Quirúrgico) | 🟢 **100% Exitoso** |
+| **2026-08-31 (Tarde)** | `18593369` | 9 | ~25 | 1 | **0** | 2/10 | Bajo (Cirugía) | 🟢 **100% Exitoso** |
 | **2026-08-30** | `b034eae5` | 192 | 970 | 23 | **0** | 3/10 | Bajo (Modular) | 🟢 **100% Exitoso** |
 
 ---
 
 ## 📝 Fichas Detalladas por Sesión
 
-### 🔹 Sesión: 2026-08-31 (`18593369-44c7-4fe1-a2f9-f6706111274d`)
+### 🔹 Sesión: 2026-08-31 Noche (`b034eae5-9dc4-4b4a-96d1-ea3276b3c9c5`)
+* **Hitos Principales:**
+  1. **Análisis Epistemológico de Condicionalidad del MEA:** Evaluación del *Efecto Observador / Colapso Cuántico* en entornos con memoria persistente. Se determinó mantener el MEA como piso invariante en desarrollo interactivo y delegar pruebas comparativas a bancos de prueba ciegos y aislados.
+  2. **Formalización de Causa Raíz en Cuantización (4-bit vs 8-bit):** Registro en [`docs/MEA_AI_ALIGNMENT.md`](file:///home/jose/vllm/docs/MEA_AI_ALIGNMENT.md) y [`FAQ.md`](file:///home/jose/vllm/FAQ.md) de la degradación no lineal de los *outliers* de atención en modelos densos de 12B y cómo la cuantización de 8-bit (`LOAD_8_BITS=true`) restablece el tool-calling.
+  3. **Diseño de RAG Jerárquico para Documentos Masivos (> 60k tokens):** Especificación de la *Tolerancia Dinámica de Tokens* ($\pm 5\%-8\%$) y el *Mapa Estructural de Partes* ("GPS Documental" con `section_path` y rangos de chunks de LanceDB), encolado para desarrollo en la próxima sesión.
+  4. **Control GUI de Cuantización y Preset Gemma 4 12B:** Incorporación del selector `LOAD_8_BITS` y botón de carga rápida `Gemma 4 12B-it (8-Bit / 128K)` en la pestaña *Variables* del Dashboard Web ([`templates/tabs/tab_config.html`](file:///home/jose/vllm/templates/tabs/tab_config.html) y [`static/js/dashboard_core.js`](file:///home/jose/vllm/static/js/dashboard_core.js)).
+  5. **Perfeccionamiento del Motor PDF (`pdf_engine.py`):** Creación de `clean_markdown_inline` para erradicar restos de asteriscos (`**ASC**` ➔ `ASC`) en celdas de tablas y sustitución de marcas crudas por viñetas tipográficas (`•` / `chr(149)`) con sangría jerárquica.
+  6. **Validación End-to-End:** Comprobación empírica en Open-WebUI del documento ejecutivo generado por Gemma 4 12B-it e inspección de su internalización semántica del *Deber de Objeción* y *Fidelidad Documental*.
+  7. **Suite de Pruebas Unitarias:** 8/8 tests ejecutados y pasando en verde (`Ran 8 tests in 0.018s - OK`).
+* **Evaluación MEA v2.1 & Leyes de Ingeniería:**
+  * **Invariantes (Gate 1):** **0 violaciones**. Veracidad 100% en ejecuciones reales de pruebas, cero destructividad y transparencia absoluta.
+  * **Ley 1 (Modularización):** Cumplida al 100%. Las mejoras de UI y PDF se encapsularon en sus componentes nativos.
+  * **Ley 2 (Causa Raíz):** Cumplida al 100%. Se atacó el origen del formateo de texto en el motor PDF y la cuantización en la inferencia.
+  * **Ley 3 (Mínimo Blast Radius):** Cumplida al 100%. Intervenciones atómicas, conservando total compatibilidad.
+  * **RVI Máximo:** `2/10`.
+
+### 🔹 Sesión: 2026-08-31 Tarde (`18593369-44c7-4fe1-a2f9-f6706111274d`)
 * **Hitos Principales:**
   1. **Interoperabilidad LLM en PDF Gateway:** Incorporación del enrutado público de descarga de 1 parámetro (`/api/tools/pdf/download/{dl_filename}`) manteniendo compatibilidad total con la ruta de 2 parámetros (`{file_id}/{dl_filename}`) para evitar fallos de invocación con modelos como **Gemma 4 12B-it**.
   2. **Resolución Inteligente de Archivos:** Búsqueda por prefijo o sufijo con ordenamiento determinista por `mtime` más reciente en `gateway/tools/pdf_generator.py`.
@@ -44,11 +61,14 @@ Al finalizar cada sesión de trabajo, el agente y el usuario realizan una audito
   5. **Configuración Condicional de Cuantización `LOAD_8_BITS`:** Integración en `app.py` para permitir la conmutación fluida de `bitsandbytes` entre 4-bit (por defecto) y 8-bit (`{"load_in_8bit": true}`).
   6. **Suite de Pruebas Unitarias:** 7/7 tests ejecutados y pasados exitosamente en `tests/test_gateway_tools.py`.
 * **Evaluación MEA v2.1 & Leyes de Ingeniería:**
-  * **Invariantes (Gate 1):** **0 violaciones**. Veracidad 100% en ejecuciones reales de pruebas, cero destructividad y transparencia absoluta.
-  * **Ley 1 (Modularización):** Cumplida al 100%. Las nuevas funcionalidades fueron aisladas en sus respectivos dominios (`proxy_factory`, `pdf_generator`, `pdf_engine`, `app`).
-  * **Ley 2 (Causa Raíz):** Cumplida al 100%. Se resolvieron los problemas estructurales de enrutamiento y compilación documental en lugar de aplicar parches cosméticos.
-  * **Ley 3 (Mínimo Blast Radius):** Cumplida al 100%. Todas las modificaciones mantuvieron la compatibilidad descendente sin regresiones.
-  * **RVI Máximo:** `2/10` (Riesgo bajo contención total).
+  * **Invariantes (Gate 1):** **0 violaciones**.
+  * **Ley 1 (Modularización):** Cumplida al 100%.
+  * **Ley 2 (Causa Raíz):** Cumplida al 100%.
+  * **Ley 3 (Mínimo Blast Radius):** Cumplida al 100%.
+  * **RVI Máximo:** `2/10`.
+
+### 🔹 Sesión: 2026-08-30 (`b034eae5-9dc4-4b4a-96d1-ea3276b3c9c5`)
+* **Hitos Principales:**
   1. Refactorización modular completa del Gateway v2.0 (separación en `gateway/core`, `gateway/tools`, `gateway/cloud`, `gateway/proxy`, `gateway/telemetry`).
   2. Unificación determinista de variables de entorno con `load_dotenv` en la raíz.
   3. Optimización del generador de PDFs (`openwebui_pdf_tool.py`), buscador web y base documental RAG (LanceDB).
