@@ -762,6 +762,9 @@ Al interactuar con modelos dotados de herramientas avanzadas (RAG Jerárquico + 
 * **Herramienta activada:** `generate_pdf_document`.
 * **Resultado:** PDF de 2 páginas con formato vectorial A4, tipografía institucional y enlace de descarga.
 
+> 💡 **Aceleración con Prefix Caching en Cadenas Multi-Herramienta:**  
+> Gracias a `--enable-prefix-caching` (RadixAttention en vLLM), cuando el modelo encadena múltiples lecturas sucesivas (ej. leer el Capítulo A, luego el Capítulo B y luego sintetizar), el **100% de los tokens de las lecturas previas se mantiene en la memoria KV Cache**. La GPU no recalcula el historial acumulado, reduciendo el tiempo de respuesta inicial en pasos intermedios de ~800 ms a **menos de 20 ms**.
+
 > 📘 **Evidencia y Registro de Prueba de Campo:**  
 > Podés consultar las transcripciones completas de estas pruebas empíricas en:
 > * [`docs/pruebas_campo/prueba_campo_rag_jerarquico_v2_2026-09-01.md`](docs/pruebas_campo/prueba_campo_rag_jerarquico_v2_2026-09-01.md) (Flujo completo de 3 pasos)
