@@ -135,7 +135,7 @@ Para instalar cualquiera de estas herramientas en Open-WebUI:
 ---
 
 ### Herramienta 1: Búsqueda y Lectura RAG Teccam (LanceDB)
-> Archivo fuente: [`tools/openwebui_rag_tool.py`](file:///home/jose/vllm/tools/openwebui_rag_tool.py)
+> Archivo fuente: [`tools/openwebui_rag_tool.py`](tools/openwebui_rag_tool.py)
 
 Permite buscar fragmentos jurídicos/operativos y obtener textos íntegros 1:1 de documentos extensos indexados en LanceDB con vectores 1024D (Qwen3) y BM25.
 
@@ -311,7 +311,7 @@ class Tools:
 ---
 
 ### Herramienta 2: Generador de Documentos en PDF A4
-> Archivo fuente: [`tools/openwebui_pdf_tool.py`](file:///home/jose/vllm/tools/openwebui_pdf_tool.py)
+> Archivo fuente: [`tools/openwebui_pdf_tool.py`](tools/openwebui_pdf_tool.py)
 
 Compila archivos PDF estándar A4 en **0.05 segundos**, con formateo de fórmulas químicas (`CO2, CH4, N2O`), centrado simétrico multilínea para títulos largos y auto-limpieza de archivos con más de 24 horas de antigüedad.
 
@@ -419,7 +419,7 @@ class Tools:
 ---
 
 ### Herramienta 3: Búsqueda Web en Vivo (Ollama Cloud)
-> Archivo fuente: [`tools/openwebui_web_search_tool.py`](file:///home/jose/vllm/tools/openwebui_web_search_tool.py)
+> Archivo fuente: [`tools/openwebui_web_search_tool.py`](tools/openwebui_web_search_tool.py)
 
 Permite al modelo realizar búsquedas en internet para responder preguntas sobre noticias de hoy, clima, cotizaciones financieras y hechos actualizados.
 
@@ -517,7 +517,7 @@ class Tools:
 ---
 
 ### Herramienta 4: Clima y Pronóstico Extendido (OpenWeatherMap)
-> Archivo fuente: [`tools/openwebui_weather_tool.py`](file:///home/jose/vllm/tools/openwebui_weather_tool.py)
+> Archivo fuente: [`tools/openwebui_weather_tool.py`](tools/openwebui_weather_tool.py)
 
 Permite consultar el clima actual y el pronóstico meteorológico detallado a 5 días para cualquier ciudad del mundo, con cálculo de amanecer/atardecer y ajuste de zona horaria local.
 

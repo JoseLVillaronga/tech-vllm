@@ -622,15 +622,15 @@ Para brindar respuestas precisas y fundamentadas a **Gemma 4**, Open-WebUI o cua
 ### 1. ¿Cómo Funciona la Arquitectura?
 
 ```mermaid
-graph TD
-    subgraph "1. Sincronización Diferencial Asíncrona (Segundo Plano)"
+flowchart TD
+    subgraph SYNC ["1. Sincronización Diferencial Asíncrona (Segundo Plano)"]
         TPDF["Teccam PDF API (:5022)<br>/api/v1/rag/documentos"] --> Sync["app_rag_sync.py<br>(Temporizador 2x al día o manual)"]
         Sync --> Chunker["Chunking Jerárquico Markdown<br>(Títulos H1/H2/H3 + Tablas intactas)"]
         Chunker --> Embed["Qwen3-Embedding (:18005)<br>Vectores 1024D"]
-        Embed --> LDB[("LanceDB Local en Disco<br>data/lancedb/teccam_kb<br>Vectorial + FTS BM25")]
+        Embed --> LDB["LanceDB Local en Disco<br>data/lancedb/teccam_kb<br>(Vectorial + FTS BM25)"]
     end
 
-    subgraph "2. Consulta en Tiempo Real (~25ms)"
+    subgraph QUERY ["2. Consulta en Tiempo Real (~25ms)"]
         User["Usuario / LLM / Open-WebUI"] --> Gate["Gateway Proxy (:8000)<br>/v1/rag/search"]
         Gate --> Search["Búsqueda Híbrida en LanceDB<br>(Similitud Coseno + Palabras Clave)"]
         Search --> Context["Fragmentos Enriquecidos con Citas<br>y Metadatos Estructurados"]
@@ -976,7 +976,7 @@ Durante la ingesta y re-indexación de la biblioteca corporativa (14 obras compl
 
 #### B. Mecánica de Protección de VRAM:
 Para evitar picos de memoria cuando el LLM (`vllm.service`, ~14.2 GB de VRAM) y la ingesta masiva compiten por la GPU:
-1. El script orquestador [`sync_rag_scheduled.sh`](file:///home/jose/vllm/sync_rag_scheduled.sh) detecta si el LLM está activo y lo detiene temporalmente.
+1. El script orquestador [`sync_rag_scheduled.sh`](sync_rag_scheduled.sh) detecta si el LLM está activo y lo detiene temporalmente.
 2. Comprueba mediante `nvidia-smi` que el uso de VRAM en la GPU 0 descienda por debajo de los 10 GB.
 3. Ejecuta `app_rag_sync.py` con aceleración CUDA completa, límites de oración, solapamiento de 180c y cálculo exacto de tokens.
 4. **Garantía de Restauración (`trap cleanup EXIT INT TERM`):** Al finalizar la sincronización (por éxito o por error), el script reanuda automáticamente el servicio `vllm.service`.
@@ -1250,7 +1250,7 @@ curl -X POST http://localhost:8002/v1/audio/speech \
 
 ### 3. Probar Transcripción y Diarización en Vivo (Micrófono)
 
-El proyecto incluye el cliente interactivo y de grado de producción [live_transcribe.py](file:///home/jose/vllm/live_transcribe.py) para capturar audio desde el micrófono físico, transcribir y separar hablantes en tiempo real.
+El proyecto incluye el cliente interactivo y de grado de producción [live_transcribe.py](live_transcribe.py) para capturar audio desde el micrófono físico, transcribir y separar hablantes en tiempo real.
 
 Este cliente cuenta con tres características clave de estabilidad de audio:
 
@@ -1273,7 +1273,7 @@ python live_transcribe.py
 
 ### 4. Generador de Subtítulos en Vivo para Películas (Audio de Sistema)
 
-El proyecto incluye el cliente [live_subtitles.py](file:///home/jose/vllm/live_subtitles.py) diseñado para capturar la **salida de audio del sistema (monitor PulseAudio/PipeWire)** en lugar del micrófono físico. Permite reproducir una película, vídeo de YouTube o videoconferencia y generar subtítulos sincronizados en tiempo real.
+El proyecto incluye el cliente [live_subtitles.py](live_subtitles.py) diseñado para capturar la **salida de audio del sistema (monitor PulseAudio/PipeWire)** en lugar del micrófono físico. Permite reproducir una película, vídeo de YouTube o videoconferencia y generar subtítulos sincronizados en tiempo real.
 
 #### Características clave
 
@@ -1338,7 +1338,7 @@ Durante el proceso de configuración y depuración de este proyecto se identific
 
 * **Problema:** Enviar audios convertidos para F5-TTS (24 kHz) a modelos de procesamiento conversacional (como Whisper o Gemma 4) producía transcripciones incomprensibles y bucles infinitos en alemán (*"die neunzehntausend..."*).
 * **Causa:** Los modelos de reconocimiento de voz esperan ondas remuestreadas estrictamente a la frecuencia estándar de **16.000 Hz (16 kHz)**.
-* **Solución:** Implementar re-muestreo dinámico a 16kHz mono mediante `torchaudio` antes del envío (ver [test_transcription.py](file:///home/jose/vllm/test_transcription.py) y [test_whisper_api.py](file:///home/jose/vllm/test_whisper_api.py)).
+* **Solución:** Implementar re-muestreo dinámico a 16kHz mono mediante `torchaudio` antes del envío (ver [test_transcription.py](test_transcription.py) y [test_whisper_api.py](test_whisper_api.py)).
 
 ### 7. Sintaxis de Prompts Multimodales de Audio
 
@@ -1350,7 +1350,7 @@ Durante el proceso de configuración y depuración de este proyecto se identific
 ### 8. CPU-GPU Offloading Dinámico para Multilingüismo
 
 * **Problema:** Cargar en paralelo 6 modelos de voz distintos (uno por cada idioma) colapsaría la GPU (~7.2 GB de VRAM requeridos solo para TTS).
-* **Solución:** Implementar administración perezosa (*lazy loading*) en [app_tts.py](file:///home/jose/vllm/app_tts.py). Los modelos inactivos se instancian en la RAM del sistema (CPU) y se transfieren a la GPU (CUDA) sobre el bus PCIe bajo demanda en menos de 0.2 segundos.
+* **Solución:** Implementar administración perezosa (*lazy loading*) en [app_tts.py](app_tts.py). Los modelos inactivos se instancian en la RAM del sistema (CPU) y se transfieren a la GPU (CUDA) sobre el bus PCIe bajo demanda en menos de 0.2 segundos.
 * **Resultado:** Soporte completo de 6 idiomas nativos con un consumo constante y controlado de **~1.2 GB de VRAM**.
 
 ### 9. Formatos de Adaptadores LoRA: PyTorch PEFT vs. MLX (Apple Silicon)
@@ -1394,7 +1394,7 @@ Durante el proceso de configuración y depuración de este proyecto se identific
 
 ## 🎙️ Clonación de Voz con F5-TTS (Zero-Shot TTS)
 
-El proyecto incluye el script [test_f5.py](file:///home/jose/vllm/test_f5.py) para realizar pruebas de clonación de voz (*Zero-Shot Voice Cloning*) utilizando la arquitectura **F5-TTS**.
+El proyecto incluye el script [test_f5.py](test_f5.py) para realizar pruebas de clonación de voz (*Zero-Shot Voice Cloning*) utilizando la arquitectura **F5-TTS**.
 
 ### 🌍 Repositorios y Checkpoints por Idioma en Hugging Face
 
@@ -1437,7 +1437,7 @@ f5tts.infer(
 
 ## 🧠 Modelos de Inferencia (vLLM)
 
-El servidor central de inferencia ([app.py](file:///home/jose/vllm/app.py)) ejecuta los LLMs locales utilizando **vLLM**, optimizando el rendimiento mediante el uso compartido de la GPU Nvidia RTX 3090.
+El servidor central de inferencia ([app.py](app.py)) ejecuta los LLMs locales utilizando **vLLM**, optimizando el rendimiento mediante el uso compartido de la GPU Nvidia RTX 3090.
 
 ### 💻 1. Modelo de Programación MoE: Qwen3 Coder 30B
 

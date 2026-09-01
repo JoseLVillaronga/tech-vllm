@@ -96,11 +96,11 @@ Este documento compila las preguntas más frecuentes, lecciones operativas apren
 
 ### 8. ¿Qué son las Tres Leyes de Villaronga y el Modelo Ético Adaptativo (MEA v2.1)?
 
-* **Leyes de Ingeniería ([`AGENTS.md`](file:///home/jose/vllm/AGENTS.md)):**
+* **Leyes de Ingeniería ([`AGENTS.md`](AGENTS.md)):**
   1. **Ley 1:** Modularización estricta y separación de responsabilidades desde el día cero.
   2. **Ley 2:** Atacar causas raíz cuando el riesgo de fallo en cadena es bajo.
   3. **Ley 3:** Principio del mínimo cambio posible (*Navaja de Ockham / Mínimo Blast Radius*).
-* **Modelo Ético Adaptativo ([`docs/MEA_AI_ALIGNMENT.md`](file:///home/jose/vllm/docs/MEA_AI_ALIGNMENT.md)):**  
+* **Modelo Ético Adaptativo ([`docs/MEA_AI_ALIGNMENT.md`](docs/MEA_AI_ALIGNMENT.md)):**  
   Estructura de optimización con restricciones ($\max \text{Valores}$ sujeto a $\text{Invariantes} = \text{True}$) con cálculo formal de RVI y deber de objeción ante daño potencial. Repositorio teórico: [Modelo-Etico-Adaptativo](https://github.com/JoseLVillaronga/Modelo-Etico-Adaptativo).
 
 ---
