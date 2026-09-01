@@ -24,6 +24,7 @@ def main():
     quantization = os.getenv("QUANTIZATION")
     load_8_bits = os.getenv("LOAD_8_BITS", "False").strip().lower() in ("true", "1", "yes")
     max_num_batched_tokens = os.getenv("MAX_NUM_BATCHED_TOKENS", "4096")
+    enable_prefix_caching = os.getenv("ENABLE_PREFIX_CACHING", "True").strip().lower() in ("true", "1", "yes")
 
     # Exportar HF_TOKEN si está definido y permitir contextos extendidos
     if hf_token:
@@ -46,6 +47,9 @@ def main():
         "--max-num-batched-tokens", str(max_num_batched_tokens),
         "--api-key", api_key
     ]
+
+    if enable_prefix_caching:
+        cmd.append("--enable-prefix-caching")
 
     if hf_token:
         cmd.extend(["--hf-token", hf_token])
