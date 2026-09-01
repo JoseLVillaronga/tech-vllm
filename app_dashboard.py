@@ -1756,6 +1756,18 @@ def api_rag_delete_document(doc_id):
     except Exception as e:
         return jsonify({"error": f"Error al eliminar documento de LanceDB: {str(e)}"}), 500
 
+@app.route("/api/rag/structure/<doc_id>", methods=["GET"])
+def api_rag_structure(doc_id):
+    """Obtiene el GPS Documental y mapa de secciones de un documento desde LanceDB."""
+    try:
+        from rag_engine import get_document_structure
+        res = get_document_structure(doc_id=doc_id)
+        if not res.get("success"):
+            return jsonify({"error": res.get("error", "Error consultando estructura")}), 404
+        return jsonify(res)
+    except Exception as e:
+        return jsonify({"error": f"Error obteniendo estructura RAG: {str(e)}"}), 500
+
 # ==============================================================================
 # ENDPOINTS: ALINEACIÓN Y POLÍTICAS MEA
 # ==============================================================================

@@ -143,8 +143,9 @@ def get_invariants_system_prompt(settings: Dict[str, Any], has_pdf_tool: bool = 
 
     if settings.get("doc_reader_protocol_enabled", True) and has_doc_tool:
         blocks.append(
-            "\n📚 [PROTOCOLO DE LECTURA DE DOCUMENTOS]:\n"
-            "- Cuando se consulte por un documento formal de la biblioteca, utiliza `leer_documento_completo` para obtener el contenido íntegro y verificado."
+            "\n📚 [PROTOCOLO DE LECTURA Y NAVEGACIÓN DOCUMENTAL]:\n"
+            "- Cuando se consulte por un documento formal de la biblioteca, utiliza `leer_documento_completo` para obtener el contenido íntegro y verificado.\n"
+            "- Para obras y códigos extensos (> 30.000 tokens), puedes explorar su mapa estructural con `obtener_estructura_documento(doc_id=...)` o solicitar una sección específica con `leer_documento_completo(doc_id=..., seccion=\"<nombre_sección>\")`."
         )
 
     custom_prompt = settings.get("custom_system_prompt", "").strip()

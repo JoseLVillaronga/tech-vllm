@@ -341,11 +341,23 @@ def format_rag_context_for_llm(results: List[Dict[str, Any]]) -> str:
         content = item.get("content", "").strip()
         sim_pct = int(item.get("similarity", 0) * 100)
         c_tokens = item.get("chunk_tokens")
+        tot_tokens = item.get("total_doc_tokens") or 0
         tokens_tag = f" | Tokens: ~{c_tokens}" if c_tokens else ""
+        
+        # Si el documento supera los 30.000 tokens o 100 fragmentos, incluir guía de GPS Documental y lectura por sección
+        if tot_tokens > 30000 or item.get("total_chunks", 0) > 100:
+            clean_sec_hint = section.split(">")[-1].strip() if ">" in section else section
+            action_hint = (
+                f"💡 [Acción Disponible (Obra Extensa ~{tot_tokens:,} tokens)]:\n"
+                f"   - Para explorar el índice/GPS de capítulos usa: obtener_estructura_documento(doc_id=\"{doc_id}\")\n"
+                f"   - Para leer una sección o libro específico usa: leer_documento_completo(doc_id=\"{doc_id}\", seccion=\"{clean_sec_hint}\")"
+            )
+        else:
+            action_hint = f"💡 [Acción Disponible: Para leer este documento completo o hacer una síntesis integral usa: leer_documento_completo(doc_id=\"{doc_id}\")]"
         
         snippets.append(
             f"--- FUENTE [{idx}]: \"{doc_title}\" [doc_id: {doc_id}] (Tema: {doc_topic} | Sección: {section} | Autor: {author}{tokens_tag} | Coincidencia: {sim_pct}%) ---\n"
-            f"💡 [Acción Disponible: Para leer este documento completo o hacer una síntesis integral usa: leer_documento_completo(doc_id=\"{doc_id}\")]\n"
+            f"{action_hint}\n"
             f"{content}"
         )
         
@@ -503,20 +515,212 @@ def fetch_teccam_document_raw(doc_id: str) -> Optional[Dict[str, Any]]:
         print(f"⚠️ [RAG Engine] Error al consultar API de Teccam PDF ({url}): {e}", file=sys.stderr)
     return None
 
+def get_document_structure(doc_id: str) -> Dict[str, Any]:
+    """
+    Construye el 'GPS Documental' (Árbol y Mapa de Estructura de Secciones) de una obra desde LanceDB.
+    
+    Permite al LLM y al usuario explorar la jerarquía, el volumen de tokens por sección y los rangos de fragmentos
+    antes de solicitar la lectura de capítulos, títulos o partes específicas.
+    """
+    clean_doc_id = doc_id.strip()
+    table = get_table()
+    if table is None or len(table) == 0:
+        return {
+            "success": False,
+            "error": "Base vectorial LanceDB no inicializada o vacía.",
+            "doc_id": clean_doc_id
+        }
+
+    # 1. Consultar todos los chunks en LanceDB
+    clean_sql_id = clean_doc_id.replace("'", "''")
+    results = table.search().where(f"doc_id = '{clean_sql_id}'").limit(10000).to_arrow()
+
+    # 2. Búsqueda difusa si no se encontró por ID
+    candidates = []
+    if len(results) == 0:
+        candidates = find_documents_by_fuzzy_title(clean_doc_id)
+        if candidates:
+            best_match = candidates[0]
+            clean_doc_id = best_match["doc_id"]
+            clean_sql_id = clean_doc_id.replace("'", "''")
+            results = table.search().where(f"doc_id = '{clean_sql_id}'").limit(10000).to_arrow()
+
+    if len(results) == 0:
+        stats = get_rag_stats()
+        avail = [f"- '{d['title']}' [doc_id: {d['id']}]" for d in stats.get("documents", [])[:10]]
+        return {
+            "success": False,
+            "error": f"No se encontró ningún documento con ID o título que coincida con '{clean_doc_id}'.\n\nDocumentos disponibles:\n" + "\n".join(avail),
+            "doc_id": clean_doc_id
+        }
+
+    actual_doc_id = results["doc_id"][0].as_py() if "doc_id" in results.schema.names else clean_doc_id
+    doc_title = results["doc_title"][0].as_py() if "doc_title" in results.schema.names else "Documento"
+    doc_topic = results["doc_topic"][0].as_py() if "doc_topic" in results.schema.names else "General"
+    doc_author = results["doc_author"][0].as_py() if "doc_author" in results.schema.names else "Desconocido"
+    total_chunks = len(results)
+
+    ids = results["id"].to_pylist() if "id" in results.schema.names else []
+    sections = results["section_path"].to_pylist() if "section_path" in results.schema.names else []
+    contents = results["content"].to_pylist() if "content" in results.schema.names else []
+    chunk_tokens = results["chunk_tokens"].to_pylist() if "chunk_tokens" in results.schema.names else [len(c)//4 for c in contents]
+
+    raw_doc_tokens = results["total_doc_tokens"][0].as_py() if "total_doc_tokens" in results.schema.names else None
+    if raw_doc_tokens and raw_doc_tokens > 0:
+        total_doc_tokens = int(raw_doc_tokens)
+    else:
+        total_doc_tokens = sum(tok if (tok and tok > 0) else max(1, len(c)//4) for tok, c in zip(chunk_tokens, contents))
+
+    # 3. Analizar y agrupar secciones secuencialmente
+    sorted_items = sorted(zip(ids, sections, contents, chunk_tokens), key=lambda x: x[0])
+    
+    sections_list = []
+    current_sec_name = None
+    current_sec_tokens = 0
+    current_sec_chunks = 0
+    start_chunk_idx = 1
+    
+    for idx, (ch_id, sec_path, cont, tok_cnt) in enumerate(sorted_items, 1):
+        t_c = tok_cnt if (tok_cnt and tok_cnt > 0) else max(1, len(cont) // 4)
+        sec_name = sec_path.strip() if sec_path and sec_path.strip() else "Contenido Principal"
+        
+        if current_sec_name is None:
+            current_sec_name = sec_name
+            current_sec_tokens = t_c
+            current_sec_chunks = 1
+            start_chunk_idx = idx
+        elif sec_name == current_sec_name:
+            current_sec_tokens += t_c
+            current_sec_chunks += 1
+        else:
+            sections_list.append({
+                "index": len(sections_list) + 1,
+                "section": current_sec_name,
+                "chunk_start": start_chunk_idx,
+                "chunk_end": idx - 1,
+                "chunks_count": current_sec_chunks,
+                "estimated_tokens": current_sec_tokens
+            })
+            current_sec_name = sec_name
+            current_sec_tokens = t_c
+            current_sec_chunks = 1
+            start_chunk_idx = idx
+            
+    if current_sec_name is not None:
+        sections_list.append({
+            "index": len(sections_list) + 1,
+            "section": current_sec_name,
+            "chunk_start": start_chunk_idx,
+            "chunk_end": len(sorted_items),
+            "chunks_count": current_sec_chunks,
+            "estimated_tokens": current_sec_tokens
+        })
+
+    # 4. Formatear la tabla Markdown del GPS Documental
+    md_rows = []
+    for s in sections_list:
+        sec_display = s["section"]
+        if len(sec_display) > 80:
+            sec_display = sec_display[:77] + "..."
+        clean_param = s["section"].split(">")[-1].strip().replace('"', '')
+        if len(clean_param) < 4 and ">" in s["section"]:
+            clean_param = s["section"].split(">")[-2].strip().replace('"', '')
+        md_rows.append(
+            f"| `{s['index']:02d}` | **{sec_display}** | {s['chunks_count']} | ~{s['estimated_tokens']:,} | `leer_documento_completo(doc_id=\"{actual_doc_id}\", seccion=\"{clean_param}\")` |"
+        )
+
+    table_header = (
+        "| # | Sección / Capítulo / Módulo | Chunks | Tokens | Invocación Focalizada Sugerida |\n"
+        "| :---: | :--- | :---: | :---: | :--- |\n"
+    )
+
+    alt_notice = ""
+    if candidates and len(candidates) > 1:
+        other_matches = [f"'{c['title']}' (doc_id: {c['doc_id']})" for c in candidates[1:4]]
+        alt_notice = f"💡 *Nota de Búsqueda:* Se seleccionó '{doc_title}'. Otras coincidencias: {', '.join(other_matches)}\n\n"
+
+    content_md = (
+        f"# 🗺️ GPS Documental: Mapa de Estructura de Secciones\n"
+        f"**Documento:** \"{doc_title}\" [doc_id: `{actual_doc_id}`]\n"
+        f"**Tema:** {doc_topic} | **Autor:** {doc_author} | **Total Obra:** ~{total_doc_tokens:,} tokens ({total_chunks} fragmentos, {len(sections_list)} secciones detectadas)\n\n"
+        f"{alt_notice}"
+        f"A continuación se presenta el árbol estructural de la obra para orientar la lectura y análisis focalizado:\n\n"
+        f"{table_header}" + "\n".join(md_rows) + "\n\n"
+        f"---\n"
+        f"💡 **Guía de Navegación para el LLM y Usuario:**\n"
+        f"- Para leer una sección específica sin desbordar el contexto, ejecuta: `leer_documento_completo(doc_id=\"{actual_doc_id}\", seccion=\"<nombre_de_seccion>\")`.\n"
+        f"- Para paginación secuencial completa, ejecuta: `leer_documento_completo(doc_id=\"{actual_doc_id}\", parte=1)`."
+    )
+
+    return {
+        "success": True,
+        "doc_id": actual_doc_id,
+        "titulo": doc_title,
+        "tema": doc_topic,
+        "autor": doc_author,
+        "total_chunks": total_chunks,
+        "total_doc_tokens": total_doc_tokens,
+        "sections_count": len(sections_list),
+        "sections": sections_list,
+        "content": content_md
+    }
+
+def _partition_chunks_dynamically(
+    sorted_items: List[tuple],
+    target_tokens: int,
+    tolerance_pct: float = 0.08
+) -> List[tuple]:
+    """
+    Divide una secuencia de chunks en partes dinámicas buscando límites limpios de sección.
+    
+    Aplica una ventana de tolerancia [target * (1 - tolerance), target * (1 + tolerance)] (ej: ±8%)
+    para cortar preferentemente en cambios de sección (`section_path`) en lugar de partir artículos a ciegas.
+    """
+    min_tokens = int(target_tokens * (1.0 - tolerance_pct))
+    max_tokens = int(target_tokens * (1.0 + tolerance_pct))
+
+    partes = []
+    current_part = []
+    current_tokens = 0
+
+    for i, item in enumerate(sorted_items):
+        ch_id, sec, cont, tok_cnt = item
+        t_c = tok_cnt if (tok_cnt and tok_cnt > 0) else max(1, len(cont) // 4)
+
+        next_sec = sorted_items[i + 1][1] if (i + 1 < len(sorted_items)) else None
+        is_section_boundary = (next_sec is not None and next_sec != sec)
+
+        current_part.append(item)
+        current_tokens += t_c
+
+        if is_section_boundary and current_tokens >= min_tokens:
+            partes.append((current_part, current_tokens))
+            current_part = []
+            current_tokens = 0
+        elif current_tokens >= max_tokens:
+            partes.append((current_part, current_tokens))
+            current_part = []
+            current_tokens = 0
+
+    if current_part:
+        partes.append((current_part, current_tokens))
+
+    return partes
+
 def get_document_full_content(
     doc_id: str,
     parte: int = 1,
     token_threshold: int = 60000,
-    chunk_threshold: Optional[int] = None
+    chunk_threshold: Optional[int] = None,
+    seccion: Optional[str] = None
 ) -> Dict[str, Any]:
     """
-    Obtiene el contenido completo o paginado de un documento para síntesis exhaustiva por el LLM.
+    Obtiene el contenido completo, por sección temática o paginado con tolerancia dinámica (±5%-8%) de un documento.
     
-    Estrategia Dinámica Centrada en Tokens y Resolución Tolerante (Fuzzy / LIKE %...%):
-    - Acepta tanto el `doc_id` hexadecimal como el título exacto, parcial o sin acentos.
-    - Si total_doc_tokens <= 60.000 (~50% de ventana de 128K): Recupera el Markdown original 1:1 desde Teccam PDF (:5022).
-      Fallback: Si la API de Teccam no responde, concatena los fragmentos desde LanceDB.
-    - Si total_doc_tokens > 60.000: Divide el documento en partes dinámicas de hasta 60.000 tokens desde LanceDB.
+    Características del RAG Jerárquico:
+    - Búsqueda tolerante por ID o título difuso.
+    - Soporte para extracción focalizada de una sección (`seccion='Libro Primero'` o `seccion='Objetivo'`).
+    - Particionado inteligente con alineación a límites naturales de sección dentro del rango de tolerancia (±5%-8%).
     """
     clean_doc_id = doc_id.strip()
     table = get_table()
@@ -549,10 +753,9 @@ def get_document_full_content(
     if len(results) == 0:
         stats = get_rag_stats()
         avail = [f"- '{d['title']}' [doc_id: {d['id']}]" for d in stats.get("documents", [])[:10]]
-        avail_str = "\n".join(avail)
         return {
             "success": False,
-            "error": f"No se encontró ningún documento con ID o título que coincida con '{clean_doc_id}'.\n\nDocumentos disponibles en la biblioteca:\n{avail_str}",
+            "error": f"No se encontró ningún documento con ID o título que coincida con '{clean_doc_id}'.\n\nDocumentos disponibles en la biblioteca:\n" + "\n".join(avail),
             "doc_id": clean_doc_id
         }
         
@@ -567,20 +770,119 @@ def get_document_full_content(
     contents = results["content"].to_pylist() if "content" in results.schema.names else []
     chunk_tokens = results["chunk_tokens"].to_pylist() if "chunk_tokens" in results.schema.names else [len(c)//4 for c in contents]
     
-    # Obtener o calcular el total de tokens reales del documento
     raw_doc_tokens = results["total_doc_tokens"][0].as_py() if "total_doc_tokens" in results.schema.names else None
     if raw_doc_tokens and raw_doc_tokens > 0:
         total_doc_tokens = int(raw_doc_tokens)
     else:
         total_doc_tokens = sum(tok if (tok and tok > 0) else max(1, len(c)//4) for tok, c in zip(chunk_tokens, contents))
 
-    # Avisos de coincidencias alternativas si hubo búsqueda difusa
+    sorted_items = sorted(zip(ids, sections, contents, chunk_tokens), key=lambda x: x[0])
+
     alt_notice = ""
     if candidates and len(candidates) > 1:
         other_matches = [f"'{c['title']}' (doc_id: {c['doc_id']})" for c in candidates[1:4]]
         alt_notice = f"💡 *Nota de Búsqueda:* Se seleccionó '{doc_title}'. Otras coincidencias posibles: {', '.join(other_matches)}\n\n"
-    
-    # 3. ESCENARIO A: Documentos que caben en el presupuesto de tokens (<= 60.000 tokens) -> Fidelidad 1:1 Teccam PDF
+
+    # =========================================================================
+    # CASO 1: BÚSQUEDA FOCALIZADA POR SECCIÓN O CAPÍTULO
+    # =========================================================================
+    if seccion and seccion.strip():
+        req_sec_norm = normalize_text(seccion)
+        matched_items = []
+        for ch_id, sec, cont, tok_cnt in sorted_items:
+            s_norm = normalize_text(sec)
+            if req_sec_norm in s_norm or s_norm in req_sec_norm:
+                matched_items.append((ch_id, sec, cont, tok_cnt))
+                
+        if not matched_items:
+            unique_secs = []
+            for _, s, _, _ in sorted_items:
+                if s and s not in unique_secs:
+                    unique_secs.append(s)
+            avail_secs = "\n".join([f"- {s}" for s in unique_secs[:15]])
+            return {
+                "success": False,
+                "error": f"No se encontró la sección '{seccion}' en el documento '{doc_title}'.\n\nSecciones principales disponibles:\n{avail_secs}\n\n💡 Tip: Usa obtener_estructura_documento(doc_id=\"{actual_doc_id}\") para ver el índice completo.",
+                "doc_id": actual_doc_id
+            }
+
+        sec_tokens = sum(t_c if (t_c and t_c > 0) else max(1, len(c) // 4) for _, _, c, t_c in matched_items)
+        sec_name = matched_items[0][1]
+
+        if sec_tokens <= effective_token_threshold:
+            body_parts = []
+            current_sec = None
+            for _, s, cont, _ in matched_items:
+                if s != current_sec:
+                    current_sec = s
+                    body_parts.append(f"\n\n### {s}\n")
+                body_parts.append(cont)
+            slice_text = "\n\n".join(body_parts).strip()
+            header = (
+                f"# {doc_title} — Sección: \"{sec_name}\"\n"
+                f"**ID:** {actual_doc_id} | **Tema:** {doc_topic} | **Autor:** {doc_author} | **Tokens Sección:** ~{sec_tokens:,} ({len(matched_items)} fragmentos) | **Total Obra:** ~{total_doc_tokens:,} tokens\n"
+                f"**Modo de Recuperación:** Sección Focalizada Verificada desde LanceDB\n\n"
+                f"{alt_notice}"
+                f"---\n\n"
+            )
+            return {
+                "success": True,
+                "doc_id": actual_doc_id,
+                "titulo": doc_title,
+                "tema": doc_topic,
+                "autor": doc_author,
+                "seccion_solicitada": seccion,
+                "seccion_nombre": sec_name,
+                "total_chunks": total_chunks,
+                "total_doc_tokens": total_doc_tokens,
+                "tokens_en_esta_parte": sec_tokens,
+                "chunks_en_esta_parte": len(matched_items),
+                "modo": "seccion_focalizada",
+                "parte_actual": 1,
+                "total_partes": 1,
+                "content": header + slice_text
+            }
+        else:
+            partes_chunks = _partition_chunks_dynamically(matched_items, effective_token_threshold)
+            total_partes = max(1, len(partes_chunks))
+            parte = max(1, min(parte, total_partes))
+            selected_slice, part_tokens = partes_chunks[parte - 1]
+            body_parts = []
+            current_sec = None
+            for _, s, cont, _ in selected_slice:
+                if s != current_sec:
+                    current_sec = s
+                    body_parts.append(f"\n\n### {s}\n")
+                body_parts.append(cont)
+            slice_text = "\n\n".join(body_parts).strip()
+            next_hint = f" (Para leer la siguiente parte de esta sección use parte={parte+1})" if parte < total_partes else " (Fin de la sección)"
+            header = (
+                f"# {doc_title} — Sección: \"{sec_name}\" (Parte {parte} de {total_partes})\n"
+                f"**ID:** {actual_doc_id} | **Tokens en esta parte:** ~{part_tokens:,} ({len(selected_slice)} fragmentos) | **Total Sección:** ~{sec_tokens:,} tokens\n"
+                f"**Aviso:** Sección extensa dividida con límites limpios de tolerancia.{next_hint}\n\n"
+                f"---\n\n"
+            )
+            return {
+                "success": True,
+                "doc_id": actual_doc_id,
+                "titulo": doc_title,
+                "tema": doc_topic,
+                "autor": doc_author,
+                "seccion_solicitada": seccion,
+                "seccion_nombre": sec_name,
+                "total_chunks": total_chunks,
+                "total_doc_tokens": total_doc_tokens,
+                "tokens_en_esta_parte": part_tokens,
+                "chunks_en_esta_parte": len(selected_slice),
+                "modo": "seccion_paginada",
+                "parte_actual": parte,
+                "total_partes": total_partes,
+                "content": header + slice_text
+            }
+
+    # =========================================================================
+    # CASO 2: DOCUMENTO COMPLETO (< 60.000 tokens) -> 1:1 TECCAM PDF O LANCEDB
+    # =========================================================================
     if total_doc_tokens <= effective_token_threshold:
         raw_detail = fetch_teccam_document_raw(actual_doc_id)
         if raw_detail and raw_detail.get("texto", "").strip():
@@ -606,36 +908,15 @@ def get_document_full_content(
                 "total_partes": 1,
                 "content": header + raw_text
             }
-            
-        # Fallback a concatenación desde LanceDB si la API de Teccam PDF no estaba disponible
-        print(f"ℹ️ [RAG Engine] Fallback a concatenación de LanceDB para '{doc_title}' ({actual_doc_id})", file=sys.stderr)
-        
-    # 4. ESCENARIO B: Libros/Códigos Masivos (> 60.000 tokens) con Paginación Dinámica Acumulativa
-    sorted_items = sorted(zip(ids, sections, contents, chunk_tokens), key=lambda x: x[0])
-    
-    # Agrupar fragmentos en partes de hasta effective_token_threshold tokens
-    partes_chunks = []
-    current_part = []
-    current_part_tokens = 0
-    
-    for ch_id, sec, cont, tok_cnt in sorted_items:
-        t_c = tok_cnt if (tok_cnt and tok_cnt > 0) else max(1, len(cont) // 4)
-        if current_part and (current_part_tokens + t_c > effective_token_threshold):
-            partes_chunks.append((current_part, current_part_tokens))
-            current_part = [(ch_id, sec, cont, t_c)]
-            current_part_tokens = t_c
-        else:
-            current_part.append((ch_id, sec, cont, t_c))
-            current_part_tokens += t_c
-            
-    if current_part:
-        partes_chunks.append((current_part, current_part_tokens))
-        
+
+    # =========================================================================
+    # CASO 3: OBRAS MASIVAS (> 60.000 tokens) CON TOLERANCIA DINÁMICA (±5%-8%)
+    # =========================================================================
+    partes_chunks = _partition_chunks_dynamically(sorted_items, effective_token_threshold)
     total_partes = max(1, len(partes_chunks))
     parte = max(1, min(parte, total_partes))
-    
     selected_slice, part_tokens = partes_chunks[parte - 1]
-    
+
     body_parts = []
     current_sec = None
     for _, sec, cont, _ in selected_slice:
@@ -643,9 +924,8 @@ def get_document_full_content(
             current_sec = sec
             body_parts.append(f"\n\n### {sec}\n")
         body_parts.append(cont)
-        
     slice_text = "\n\n".join(body_parts).strip()
-    
+
     if total_partes == 1:
         modo_str = "completo_lancedb"
         header = (
@@ -655,15 +935,16 @@ def get_document_full_content(
             f"---\n\n"
         )
     else:
-        modo_str = "paginado"
+        modo_str = "paginado_jerarquico"
         next_hint = f" (Para leer la siguiente parte use parte={parte+1})" if parte < total_partes else " (Fin del documento)"
         header = (
             f"# {doc_title} (Parte {parte} de {total_partes})\n"
             f"**Tema:** {doc_topic} | **Autor:** {doc_author} | **Tokens en esta parte:** ~{part_tokens:,} ({len(selected_slice)} fragmentos) | **Total Obra:** ~{total_doc_tokens:,} tokens ({total_chunks} fragmentos)\n"
-            f"**Aviso de Paginación:** Documento extenso dividido dinámicamente en bloques de hasta {effective_token_threshold:,} tokens.{next_hint}\n\n"
+            f"**Aviso de Paginación Jerárquica:** Cortes alineados a límites naturales de capítulos con tolerancia dinámica (±5%-8%).{next_hint}\n"
+            f"💡 **Tip:** Puedes consultar el mapa general con `obtener_estructura_documento(doc_id=\"{actual_doc_id}\")` o solicitar una sección directa.\n\n"
             f"---\n\n"
         )
-        
+
     return {
         "success": True,
         "doc_id": actual_doc_id,

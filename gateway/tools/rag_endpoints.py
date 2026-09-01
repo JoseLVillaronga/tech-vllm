@@ -67,6 +67,7 @@ async def handle_rag_document(request: Request, body: bytes) -> JSONResponse:
         token_threshold = int(body_data.get("token_threshold", 60000))
         chunk_threshold = body_data.get("chunk_threshold")
         chunk_threshold_val = int(chunk_threshold) if chunk_threshold is not None else None
+        seccion = body_data.get("seccion") or body_data.get("section") or None
 
         if not doc_id:
             raise HTTPException(status_code=400, detail="El parámetro 'doc_id' es obligatorio para leer el documento.")
@@ -76,7 +77,8 @@ async def handle_rag_document(request: Request, body: bytes) -> JSONResponse:
             doc_id=doc_id,
             parte=parte,
             token_threshold=token_threshold,
-            chunk_threshold=chunk_threshold_val
+            chunk_threshold=chunk_threshold_val,
+            seccion=seccion
         )
         dur_doc_ms = round((time.time() - t_doc_0) * 1000, 2)
 
@@ -89,6 +91,8 @@ async def handle_rag_document(request: Request, body: bytes) -> JSONResponse:
             "titulo": res.get("titulo"),
             "tema": res.get("tema"),
             "autor": res.get("autor"),
+            "seccion_solicitada": res.get("seccion_solicitada"),
+            "seccion_nombre": res.get("seccion_nombre"),
             "total_chunks": res.get("total_chunks"),
             "total_doc_tokens": res.get("total_doc_tokens"),
             "tokens_en_esta_parte": res.get("tokens_en_esta_parte"),
@@ -103,3 +107,49 @@ async def handle_rag_document(request: Request, body: bytes) -> JSONResponse:
         raise
     except Exception as de:
         raise HTTPException(status_code=500, detail=f"Error al leer documento RAG: {str(de)}")
+
+
+async def handle_rag_structure(request: Request, body: bytes) -> JSONResponse:
+    """
+    Manejador para el endpoint POST /api/tools/rag-structure y /v1/rag/structure (GPS Documental).
+    """
+    try:
+        from rag_engine import get_document_structure, get_rag_settings
+
+        rag_sett = get_rag_settings()
+        if not rag_sett.get("enabled", True):
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="El servicio de Base de Conocimiento RAG está desactivado globalmente en la suite."
+            )
+
+        body_data = json.loads(body) if body else {}
+        doc_id = body_data.get("doc_id", "").strip()
+
+        if not doc_id:
+            raise HTTPException(status_code=400, detail="El parámetro 'doc_id' es obligatorio para consultar la estructura.")
+
+        t_struct_0 = time.time()
+        res = get_document_structure(doc_id=doc_id)
+        dur_struct_ms = round((time.time() - t_struct_0) * 1000, 2)
+
+        if not res.get("success", False):
+            raise HTTPException(status_code=404, detail=res.get("error", "Error consultando estructura del documento."))
+
+        return JSONResponse(content={
+            "success": True,
+            "doc_id": res.get("doc_id"),
+            "titulo": res.get("titulo"),
+            "tema": res.get("tema"),
+            "autor": res.get("autor"),
+            "total_chunks": res.get("total_chunks"),
+            "total_doc_tokens": res.get("total_doc_tokens"),
+            "sections_count": res.get("sections_count", 0),
+            "sections": res.get("sections", []),
+            "latency_ms": dur_struct_ms,
+            "content": res.get("content", "")
+        })
+    except HTTPException:
+        raise
+    except Exception as se:
+        raise HTTPException(status_code=500, detail=f"Error al consultar estructura RAG: {str(se)}")

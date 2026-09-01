@@ -87,7 +87,13 @@
                                         <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> Indexado
                                     </span>
                                 </td>
-                                <td class="px-4 py-3 text-right">
+                                <td class="px-4 py-3 text-right flex items-center justify-end gap-2">
+                                    <button onclick="viewDocumentStructure('${escapeHtml(doc.id)}', '${safeJsTitle}')" class="px-2.5 py-1 rounded-lg bg-purple-500/10 hover:bg-purple-600 text-purple-300 hover:text-white border border-purple-500/20 text-xs font-medium transition-all inline-flex items-center gap-1" title="Ver estructura de secciones y GPS Documental">
+                                        <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                                            <path stroke-linecap="round" stroke-linejoin="round" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+                                        </svg>
+                                        GPS
+                                    </button>
                                     <button onclick="deleteRagDocument('${escapeHtml(doc.id)}', '${safeJsTitle}')" class="px-2.5 py-1 rounded-lg bg-rose-500/10 hover:bg-rose-600 text-rose-400 hover:text-white border border-rose-500/20 text-xs font-medium transition-all inline-flex items-center gap-1" title="Eliminar este libro de la base vectorial">
                                         <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                                             <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -540,5 +546,95 @@
                 btn.disabled = false;
                 btn.innerHTML = origHtml;
             }
+        }
+
+        async function viewDocumentStructure(docId, title) {
+            const modal = document.getElementById('modal-rag-structure');
+            const subtitle = document.getElementById('modal-structure-subtitle');
+            const body = document.getElementById('modal-structure-body');
+
+            if (!modal || !body) return;
+
+            if (subtitle) subtitle.innerText = `Documento: "${title}" [ID: ${docId}]`;
+            body.innerHTML = `
+                <div class="py-12 flex flex-col items-center justify-center gap-3 text-purple-400">
+                    <svg class="animate-spin h-6 w-6 text-purple-400" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+                    </svg>
+                    <span class="text-xs text-slate-400 font-mono">Analizando árbol de secciones en LanceDB...</span>
+                </div>
+            `;
+            modal.classList.remove('hidden');
+
+            try {
+                const res = await fetch(`/api/rag/structure/${encodeURIComponent(docId)}`);
+                const data = await res.json();
+
+                if (!res.ok || !data.success) {
+                    body.innerHTML = `<div class="p-4 bg-rose-950/40 border border-rose-500/40 text-rose-300 rounded-xl">Error: ${escapeHtml(data.error || 'No se pudo obtener la estructura.')}</div>`;
+                    return;
+                }
+
+                if (subtitle) {
+                    subtitle.innerText = `"${data.titulo}" — Total: ~${(data.total_doc_tokens || 0).toLocaleString()} tokens (${data.total_chunks || 0} chunks, ${data.sections_count || 0} secciones)`;
+                }
+
+                if (!data.sections || data.sections.length === 0) {
+                    body.innerHTML = `<div class="text-slate-400 py-6 text-center">Este documento no tiene subdivisiones jerárquicas registradas.</div>`;
+                    return;
+                }
+
+                let rowsHtml = data.sections.map(s => {
+                    const cleanParam = s.section.split('>').pop().trim().replace(/"/g, '');
+                    return `
+                    <tr class="hover:bg-slate-900/60 transition-all border-b border-slate-800/40">
+                        <td class="px-3 py-2 font-mono text-purple-400 text-center">${String(s.index).padStart(2, '0')}</td>
+                        <td class="px-3 py-2 font-semibold text-slate-200">${escapeHtml(s.section)}</td>
+                        <td class="px-3 py-2 text-center font-mono text-slate-300">${s.chunks_count}</td>
+                        <td class="px-3 py-2 text-right font-mono text-emerald-400">~${(s.estimated_tokens || 0).toLocaleString()}</td>
+                        <td class="px-3 py-2 text-right">
+                            <span class="text-[11px] font-mono text-slate-400 bg-slate-950 px-2 py-0.5 rounded border border-slate-800">
+                                seccion="${escapeHtml(cleanParam)}"
+                            </span>
+                        </td>
+                    </tr>
+                    `;
+                }).join('');
+
+                body.innerHTML = `
+                    <div class="flex flex-col gap-3">
+                        <div class="flex items-center justify-between bg-slate-900/80 p-3 rounded-xl border border-slate-800 text-xs">
+                            <div><span class="text-slate-400">Tema:</span> <span class="text-purple-300 font-semibold">${escapeHtml(data.tema || 'General')}</span></div>
+                            <div><span class="text-slate-400">Autor:</span> <span class="text-slate-200">${escapeHtml(data.autor || 'Desconocido')}</span></div>
+                            <div><span class="text-slate-400">Total Tokens:</span> <span class="text-emerald-400 font-bold font-mono">~${(data.total_doc_tokens || 0).toLocaleString()}</span></div>
+                        </div>
+
+                        <div class="overflow-x-auto rounded-xl border border-slate-800">
+                            <table class="w-full text-left text-xs">
+                                <thead class="bg-slate-900 text-slate-400 font-bold uppercase tracking-wider border-b border-slate-800">
+                                    <tr>
+                                        <th class="px-3 py-2 text-center">#</th>
+                                        <th class="px-3 py-2">Sección / Capítulo</th>
+                                        <th class="px-3 py-2 text-center">Chunks</th>
+                                        <th class="px-3 py-2 text-right">Tokens</th>
+                                        <th class="px-3 py-2 text-right">Parámetro de Tool</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${rowsHtml}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                `;
+            } catch (err) {
+                body.innerHTML = `<div class="p-4 bg-rose-950/40 border border-rose-500/40 text-rose-300 rounded-xl">Error de red: ${escapeHtml(err.message)}</div>`;
+            }
+        }
+
+        function closeRagStructureModal() {
+            const modal = document.getElementById('modal-rag-structure');
+            if (modal) modal.classList.add('hidden');
         }
 

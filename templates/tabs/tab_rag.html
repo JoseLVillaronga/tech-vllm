@@ -188,4 +188,31 @@
                         </table>
                     </div>
                 </div>
+
+                <!-- Modal: GPS Documental / Visor de Secciones -->
+                <div id="modal-rag-structure" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+                    <div class="glass-panel w-full max-w-4xl max-h-[85vh] rounded-2xl flex flex-col shadow-2xl border border-purple-500/30 overflow-hidden">
+                        <div class="p-5 border-b border-slate-800 flex items-center justify-between bg-slate-900/60">
+                            <div>
+                                <h3 class="text-base font-bold text-slate-100 flex items-center gap-2">
+                                    <span>🗺️</span> GPS Documental & Mapa de Secciones
+                                </h3>
+                                <p id="modal-structure-subtitle" class="text-xs text-purple-300 font-mono mt-0.5">Cargando...</p>
+                            </div>
+                            <button onclick="closeRagStructureModal()" class="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-all">
+                                <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                            </button>
+                        </div>
+                        <div class="p-5 overflow-y-auto flex flex-col gap-4 font-mono text-xs text-slate-200" id="modal-structure-body">
+                            <div class="py-8 text-center text-slate-500">Cargando estructura jerárquica...</div>
+                        </div>
+                        <div class="p-4 border-t border-slate-800 flex justify-end bg-slate-900/40">
+                            <button onclick="closeRagStructureModal()" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-xl transition-all">
+                                Cerrar Visor
+                            </button>
+                        </div>
+                    </div>
+                </div>
             </div>

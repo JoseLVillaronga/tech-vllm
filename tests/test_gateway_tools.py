@@ -88,5 +88,45 @@ class TestGatewayToolsAndCloud(unittest.IsolatedAsyncioTestCase):
         self.assertGreater(len(pdf_bytes), 500)
 
 
+    def test_rag_document_structure_and_gps(self):
+        from rag_engine import get_document_structure
+        res = get_document_structure("Constitución Nacional Argentina")
+        self.assertTrue(res.get("success"))
+        self.assertEqual(res.get("titulo"), "Constitución Nacional Argentina")
+        self.assertGreater(res.get("sections_count", 0), 10)
+        self.assertIn("GPS Documental", res.get("content", ""))
+        self.assertIn("Preámbulo", res.get("content", ""))
+
+    def test_rag_document_section_retrieval(self):
+        from rag_engine import get_document_full_content
+        # Prueba con sección específica
+        res = get_document_full_content("Constitución Nacional Argentina", seccion="Nuevos derechos")
+        self.assertTrue(res.get("success"))
+        self.assertEqual(res.get("modo"), "seccion_focalizada")
+        self.assertIn("Artículo 36", res.get("content", ""))
+
+        # Prueba con sección inexistente (debe retornar sugerencias amigables)
+        bad_res = get_document_full_content("Constitución Nacional Argentina", seccion="Sección Inexistente XYZ")
+        self.assertFalse(bad_res.get("success"))
+        self.assertIn("Secciones principales disponibles", bad_res.get("error", ""))
+
+    def test_rag_dynamic_tolerance_partitioning(self):
+        from rag_engine import _partition_chunks_dynamically
+        # Simular chunks de 3 secciones
+        chunks = [
+            ("ch1", "Sec A", "Párrafo A1", 4000),
+            ("ch2", "Sec A", "Párrafo A2", 4000),
+            ("ch3", "Sec B", "Párrafo B1", 4000), # Total acumulado 12000 (cerca de target 10000 con +8% tolerance)
+            ("ch4", "Sec B", "Párrafo B2", 4000),
+            ("ch5", "Sec C", "Párrafo C1", 4000)
+        ]
+        # Target 10.000 con tolerance 0.20 (rango 8.000 - 12.000)
+        partes = _partition_chunks_dynamically(chunks, target_tokens=10000, tolerance_pct=0.25)
+        self.assertGreaterEqual(len(partes), 2)
+        # La primera parte debe contener ch1 y ch2 (8.000 tokens en corte de sección A -> B)
+        self.assertEqual(len(partes[0][0]), 2)
+        self.assertEqual(partes[0][1], 8000)
+
+
 if __name__ == "__main__":
     unittest.main()

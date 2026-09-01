@@ -28,6 +28,7 @@ Al finalizar cada sesión de trabajo, el agente y el usuario realizan una audito
 
 | Fecha | ID Sesión | Turnos Usuario | Llamadas Agénticas (Tools) | Commits Git | Invariantes Violados | RVI Máx | Blast Radius | Estado Global |
 | :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **2026-09-01 (Mediodía)** | `bba5ef3a` | 4 | ~30 | 1 | **0** | 2/10 | Bajo (Modular) | 🟢 **100% Exitoso** |
 | **2026-09-01 (Madrugada)** | `bba5ef3a` | 12 | ~40 | 1 | **0** | 2/10 | Bajo (Modular) | 🟢 **100% Exitoso** |
 | **2026-08-31 (Noche)** | `b034eae5` | 14 | ~35 | 3 | **0** | 2/10 | Bajo (Quirúrgico) | 🟢 **100% Exitoso** |
 | **2026-08-31 (Tarde)** | `18593369` | 9 | ~25 | 1 | **0** | 2/10 | Bajo (Cirugía) | 🟢 **100% Exitoso** |
@@ -36,6 +37,29 @@ Al finalizar cada sesión de trabajo, el agente y el usuario realizan una audito
 ---
 
 ## 📝 Fichas Detalladas por Sesión
+
+### 🔹 Sesión: 2026-09-01 Mediodía (`bba5ef3a-c9c3-41a0-9e67-95058f9b5fb1`)
+* **Hitos Principales:**
+  1. **Motor RAG Jerárquico & GPS Documental ([`rag_engine.py`](file:///home/jose/vllm/rag_engine.py)):**
+     - Creación de `get_document_structure(doc_id)`: Escaneo y agrupamiento del árbol de secciones (`section_path`), cálculo de tokens por capítulo/título y generación de un "GPS Documental" en Markdown.
+     - Implementación de `_partition_chunks_dynamically`: Particionado inteligente con tolerancia dinámica ($\pm 5\% - 8\%$) para alinear cortes de paginación a límites naturales de capítulos/artículos en lugar de cortes ciegos de tokens.
+     - Extracción focalizada por sección: Parámetro `seccion` en `get_document_full_content(doc_id, seccion="...")` para consultas directas y quirúrgicas de capítulos o libros específicos.
+     - Mensajes de error orientativos con lista de secciones disponibles cuando una sección no es encontrada.
+  2. **Enrutamiento y Herramientas en el Gateway (:8000):**
+     - Nuevos endpoints `POST /api/tools/rag-structure` y `POST /v1/rag/structure` en [`gateway/tools/rag_endpoints.py`](file:///home/jose/vllm/gateway/tools/rag_endpoints.py) y [`gateway/proxy/proxy_factory.py`](file:///home/jose/vllm/gateway/proxy/proxy_factory.py).
+     - Actualización de [`tools/openwebui_rag_tool.py`](file:///home/jose/vllm/tools/openwebui_rag_tool.py) con `obtener_estructura_documento` y soporte de `seccion` en `leer_documento_completo`.
+     - Actualización de directivas en [`gateway/core/alignment_engine.py`](file:///home/jose/vllm/gateway/core/alignment_engine.py) y `format_rag_context_for_llm`.
+  3. **Visualización en el Dashboard Web (:8004):**
+     - Botón "GPS" en la tabla de documentos de [`templates/tabs/tab_rag.html`](file:///home/jose/vllm/templates/tabs/tab_rag.html).
+     - Modal interactivo *Glassmorphism* en [`static/js/dashboard_rag.js`](file:///home/jose/vllm/static/js/dashboard_rag.js) conectado al endpoint `/api/rag/structure/<doc_id>`.
+  4. **Suite de Pruebas Automatizadas:**
+     - 19/19 tests unitarios pasando en verde (`Ran 19 tests in 1.539s - OK`) en `tests/test_gateway_core.py` y `tests/test_gateway_tools.py`.
+* **Evaluación MEA v2.1 & Leyes de Ingeniería:**
+  * **Invariantes (Gate 1):** **0 violaciones**. Pacto de consenso mutuo y verificación determinista antes de confirmar cambios.
+  * **Ley 1 (Modularización):** Cumplida al 100%. Lógica de GPS encapsulada en `rag_engine.py`, enrutadores en `gateway/tools/rag_endpoints.py` y visor en `dashboard_rag.js`.
+  * **Ley 2 (Causa Raíz):** Cumplida al 100%. Se resolvió la causa de la pérdida de contexto y cortes arbitrarios en obras masivas con tolerancia dinámica y búsqueda estructural.
+  * **Ley 3 (Mínimo Blast Radius):** Cumplida al 100%. Total compatibilidad hacia atrás con todos los servicios y clientes existentes.
+  * **RVI Máximo:** `2/10`.
 
 ### 🔹 Sesión: 2026-09-01 Madrugada (`bba5ef3a-c9c3-41a0-9e67-95058f9b5fb1`)
 * **Hitos Principales:**

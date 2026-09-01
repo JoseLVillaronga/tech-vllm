@@ -105,14 +105,16 @@ class Tools:
     def leer_documento_completo(
         self,
         doc_id: str,
-        parte: int = 1
+        parte: int = 1,
+        seccion: Optional[str] = None
     ) -> str:
         """
-        Obtiene el texto completo o una parte masiva de un documento, procedimiento o libro oficial de Teccam para redactar resúmenes integrales, síntesis ejecutivas o análisis normativos exhaustivos sin omitir pasos ni incisos.
+        Obtiene el texto completo, por sección temática o paginado de un documento, procedimiento o libro oficial de Teccam para redactar resúmenes integrales, síntesis ejecutivas o análisis normativos exhaustivos sin omitir pasos ni incisos.
         Acepta tanto el doc_id hexadecimal como el título exacto o parcial del procedimiento/libro.
-        Si el documento tiene hasta 60.000 tokens (~50% de la ventana de 128K), entrega el texto original íntegro 1:1. Si es más extenso, entrega la parte solicitada con aviso de paginación.
+        Si el documento tiene hasta 60.000 tokens (~50% de la ventana de 128K), entrega el texto original íntegro 1:1. Si es más extenso, entrega la parte solicitada con límites limpios de sección o la sección indicada.
         :param doc_id: ID único del documento (ej: '67b2111008223c9b3c3e5608') o el título del documento (ej: 'Procedimiento General de Soporte en Puestos de Trabajo').
         :param parte: Número de parte a recuperar si es un libro extenso paginado (1 para la primera parte, 2 para la siguiente, etc.).
+        :param seccion: Opcional: Nombre del capítulo, libro o sección temática específica a extraer (ej: 'Libro Primero', 'Título II', 'DESARROLLO', 'Nuevos derechos').
         """
         base_url = str(self.valves.GATEWAY_URL).rstrip("/")
         if not base_url.endswith("/api/tools/rag-document") and not base_url.endswith("/v1/rag/document"):
@@ -133,10 +135,13 @@ class Tools:
             except Exception:
                 clean_parte = 1
 
+        clean_seccion = str(seccion).strip() if seccion and not str(type(seccion)).endswith("FieldInfo'>") else None
+
         payload = {
             "doc_id": clean_doc_id,
             "parte": clean_parte,
-            "token_threshold": 60000
+            "token_threshold": 60000,
+            "seccion": clean_seccion
         }
 
         try:
@@ -149,24 +154,43 @@ class Tools:
                 return f"Error al leer el documento (HTTP {response.status_code}): {response.text}"
 
             data = response.json()
-            titulo = data.get("titulo", "Documento")
-            tema = data.get("tema", "General")
-            autor = data.get("autor", "Desconocido")
-            modo = data.get("modo", "completo")
-            content = data.get("content", "")
-            total_tokens = data.get("total_doc_tokens", 0)
+            return data.get("content", "")
+        except Exception as e:
+            return f"Error de conexión con el Gateway RAG ({url}): {str(e)}"
 
-            if modo == "completo":
-                header_info = f"--- DOCUMENTO COMPLETO: \"{titulo}\" (Tema: {tema} | Autor: {autor} | Tokens: ~{total_tokens:,}) ---\n\n"
-            else:
-                parte_actual = data.get("parte_actual", 1)
-                total_partes = data.get("total_partes", 1)
-                header_info = (
-                    f"--- DOCUMENTO EXTENSO (PARTE {parte_actual}/{total_partes}): \"{titulo}\" "
-                    f"(Tema: {tema} | Tokens de esta parte: ~{data.get('tokens_en_esta_parte', 0):,} de {total_tokens:,}) ---\n"
-                    f"💡 [Aviso: Para leer la siguiente parte ejecuta: leer_documento_completo(doc_id=\"{data.get('doc_id')}\", parte={parte_actual + 1})]\n\n"
-                )
+    def obtener_estructura_documento(
+        self,
+        doc_id: str
+    ) -> str:
+        """
+        Obtiene el 'GPS Documental' (Mapa y Árbol de Estructura de Secciones) de una obra, libro o código extenso (ej: Código Civil, Constitución Nacional, manuales técnicos).
+        Permite conocer todos los capítulos, títulos, artículos, rangos de fragmentos y volumen de tokens antes de leer o resumir partes específicas.
+        :param doc_id: ID único del documento (ej: '6a8b02cface6becbcb49b20d') o título de la obra (ej: 'Codigo Civil Argentino').
+        """
+        base_url = str(self.valves.GATEWAY_URL).rstrip("/")
+        if not base_url.endswith("/api/tools/rag-structure") and not base_url.endswith("/v1/rag/structure"):
+            url = f"{base_url}/api/tools/rag-structure"
+        else:
+            url = base_url
 
-            return f"{header_info}{content}\n\n--- FIN DEL TEXTO SUMINISTRADO ---"
+        headers = {
+            "Authorization": f"Bearer {self.valves.API_KEY}",
+            "Content-Type": "application/json"
+        }
+
+        clean_doc_id = str(doc_id).strip() if doc_id and not str(type(doc_id)).endswith("FieldInfo'>") else ""
+        payload = {"doc_id": clean_doc_id}
+
+        try:
+            response = requests.post(url, json=payload, headers=headers, timeout=20.0)
+
+            if response.status_code == 503:
+                return "Aviso: El servicio de Base de Conocimiento RAG está temporalmente desactivado globalmente."
+
+            if response.status_code != 200:
+                return f"Error consultando estructura RAG (HTTP {response.status_code}): {response.text}"
+
+            data = response.json()
+            return data.get("content", "No se obtuvo contenido de estructura.")
         except Exception as e:
             return f"Error de conexión con el Gateway RAG ({url}): {str(e)}"
