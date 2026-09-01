@@ -225,7 +225,75 @@ Para que el RVI Compuesto funcione en arquitecturas de agentes distribuidos (com
 
 ---
 
-## 9. Líneas de Investigación Abiertas y Próximos Pasos
+## 9. Arquitectura de RAG Jerárquico y GPS Documental para Obras Masivas (> 60K - 850K tokens)
+
+### 9.1 Justificación Técnica: Por qué el RAG Plano y los Cortes Ciegos Fracasan
+En documentos extensos (códigos jurídicos como el Código Civil de ~850.000 tokens, manuales de arquitectura de software o tratados normativos), los enfoques tradicionales de RAG presentan dos fallos estructurales graves:
+1. **Pérdida de Jerarquía y Desorientación Cognitiva:** Un trozo de 300 tokens del "Artículo 857" aislado de su título ("Capítulo IV: Nulidad de las transacciones") induce al modelo a confundir la naturaleza general o especial de la norma.
+2. **Cortes Ciegos por Límite Fijo de Tokens:** Si un sistema pagina un libro cortando rígidamente en el token $60.000$, casi con certeza partirá un artículo o un párrafo a la mitad, provocando alucinaciones sintácticas en el LLM.
+
+```
+                  ARQUITECTURA DE RAG JERÁRQUICO & GPS DOCUMENTAL
+  
+  [ DOCUMENTO MASIVO EN LANCEDB ] (Ej: Código Civil Ley 340 - 850.605 tokens / 2.754 chunks)
+                │
+                ├─────────────────────────────────────────────────────────────┐
+                ▼                                                             ▼
+     [ 1. GPS DOCUMENTAL ]                                         [ 2. TOLERANCIA DINÁMICA ]
+   get_document_structure(doc_id)                                _partition_chunks_dynamically
+   - Árbol de Secciones y Capítulos                                - Margen de corte (±5% a ±8%)
+   - Rangos de Chunks y Tokens por Sección                         - Cortes en fronteras naturales
+   - Guía de Invocación Rápida para el LLM                          (nunca parte artículos al medio)
+                │                                                             │
+                └──────────────────────────────┬──────────────────────────────┘
+                                               ▼
+                              [ 3. EXTRACCIÓN FOCALIZADA ]
+                         get_document_full_content(doc_id, seccion="...")
+                         - Búsqueda difusa y normalizada de capítulos
+                         - Recuperación limpia con latencias de ~50 ms
+```
+
+### 9.2 Los Cuatro Pilares del Motor RAG Jerárquico
+1. **El "GPS Documental" (`get_document_structure`):** Analiza secuencialmente las etiquetas `section_path` indexadas en LanceDB y produce un mapa en Markdown con tabla de capítulos, tokens estimados y la sintaxis exacta de llamada a la herramienta.
+2. **Particionado Inteligente con Tolerancia Dinámica ($\pm 5\% - 8\%$):** Define una ventana de corte $[\text{Target} \times 0.92, \; \text{Target} \times 1.08]$. Si un capítulo termina dentro de ese intervalo, la parte concluye limpiamente allí.
+3. **Recuperación Quirúrgica por Sección (`seccion="..."`):** Permite al LLM o al usuario pedir directamente un capítulo (ej. `seccion="Capítulo IV: Nulidad de las transacciones"` o `seccion="Nuevos derechos"`), reduciendo el payload de cientos de miles de tokens a unos pocos miles con fidelidad 100%.
+4. **Condicionamiento Dual en Inferencia:**
+   * *Nivel RAG:* Cada fragmento devuelto por `buscar_en_base_de_conocimiento` incluye dinámicamente un aviso condicional indicando si la obra es masiva y cómo invocar su GPS o sección.
+   * *Nivel Gateway:* El `alignment_engine.py` instruye al modelo a consultar el GPS antes de intentar lecturas masivas a ciegas.
+
+---
+
+## 10. Prueba de Campo Empírica: Validación Multi-Turno y Compilación PDF (2026-09-01)
+
+### 10.1 Registro de Ejecución en Vivo (Gemma 4 12B-it en 4-bit / 128K)
+Se sometió la suite a una prueba de campo real en un hilo continuo que alcanzó **62.012 tokens de contexto acumulado**:
+
+```text
+Turno 1: "Mostrame causas de nulidad de contratos"
+         ➔ LLM genera síntesis doctrinaria inicial.
+Turno 2: "Verifica en fuentes documentales"
+         ➔ LLM invoca buscar_en_base_de_conocimiento("causas de nulidad de contratos...")
+         ➔ LanceDB retorna 4 fragmentos del Código Civil (Art. 857, 1207, 1208) con score 83-84% y guía de GPS.
+         ➔ LLM cita con exactitud Fuentes 2, 3 y 4 y ofrece profundizar en el Capítulo IV.
+Turno 3: "Si extrae el contexto completo para mayor precisión"
+         ➔ LLM emite tool_call: leer_documento_completo(doc_id="Codigo Civil Argentino - Ley 340", parte=1)
+         ➔ Motor RAG inyecta 59.318 tokens verificados con límites jerárquicos limpios.
+         ➔ LLM digiere la Parte 1 y sintetiza la nulidad contractual y matrimonial.
+Turno 4: "Si analiza nulidad de matrimonio"
+         ➔ LLM analiza impedimentos absolutos, relativos y la doctrina de Matrimonio Putativo.
+Turno 5: "Si por favor" (Solicitud de PDF)
+         ➔ LLM emite tool_call: generate_pdf_document(filename="Informe_Nulidad_Matrimonio_Teccam.pdf", ...)
+         ➔ Motor PDF compila documento vectorial oficial de 2 páginas con cabecera y pie institucional.
+```
+
+### 10.2 Resultados Cualitativos del Documento Generado (`Informe_Nulidad_Matrimonio_Teccam.pdf`)
+* **Páginas:** 2 páginas vectoriales con diseño corporativo *TECCAM S.R.L.*
+* **Fidelidad Conceptual:** Distinción perfecta entre nulidad absoluta (impedimento de ligamen, parentesco consanguíneo), nulidad relativa (vicios de dolo, error, violencia) y efectos de la buena fe en el **Matrimonio Putativo** (legitimidad de la prole y derechos alimentarios).
+* **Ausencia de Regresiones:** Cero enlaces falsos, cero errores por desborde de ventana y 100% de ejecución de herramientas reales.
+
+---
+
+## 11. Líneas de Investigación Abiertas y Próximos Pasos
 
 1. **Ejercicios de Límite en Entornos de Producción:** Medir la resistencia del modelo ante instrucciones ambiguas que rocen el piso de invariantes (ej. pedidos de saltar validaciones de seguridad o generar informes sesgados).
 2. **Implementación de un Acumulador Formal de RVI en Pipelines Agénticos:** Evaluar la integración de un middleware que bloquee automáticamente la ejecución de un subagente si $\text{RVI}_{\text{compuesto}} \ge 8$ hasta que se ejecute un paso de verificación $V(t)$.
