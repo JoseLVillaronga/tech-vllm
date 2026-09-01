@@ -183,12 +183,52 @@ Para que el RVI Compuesto funcione en arquitecturas de agentes distribuidos (com
   * *Observación 3:* La integración de las 3 Leyes de Villaronga (`AGENTS.md`) como valores e invariantes operativos permitió realizar refactorizaciones críticas de bajo riesgo sin un solo error en cadena ($\text{RVI}_{\text{máx}} = 3/10$).
 * **Sesión 2026-08-31 (Gemma 4 12B-it & Cuantización):**
   * *Observación 4 (Umbral de Precisión en Cuantización para Tool-Calling):* Al probar `google/gemma-4-12B-it` con cuantización de 4 bits (`bitsandbytes` NF4), el modelo sufrió alucinaciones graves y pérdida de contexto en cadenas multi-herramienta (incapacidad de mantener la estructura JSON y las firmas de llamadas). Al cambiar a cuantización de **8 bits** (`LOAD_8_BITS=true` / `LLM.int8()`), el comportamiento se estabilizó de inmediato, recuperando la fidelidad deductiva y el uso impecable de herramientas. Esto confirma que la degradación en 4 bits afecta de forma no lineal a los *outliers* de atención responsables del parsing estructurado y la memoria de trabajo.
+* **Sesión 2026-09-01 (Invariantes Binarios en Gateway & Desacoplamiento de Open-WebUI):**
+  * *Observación 5 (El Salto de Invariante Continuo a Binario):* Se comprobó empíricamente que los LLMs en 12B, a pesar de estar alineados y cuantizados, tienden por sesgo probabilístico a simular enlaces ficticios (`https://example.com/generate_pdf_document?...`) con disculpas de "entorno simulado" en lugar de pausar la generación y emitir el `tool_call` real.
+  * *Observación 6 (Alineación Determinista en el Gateway):* Al trasladar las directivas del MEA al Gateway mediante un módulo especializado ([`gateway/core/alignment_engine.py`](file:///home/jose/vllm/gateway/core/alignment_engine.py)) que prohíbe taxativamente los enlaces simulados y comanda el uso de herramientas, el modelo pasó a ejecutar el 100% de las herramientas reales (`leer_documento_completo`, `generate_pdf_document`, `buscar_en_internet`, `get_current_weather`), logrando cadenas multi-turno de casi 28.000 tokens sin un solo fallo ni alucinación de URLs.
+  * *Observación 7 (Independencia del Cliente y Clamping de Contexto):* Se erradicó la dependencia de la configuración en Open-WebUI y se neutralizó el bug de desbordamiento de `max_tokens` (Open-WebUI reclamando todo el remanente de contexto $65536 - \text{prompt}$) mediante un tope defensivo inteligente de 8.192 tokens en el Gateway.
 
 ---
 
-## 8. Líneas de Investigación Abiertas y Próximos Pasos
+## 8. Arquitectura de Inyección en Gateway y Control GUI (MEA v2.1)
+
+```
+                              ARQUITECTURA DE ALINEACIÓN MEA v2.1
+  ┌─────────────────────────┐
+  │  1. Cliente (OpenWebUI) │  (Envía prompt + tools estándar)
+  └────────────┬────────────┘
+               │ HTTP POST /v1/chat/completions
+               ▼
+  ┌─────────────────────────────────────────────────────────────────────────────┐
+  │  2. GATEWAY MODULAR (vllm-gateway :8000)                                     │
+  │  ┌───────────────────────────────────────────────────────────────────────┐  │
+  │  │  alignment_engine.py (Submódulo Especializado)                         │  │
+  │  │  • Sincronización en memoria con MongoDB (vllm.alignment_settings)    │  │
+  │  │  • Inyección de Temporalidad determinista (Fecha/Hora local en ES)    │  │
+  │  │  • Invariante Gate 1: Prohibición estricta de links simulados         │  │
+  │  │  • Mandato de Ejecución de Tools (PDF, RAG, Web Search)               │  │
+  │  │  • Clamping defensivo de max_tokens (8192 cap anti-desbordes)         │  │
+  │  └───────────────────────────────────┬───────────────────────────────────┘  │
+  └──────────────────────────────────────┼──────────────────────────────────────┘
+                                         │ Payload Blindado y Enriquecido
+                                         ▼
+                            ┌─────────────────────────┐
+                            │ 3. Motor vLLM (:18000)  │
+                            │    Gemma 4 12B-it       │
+                            └─────────────────────────┘
+```
+
+### 8.1 Componentes de la Arquitectura
+1. **Submódulo `gateway/core/alignment_engine.py`:** Aísla completamente la lógica de transformación de prompt, temporalidad y gestión de invariantes fuera del proxy de red.
+2. **Persistencia Reactiva en MongoDB (`db.alignment_settings`):** Mantiene la configuración centralizada con un lazo en segundo plano (`sync_alignment_settings_loop()`) que refresca la caché en memoria cada 10 segundos (0 ms de overhead en inferencia).
+3. **Panel Web de Control (GUI Dashboard):** Integración en [`templates/tabs/tab_alignment.html`](file:///home/jose/vllm/templates/tabs/tab_alignment.html) con switches para control de blindaje, protocolos de herramientas, topes de salida y editores tipográficos para los Invariantes MEA y directivas del sistema, permitiendo la modificación y aplicación en caliente.
+
+---
+
+## 9. Líneas de Investigación Abiertas y Próximos Pasos
 
 1. **Ejercicios de Límite en Entornos de Producción:** Medir la resistencia del modelo ante instrucciones ambiguas que rocen el piso de invariantes (ej. pedidos de saltar validaciones de seguridad o generar informes sesgados).
 2. **Implementación de un Acumulador Formal de RVI en Pipelines Agénticos:** Evaluar la integración de un middleware que bloquee automáticamente la ejecución de un subagente si $\text{RVI}_{\text{compuesto}} \ge 8$ hasta que se ejecute un paso de verificación $V(t)$.
 3. **Retrospectivas Automatizadas de Cierre:** Sistematizar el análisis ético-técnico conjunto entre el usuario y el agente al completar cada hito de desarrollo mediante [`docs/RETROSPECTIVAS_SESIONES.md`](file:///home/jose/vllm/docs/RETROSPECTIVAS_SESIONES.md).
+
 
