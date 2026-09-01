@@ -76,6 +76,17 @@ def clean_emojis(text: str) -> str:
     return emoji_pattern.sub('', text)
 
 
+def clean_markdown_inline(text: str) -> str:
+    """Elimina etiquetas Markdown inline (**negrita**, *cursiva*, `código`, __subrayado__) para texto plano en PDF."""
+    text = re.sub(r"\*\*(.*?)\*\*", r"\1", text)
+    text = re.sub(r"__(.*?)__", r"\1", text)
+    text = re.sub(r"\*(.*?)\*", r"\1", text)
+    text = re.sub(r"_(.*?)_", r"\1", text)
+    text = re.sub(r"`(.*?)`", r"\1", text)
+    text = re.sub(r"~~(.*?)~~", r"\1", text)
+    return text
+
+
 def sanitize_text_for_pdf(text: str) -> str:
     """Limpia fórmulas LaTeX, emojis y reemplaza caracteres tipográficos para compatibilidad con WinAnsi/Latin-1."""
     text = clean_latex(text)
@@ -88,8 +99,8 @@ def sanitize_text_for_pdf(text: str) -> str:
         "‘": "\x27",
         "’": "\x27",
         "…": "...",
-        "•": "*",
-        "·": "*",
+        "•": chr(149),
+        "·": chr(149),
         "™": "(TM)",
         "©": "(C)",
         "®": "(R)",
@@ -182,10 +193,7 @@ class PDFDocumentBuilder:
 
     def add_wrapped_paragraph(self, text: str, font: str = "F1", size: float = 10.5, line_height: float = 14.0, align: str = "left", indent: float = 0.0):
         clean = sanitize_text_for_pdf(text)
-        clean = re.sub(r"\*\*(.*?)\*\*", r"\1", clean)
-        clean = re.sub(r"\*(.*?)\*", r"\1", clean)
-        clean = re.sub(r"`(.*?)`", r"\1", clean)
-        clean = clean.strip()
+        clean = clean_markdown_inline(clean).strip()
         if not clean:
             return
 
@@ -307,6 +315,7 @@ class PDFDocumentBuilder:
 
             for c_idx, cell_text in enumerate(row_items):
                 clean_cell = sanitize_text_for_pdf(cell_text)
+                clean_cell = clean_markdown_inline(clean_cell).strip()
                 cell_w = col_widths[c_idx] - (2 * cell_padding_h)
                 lines = self.wrap_text_precise(clean_cell, curr_font, curr_size, max_width=max(10.0, cell_w))
                 wrapped_cells.append(lines)
@@ -418,8 +427,15 @@ class PDFDocumentBuilder:
                 self.y -= 1
             elif line.startswith("---") or line.startswith("___") or line.startswith("***"):
                 self.add_separator_line()
-            elif line.startswith("* ") or line.startswith("- ") or line.startswith("+ "):
-                self.add_wrapped_paragraph("* " + line[2:].strip(), font="F1", size=9.5, line_height=13.0, indent=12.0)
+            elif re.match(r"^\s*[\*\-\+]\s+", line):
+                bullet_match = re.match(r"^(\s*)[\*\-\+]\s+(.*)$", line)
+                if bullet_match:
+                    indent_spaces = len(bullet_match.group(1))
+                    bullet_text = clean_markdown_inline(bullet_match.group(2).strip())
+                    extra_indent = 12.0 + (indent_spaces * 4.0)
+                    self.add_wrapped_paragraph(f"{chr(149)} {bullet_text}", font="F1", size=9.5, line_height=13.0, indent=extra_indent)
+                else:
+                    self.add_wrapped_paragraph(line, font="F1", size=9.5, line_height=13.0, indent=12.0)
             elif re.match(r"^\d+\.\s", line):
                 self.add_wrapped_paragraph(line, font="F1", size=9.5, line_height=13.0, indent=12.0)
             elif "FIRMA" in line.upper() and ("LOCATARIO" in line.upper() or "CLIENTE" in line.upper() or "PARTE" in line.upper() or "CONFORMIDAD" in line.upper()):

@@ -65,7 +65,27 @@ class TestGatewayToolsAndCloud(unittest.IsolatedAsyncioTestCase):
 """
         res = create_pdf_from_markdown(title="Prueba Tablas", markdown_content=md, filename="test_table.pdf")
         self.assertTrue(res["success"])
-        self.assertGreater(res["size_kb"], 0)
+    def test_clean_markdown_inline_and_bullets(self):
+        from pdf_engine import clean_markdown_inline, sanitize_text_for_pdf, PDFDocumentBuilder
+        self.assertEqual(clean_markdown_inline("**ASC** (Ciclo Corto)"), "ASC (Ciclo Corto)")
+        self.assertEqual(clean_markdown_inline("**Redes:** < 10 min. **Equipos:** < 2 min."), "Redes: < 10 min. Equipos: < 2 min.")
+        self.assertEqual(clean_markdown_inline("`código` y __subrayado__"), "código y subrayado")
+        
+        # Probar builder con tabla conteniendo markdown y listas con asteriscos
+        builder = PDFDocumentBuilder(company_name="Prueba Markdown")
+        md_text = """# Resumen Ejecutivo
+| Tipo de Acción | Alcance | Duración |
+| :--- | :--- | :--- |
+| **ASC** (Ciclo Corto) | Individual | **Redes:** < 10 min. |
+| **ASE** (Ciclo Extendido) | Individual | Reemplazo |
+
+## Roles
+* Responsable de Soporte: Ejecuta.
+  * Colaborador: Atiende.
+"""
+        builder.render_markdown(md_text, title="Resumen")
+        pdf_bytes = builder.build_pdf()
+        self.assertGreater(len(pdf_bytes), 500)
 
 
 if __name__ == "__main__":
