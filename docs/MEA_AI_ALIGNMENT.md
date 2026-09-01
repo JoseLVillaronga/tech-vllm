@@ -291,6 +291,11 @@ Turno 5: "Si por favor" (Solicitud de PDF)
 * **Fidelidad Conceptual:** Distinción perfecta entre nulidad absoluta (impedimento de ligamen, parentesco consanguíneo), nulidad relativa (vicios de dolo, error, violencia) y efectos de la buena fe en el **Matrimonio Putativo** (legitimidad de la prole y derechos alimentarios).
 * **Ausencia de Regresiones:** Cero enlaces falsos, cero errores por desborde de ventana y 100% de ejecución de herramientas reales.
 
+### 10.3 Catálogo de Evidencias y Pruebas de Campo Empíricas
+Los registros crudos, transcripciones completas y metadatos de ejecución se encuentran organizados en el directorio [`docs/pruebas_campo/`](pruebas_campo/README.md):
+* 🧪 [**Prueba de Campo: Flujo Agéntico Completo RAG Jerárquico v2.0** (`docs/pruebas_campo/prueba_campo_rag_jerarquico_v2_2026-09-01.md`)](pruebas_campo/prueba_campo_rag_jerarquico_v2_2026-09-01.md)
+* 🧪 [**Prueba de Campo: Digestión Masiva de 62K Tokens y Compilación PDF** (`docs/pruebas_campo/prueba_campo_62k_matrimonio_pdf_2026-09-01.md`)](pruebas_campo/prueba_campo_62k_matrimonio_pdf_2026-09-01.md)
+
 ---
 
 ## 11. Líneas de Investigación Abiertas y Próximos Pasos

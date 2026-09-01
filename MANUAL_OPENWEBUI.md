@@ -12,8 +12,9 @@ Este manual describe en detalle cómo configurar, optimizar y operar la suite de
    * [Herramienta 2: Generador de Documentos en PDF A4](#herramienta-2-generador-de-documentos-en-pdf-a4)
    * [Herramienta 3: Búsqueda Web en Vivo (Ollama Cloud)](#herramienta-3-búsqueda-web-en-vivo-ollama-cloud)
    * [Herramienta 4: Clima y Pronóstico Extendido (OpenWeatherMap)](#herramienta-4-clima-y-pronóstico-extendido-openweathermap)
-4. [Flujos de Trabajo Combinados (Casos Prácticos)](#4-flujos-de-trabajo-combinados-casos-prácticos)
-5. [Guía de Buenas Prácticas y Solución de Problemas (FAQ)](#5-guía-de-buenas-prácticas-y-solución-de-problemas-faq)
+4. [Metodología de Consulta Eficiente (Técnica del Embudo Progresivo / Scaffolding Cognitivo)](#4-metodología-de-consulta-eficiente-técnica-del-embudo-progresivo--scaffolding-cognitivo)
+5. [Flujos de Trabajo Combinados (Casos Prácticos)](#5-flujos-de-trabajo-combinados-casos-prácticos)
+6. [Guía de Buenas Prácticas y Solución de Problemas (FAQ)](#6-guía-de-buenas-prácticas-y-solución-de-problemas-faq)
 
 ---
 
@@ -713,7 +714,62 @@ class Tools:
 
 ---
 
-## 4. Flujos de Trabajo Combinados (Casos Prácticos)
+---
+
+## 4. Metodología de Consulta Eficiente (Técnica del Embudo Progresivo / Scaffolding Cognitivo)
+
+El rendimiento excepcional demostrado por modelos compactos locales (como **Gemma 4 12B-it**) en tareas complejas no depende únicamente de la arquitectura de la red, sino de la **metodología de interacción y andamiaje cognitivo (*scaffolding*) aplicada por el usuario**.
+
+Al interactuar con modelos dotados de herramientas avanzadas (RAG Jerárquico + PDF + Web), la técnica más efectiva, elegante y rápida es el **"Embudo Progresivo de 4 Pasos"**:
+
+```
+                 METODOLOGÍA DEL EMBUDO PROGRESIVO
+                 
+  [ PASO 1: EXPLORACIÓN / DISCOVERY ]  ➔ "¿Qué causas de nulidad hay en contratos?"
+                    │                     (Búsqueda híbrida rápida en LanceDB)
+                    ▼
+  [ PASO 2: MAPEO ESTRUCTURAL / GPS ]  ➔ "¿Podés facilitarme un índice del Código Civil?"
+                    │                     (GPS Documental: Mapea 196 secciones / 850k tokens)
+                    ▼
+  [ PASO 3: EXTRACCIÓN QUIRÚRGICA ]    ➔ "Analizá en profundidad 'Capítulo X y XIV'..."
+                    │                     (Extracción focalizada de ~5.7K tokens)
+                    ▼
+  [ PASO 4: EXPORTACIÓN EJECUTIVA ]    ➔ "Generá el informe técnico formal en PDF"
+                                          (Compilación y entrega de PDF vectorial en 2 págs)
+```
+
+### 1. Paso 1: Exploración Inicial (*Discovery*)
+* **Objetivo:** Descubrir qué documentos y normas existen en la base de datos sin sobrecargar la memoria.
+* **Prompt Típico:** `"Busca causas de nulidad de contrato en la base de datos"`
+* **Herramienta activada:** `buscar_en_base_de_conocimiento` (~25-60 ms).
+* **Resultado:** Recupera 4 fragmentos altamente relevantes con sus artículos, scores y notas de GPS.
+
+### 2. Paso 2: Mapeo Estructural con GPS Documental (*Scaffolding*)
+* **Objetivo:** Darle al modelo la visión panorámica de la obra para que sepa qué capítulos existen antes de leer a ciegas.
+* **Prompt Típico:** `"¿Podés facilitarme un índice o la estructura del Código Civil?"`
+* **Herramienta activada:** `obtener_estructura_documento(doc_id="...")`.
+* **Resultado:** Mapea las 196 secciones detectadas y produce un índice temático ordenado sin saturar la ventana de contexto.
+
+### 3. Paso 3: Extracción Quirúrgica por Sección (*Deep-Dive*)
+* **Objetivo:** Descargar y razonar únicamente sobre los capítulos relevantes identificados en el Paso 2.
+* **Prompt Típico:** `"Analizá en profundidad la sección de Separación y Divorcio haciendo énfasis en nulidad matrimonial..."`
+* **Herramienta activada:** `leer_documento_completo(doc_id="...", seccion="Capítulo X: ..., Capítulo XIV: ...")`.
+* **Resultado:** Inyección limpia de ~5.700 tokens específicos (en vez de 850.000 tokens) con latencias mínimas.
+
+### 4. Paso 4: Exportación y Entrega Formal (*Executive Output*)
+* **Objetivo:** Formalizar el análisis en un documento exportable corporativo.
+* **Prompt Típico:** `"Sí, por favor, genera el informe ejecutivo en PDF"`
+* **Herramienta activada:** `generate_pdf_document`.
+* **Resultado:** PDF de 2 páginas con formato vectorial A4, tipografía institucional y enlace de descarga.
+
+> 📘 **Evidencia y Registro de Prueba de Campo:**  
+> Podés consultar las transcripciones completas de estas pruebas empíricas en:
+> * [`docs/pruebas_campo/prueba_campo_rag_jerarquico_v2_2026-09-01.md`](docs/pruebas_campo/prueba_campo_rag_jerarquico_v2_2026-09-01.md) (Flujo completo de 3 pasos)
+> * [`docs/pruebas_campo/prueba_campo_62k_matrimonio_pdf_2026-09-01.md`](docs/pruebas_campo/prueba_campo_62k_matrimonio_pdf_2026-09-01.md) (Digestión masiva de 59.3K tokens y compilación PDF)
+
+---
+
+## 5. Flujos de Trabajo Combinados (Casos Prácticos)
 
 ### Flujo 1: Búsqueda RAG ➔ Lectura Completa ➔ Exportación a PDF de 2 Páginas
 1. **Pregunta:** *"Hablemos del procedimiento de soporte en Teccam"*
@@ -735,7 +791,7 @@ class Tools:
 
 ---
 
-## 5. Guía de Buenas Prácticas y Solución de Problemas (FAQ)
+## 6. Guía de Buenas Prácticas y Solución de Problemas (FAQ)
 
 ### ❓ ¿Por qué iniciar un chat limpio al pasar de un PDF adjunto a una consulta RAG?
 * **Causa:** Cuando subes un archivo PDF directamente en el chat, Open-WebUI lo adjunta de forma fija y vuelve a enviar todo su texto (~8.000 tokens) en cada turno.

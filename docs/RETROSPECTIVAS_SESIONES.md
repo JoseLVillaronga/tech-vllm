@@ -54,6 +54,9 @@ Al finalizar cada sesión de trabajo, el agente y el usuario realizan una audito
      - Modal interactivo *Glassmorphism* en [`static/js/dashboard_rag.js`](file:///home/jose/vllm/static/js/dashboard_rag.js) conectado al endpoint `/api/rag/structure/<doc_id>`.
   4. **Suite de Pruebas Automatizadas:**
      - 19/19 tests unitarios pasando en verde (`Ran 19 tests in 1.539s - OK`) en `tests/test_gateway_core.py` y `tests/test_gateway_tools.py`.
+  5. **Pruebas de Campo Empíricas Registradas:**
+     - 🧪 [`docs/pruebas_campo/prueba_campo_rag_jerarquico_v2_2026-09-01.md`](pruebas_campo/prueba_campo_rag_jerarquico_v2_2026-09-01.md): Validación del ciclo de 3 pasos (Búsqueda ➔ GPS ➔ Extracción de 5.7K tokens).
+     - 🧪 [`docs/pruebas_campo/prueba_campo_62k_matrimonio_pdf_2026-09-01.md`](pruebas_campo/prueba_campo_62k_matrimonio_pdf_2026-09-01.md): Digestión masiva de 59.3K tokens del Código Civil y compilación PDF.
 * **Evaluación MEA v2.1 & Leyes de Ingeniería:**
   * **Invariantes (Gate 1):** **0 violaciones**. Pacto de consenso mutuo y verificación determinista antes de confirmar cambios.
   * **Ley 1 (Modularización):** Cumplida al 100%. Lógica de GPS encapsulada en `rag_engine.py`, enrutadores en `gateway/tools/rag_endpoints.py` y visor en `dashboard_rag.js`.
