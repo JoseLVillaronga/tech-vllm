@@ -94,7 +94,7 @@
                                 : '<span class="text-xs text-slate-600 font-mono">-</span>';
 
                             return `
-                            <tr class="hover:bg-slate-900/40 transition-all">
+                            <tr class="rag-virtual-row hover:bg-slate-900/40 transition-all">
                                 <td class="px-4 py-3 font-medium text-slate-200">${escapedTitle}</td>
                                 <td class="px-4 py-3">
                                     <span class="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-purple-500/10 text-purple-400 border border-purple-500/20">

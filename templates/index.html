@@ -54,6 +54,11 @@
         ::-webkit-scrollbar-thumb:hover {
             background: #6366f1;
         }
+        /* Optimización de Renderizado para Tablas Masivas */
+        .rag-virtual-row {
+            content-visibility: auto;
+            contain-intrinsic-size: auto 49px;
+        }
     </style>
     <script src="{{ url_for('static', filename='js/chart.js') }}"></script>
 </head>
