@@ -12,6 +12,7 @@
 # ==============================================================================
 
 set -uo pipefail
+umask 0022
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VENV_PYTHON="${PROJECT_DIR}/venv/bin/python"
@@ -30,6 +31,16 @@ cleanup() {
     local exit_code=$?
     echo ""
     echo "======================================================================"
+
+    # 1. Garantizar permisos de lectura y escritura en LanceDB para el Dashboard y Gateway (usuario regular)
+    if [ -d "${PROJECT_DIR}/data/lancedb" ]; then
+        echo "🔒 [RAG Scheduled Orchestrator] Asegurando permisos y pertenencia en data/lancedb..."
+        chmod -R u+rwX,g+rwX,o+rX "${PROJECT_DIR}/data/lancedb" 2>/dev/null || true
+        TARGET_USER="${SUDO_USER:-$(stat -c '%U' "${PROJECT_DIR}")}"
+        TARGET_GROUP="$(id -gn "${TARGET_USER}" 2>/dev/null || echo "${TARGET_USER}")"
+        chown -R "${TARGET_USER}:${TARGET_GROUP}" "${PROJECT_DIR}/data/lancedb" 2>/dev/null || true
+    fi
+
     if [ "${WAS_LLM_RUNNING}" = true ]; then
         echo "🚀 [RAG Scheduled Orchestrator] Restaurando servicio principal del LLM (${LLM_SERVICE})..."
         systemctl start "${LLM_SERVICE}" || echo "⚠️ Advertencia: No se pudo iniciar ${LLM_SERVICE} automáticamente."

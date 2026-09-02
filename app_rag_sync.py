@@ -18,6 +18,9 @@ from datetime import datetime
 from typing import List, Dict, Any, Optional
 from dotenv import load_dotenv
 
+# Asegurar umask permisivo para archivos compartidos en LanceDB
+os.umask(0o002)
+
 load_dotenv()
 
 # Rutas del proyecto
@@ -570,6 +573,17 @@ def sync_knowledge_base(
         "lancedb_path": LANCEDB_DIR
     }
     
+    # Asegurar permisos de lectura en LanceDB para el dashboard y gateway
+    try:
+        if os.path.exists(LANCEDB_DIR):
+            for r_path, d_names, f_names in os.walk(LANCEDB_DIR):
+                for d in d_names:
+                    os.chmod(os.path.join(r_path, d), 0o775)
+                for f in f_names:
+                    os.chmod(os.path.join(r_path, f), 0o664)
+    except Exception:
+        pass
+
     # Registrar log en MongoDB
     log_sync_to_mongo(result_summary)
     return result_summary
