@@ -1673,6 +1673,50 @@ def api_rag_sync():
     except Exception as e:
         return jsonify({"error": f"Error al iniciar sincronización: {str(e)}"}), 500
 
+@app.route("/api/rag/sync-metadata", methods=["POST"])
+def api_rag_sync_metadata():
+    """Actualiza en milisegundos y en caliente la metadata (vigencia, fecha_publicacion) desde Teccam PDF sin tocar la GPU ni pausar vLLM."""
+    try:
+        from app_rag_sync import fetch_teccam_documents_index
+        from rag_engine import get_lancedb, TABLE_NAME
+
+        remote_docs = fetch_teccam_documents_index()
+        if not remote_docs:
+            return jsonify({"error": "No se pudo conectar con la API de Teccam PDF o no retornó documentos."}), 502
+
+        db = get_lancedb()
+        table = db.open_table(TABLE_NAME)
+
+        # Verificar columnas en LanceDB
+        if "doc_vigencia" not in table.schema.names or "doc_fecha_publicacion" not in table.schema.names:
+            table.add_columns({"doc_vigencia": "'NA (no aplica)'", "doc_fecha_publicacion": "cast(null as string)"})
+            table = db.open_table(TABLE_NAME)
+
+        updated_count = 0
+        for doc in remote_docs:
+            doc_id = doc.get("id")
+            if not doc_id:
+                continue
+            vig = doc.get("vigencia") or "NA (no aplica)"
+            fpub = doc.get("fecha_publicacion") or ""
+            clean_id = doc_id.replace("'", "''")
+            table.update(
+                where=f"doc_id = '{clean_id}'",
+                values={
+                    "doc_vigencia": vig,
+                    "doc_fecha_publicacion": str(fpub)
+                }
+            )
+            updated_count += 1
+
+        return jsonify({
+            "success": True,
+            "updated_count": updated_count,
+            "message": f"Metadata de {updated_count} documentos actualizada en LanceDB en milisegundos (sin pausa de LLM ni uso de GPU)."
+        })
+    except Exception as e:
+        return jsonify({"error": f"Error actualizando metadata: {str(e)}"}), 500
+
 @app.route("/api/rag/settings", methods=["GET", "POST"])
 def api_rag_settings():
     """Lee o actualiza la configuración global de RAG (estado, dominios activos y modelo cloud para RAG)."""

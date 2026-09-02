@@ -292,6 +292,34 @@
             }
         }
 
+        async function triggerRagMetadataSync() {
+            const btn = document.getElementById('btn-sync-metadata');
+            const text = document.getElementById('text-sync-metadata');
+            
+            if (btn) btn.disabled = true;
+            if (text) text.innerText = "Actualizando metadata...";
+            
+            try {
+                const res = await fetch('/api/rag/sync-metadata', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                const data = await res.json();
+                
+                if (data.success) {
+                    await loadRagStats();
+                    alert("✅ " + (data.message || "Metadata actualizada exitosamente."));
+                } else {
+                    alert("❌ Error: " + (data.error || "No se pudo actualizar la metadata."));
+                }
+            } catch (err) {
+                alert("Error de red: " + err.message);
+            } finally {
+                if (btn) btn.disabled = false;
+                if (text) text.innerText = "Actualizar Solo Metadata";
+            }
+        }
+
         async function triggerRagSync(force = false) {
             const confirmMsg = force 
                 ? "⚠️ Aviso de Memoria GPU (Re-indexación Completa):\n\nPara garantizar máxima aceleración CUDA y proteger la VRAM, el servicio del LLM se pausará temporalmente durante la sincronización (~1-2 min) y se reactivará automáticamente al finalizar.\n\n¿Deseas iniciar la re-indexación forzada ahora?"
