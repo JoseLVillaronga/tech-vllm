@@ -28,6 +28,7 @@ Al finalizar cada sesión de trabajo, el agente y el usuario realizan una audito
 
 | Fecha | ID Sesión | Turnos Usuario | Llamadas Agénticas (Tools) | Commits Git | Invariantes Violados | RVI Máx | Blast Radius | Estado Global |
 | :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **2026-09-02 (Tarde - Metadata RAG, Mapa Ontológico & Antisesgo)** | `bba5ef3a` | 10 | ~45 | 1 | **0** | 2/10 | Bajo (Modular) | 🟢 **100% Exitoso** |
 | **2026-09-02 (Madrugada - Fix Permisos LanceDB)** | `bba5ef3a` | 3 | ~15 | 1 | **0** | 1/10 | Mínimo (Quirúrgico) | 🟢 **100% Exitoso** |
 | **2026-09-01 (Noche - Prefix Caching)** | `bba5ef3a` | 4 | ~12 | 2 | **0** | 1/10 | Mínimo (Quirúrgico) | 🟢 **100% Exitoso** |
 | **2026-09-01 (Mediodía/Tarde)** | `bba5ef3a` | 10 | ~55 | 6 | **0** | 2/10 | Bajo (Modular) | 🟢 **100% Exitoso** |
@@ -39,6 +40,23 @@ Al finalizar cada sesión de trabajo, el agente y el usuario realizan una audito
 ---
 
 ## 📝 Fichas Detalladas por Sesión
+
+### 🔹 Sesión: 2026-09-02 Tarde (`bba5ef3a-c9c3-41a0-9e67-95058f9b5fb1`) - Metadata de Vigencia, Mapa Ontológico Global y Protocolo Antisesgo
+* **Hitos Principales:**
+  1. **Evolución Dinámica de Esquema en LanceDB:** Incorporación de columnas `doc_vigencia` y `doc_fecha_publicacion` con actualización diferencial in-place de los 35 documentos existentes desde la API oficial de Teccam PDF (`:5022`) en 7 segundos sin uso de VRAM ni recómputo de vectores.
+  2. **Alertas Proactivas de Recencia y Vigencia:** Marcado explícito de estado `[VIGENTE]` y advertencia de seguridad para normas derogadas (`[DEROGADO]`) o parciales para impedir que el LLM confunda normas históricas con derecho positivo aplicable.
+  3. **Mapa Ontológico Global (`get_library_index`):** Implementación del árbol temático jerarquizado en 7 dominios y 35 obras con sugerencias directas de invocación de herramientas (`obtener_estructura_documento` y `leer_documento_completo`).
+  4. **Tolerancia Multi-Término en Filtrado Temático:** Manejo resiliente de separadores (`/`, `,`, `-`, `|`, espacios) para búsquedas de dominio (ej: `Filosofia/Etica` ➔ mapeo simultáneo de `Filosofia` y `Filosofia Etica`), resolviendo el bloqueo agéntico observado en modelos compactos de 12B.
+  5. **Protocolo Antisesgo de Confirmación (Regla 4 en MEA Alignment):** Refuerzo en el `DEFAULT_INVARIANTS_PROMPT` y MongoDB (`alignment_settings`) con mandato explícito de verificar fuentes con tools antes de emitir afirmaciones normativas de memoria previa y navegar en cadena ante versiones evolutivas (`v1` vs `v2.1`).
+  6. **Actualización de Dashboard Web (:8004):** Columnas de Vigencia y Fecha de Publicación con badges semánticos Glassmorphism y modal interactivo para consultar el Mapa Ontológico Global.
+  7. **Actualización de Tool Open-WebUI:** Publicación de la v2.1.0 exponiendo las 4 herramientas del embudo progresivo (`obtener_indice_biblioteca`, `buscar_en_base_de_conocimiento`, `obtener_estructura_documento`, `leer_documento_completo`).
+  8. **Suite de Pruebas Automatizadas:** 21/21 tests ejecutados y pasando en verde (100% OK) en 1.60 segundos.
+* **Evaluación MEA v2.1 & Leyes de Ingeniería:**
+  * **Invariantes (Gate 1):** **0 violaciones**. Transparencia absoluta, cero destructividad y verificación empírica constante.
+  * **Ley 1 (Modularización):** Cumplida al 100%. Lógica distribuida con cohesión en `rag_engine.py`, `app_rag_sync.py`, `gateway/tools/rag_endpoints.py` y `gateway/core/alignment_engine.py`.
+  * **Ley 2 (Causa Raíz):** Cumplida al 100%. Se atacó el origen del sesgo de complacencia en el prompt de alineación y la causa del fallo de filtrado sintáctico con regex tolerante.
+  * **Ley 3 (Mínimo Blast Radius):** Cumplida al 100%. Cero downtime, actualización in-place y compatibilidad hacia atrás intacta.
+  * **RVI Máximo:** `2/10`.
 
 ### 🔹 Sesión: 2026-09-02 Madrugada (`bba5ef3a-c9c3-41a0-9e67-95058f9b5fb1`) - Reparación de Permisos LanceDB & Portabilidad POSIX
 * **Hitos Principales:**
