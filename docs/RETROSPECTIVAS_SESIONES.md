@@ -28,6 +28,7 @@ Al finalizar cada sesión de trabajo, el agente y el usuario realizan una audito
 
 | Fecha | ID Sesión | Turnos Usuario | Llamadas Agénticas (Tools) | Commits Git | Invariantes Violados | RVI Máx | Blast Radius | Estado Global |
 | :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **2026-09-02 (Madrugada - Fix Permisos LanceDB)** | `bba5ef3a` | 3 | ~15 | 1 | **0** | 1/10 | Mínimo (Quirúrgico) | 🟢 **100% Exitoso** |
 | **2026-09-01 (Noche - Prefix Caching)** | `bba5ef3a` | 4 | ~12 | 2 | **0** | 1/10 | Mínimo (Quirúrgico) | 🟢 **100% Exitoso** |
 | **2026-09-01 (Mediodía/Tarde)** | `bba5ef3a` | 10 | ~55 | 6 | **0** | 2/10 | Bajo (Modular) | 🟢 **100% Exitoso** |
 | **2026-09-01 (Madrugada)** | `bba5ef3a` | 12 | ~40 | 1 | **0** | 2/10 | Bajo (Modular) | 🟢 **100% Exitoso** |
@@ -38,6 +39,22 @@ Al finalizar cada sesión de trabajo, el agente y el usuario realizan una audito
 ---
 
 ## 📝 Fichas Detalladas por Sesión
+
+### 🔹 Sesión: 2026-09-02 Madrugada (`bba5ef3a-c9c3-41a0-9e67-95058f9b5fb1`) - Reparación de Permisos LanceDB & Portabilidad POSIX
+* **Hitos Principales:**
+  1. **Diagnóstico de Causa Raíz de 'Permission denied (os error 13)':**
+     - Identificación del bloqueo en la lectura de LanceDB por parte de servicios ejecutados como usuario regular (`jose`) debido a la creación de fragmentos con permisos `600` / `nobody:nogroup` tras la sincronización nocturna desatendida (`root/systemd`).
+  2. **Resolución Estructural y Autocorrección Dinámica POSIX ([`sync_rag_scheduled.sh`](../sync_rag_scheduled.sh) y [`app_rag_sync.py`](../app_rag_sync.py)):**
+     - Implementación de determinación dinámica del propietario de la carpeta (`stat -c '%U' "${PROJECT_DIR}"`) y su grupo principal (`id -gn`) sin hardcodeo de nombres ni rutas.
+     - Inyección de `umask 0022` y pase garantizado de permisos `u+rwX,g+rwX,o+rX` en la función `cleanup()` del orquestador y al cierre de la ingesta en Python.
+  3. **Restablecimiento y Verificación:**
+     - Restauración inmediata de la visibilidad de los **35 documentos indexados** y **10.040 fragmentos vectoriales** en el Dashboard Web (:8004) y endpoints de búsqueda del Gateway.
+* **Evaluación MEA v2.1 & Leyes de Ingeniería:**
+  * **Invariantes (Gate 1):** **0 violaciones**. Cumplimiento estricto del **5to Invariante (Portabilidad y Anti-Hardcoded Paths)** mediante introspección POSIX dinámica.
+  * **Ley 1 (Modularización):** Cumplida al 100%. Lógica de permisos encapsulada en los hooks de sincronización.
+  * **Ley 2 (Causa Raíz):** Cumplida al 100%. Se atacó el origen del problema de permisos en el proceso de ingesta desatendida.
+  * **Ley 3 (Mínimo Blast Radius):** Cumplida al 100%. Corrección quirúrgica de 2 archivos sin alterar APIs ni datos.
+  * **RVI Máximo:** `1/10`.
 
 ### 🔹 Sesión: 2026-09-01 Noche (`bba5ef3a-c9c3-41a0-9e67-95058f9b5fb1`) - Optimización Prefix Caching
 * **Hitos Principales:**
