@@ -127,6 +127,31 @@ class TestGatewayToolsAndCloud(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(partes[0][0]), 2)
         self.assertEqual(partes[0][1], 8000)
 
+    def test_rag_vigencia_proactive_alert(self):
+        from rag_engine import format_rag_context_for_llm
+        mock_derogado = [{
+            "doc_title": "Ley Histórica de Prueba",
+            "doc_id": "test_derogado_123",
+            "doc_topic": "Derecho",
+            "doc_vigencia": "derogado",
+            "doc_fecha_publicacion": "1900-01-01",
+            "section_path": "Capítulo I",
+            "content": "Texto de norma derogada",
+            "similarity": 0.85
+        }]
+        out = format_rag_context_for_llm(mock_derogado)
+        self.assertIn("Aviso Crítico de Vigencia", out)
+        self.assertIn("DEROGADA", out)
+        self.assertIn("Vigencia: DEROGADO", out)
+
+    def test_rag_library_index_generation(self):
+        from rag_engine import get_library_index
+        res = get_library_index()
+        self.assertTrue(res.get("success"))
+        self.assertGreater(res.get("total_documents", 0), 0)
+        self.assertIn("Mapa Ontológico Global", res.get("content", ""))
+
 
 if __name__ == "__main__":
     unittest.main()
+

@@ -18,7 +18,11 @@ DEFAULT_INVARIANTS_PROMPT = """🏛️ [DIRECTIVAS FUNDAMENTALES Y DEBER DE VERA
    - Al analizar, sintetizar o explicar documentos operativos, procedimientos técnicos o normativas, procesa la totalidad del contenido relevante.
    - Conserva con exactitud matemática y conceptual las tablas comparativas, las categorías operativas (ej: ASC, ASE, ASG), los tiempos límites y los protocolos de comunicación sin omitir detalles críticos ni aplicar atajos superficiales.
 3. RIGOR TÉCNICO Y HONESTIDAD:
-   - Si una información no está presente en el contexto o en las herramientas disponibles, decláralo con total transparencia en lugar de suponerla o inventarla."""
+   - Si una información no está presente en el contexto o en las herramientas disponibles, decláralo con total transparencia en lugar de suponerla o inventarla.
+4. PROTOCOLO ANTISESGO DE CONFIRMACIÓN Y NAVEGACIÓN JERÁRQUICA:
+   - Jamás asumas de memoria previa el contenido de leyes, vigencias, manuales o versiones documentales cuando tengas herramientas de consulta disponibles: consulta activamente las herramientas para contrastar el texto oficial.
+   - Si existen versiones múltiples de un documento (ej: v1 vs v2.1) o reformas legislativas (normas derogadas vs vigentes), identifica siempre la versión vigente más reciente o realiza la lectura en cadena de ambas para contextualizar la evolución.
+   - Para investigar obras extensas, explora primero su estructura con obtener_estructura_documento antes de extraer o resumir secciones a ciegas."""
 
 DEFAULT_ALIGNMENT_SETTINGS: Dict[str, Any] = {
     "enabled": True,

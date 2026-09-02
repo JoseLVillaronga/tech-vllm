@@ -68,11 +68,31 @@
                 const tbody = document.getElementById('rag-docs-table-body');
                 if (tbody) {
                     if (!data.documents || data.documents.length === 0) {
-                        tbody.innerHTML = '<tr><td colspan="5" class="px-4 py-6 text-center text-slate-500">No hay documentos indexados. Haz clic en "Sincronizar Base RAG Ahora".</td></tr>';
+                        tbody.innerHTML = '<tr><td colspan="6" class="px-4 py-6 text-center text-slate-500">No hay documentos indexados. Haz clic en "Sincronizar Base RAG Ahora".</td></tr>';
                     } else {
                         tbody.innerHTML = data.documents.map(doc => {
                             const escapedTitle = escapeHtml(doc.title);
                             const safeJsTitle = doc.title.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+
+                            // Badge de Vigencia con colores semánticos
+                            let vigBadge = '';
+                            const vig = (doc.vigencia || 'NA (no aplica)').toLowerCase();
+                            if (vig === 'vigente') {
+                                vigBadge = '<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30"><span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>Vigente</span>';
+                            } else if (vig === 'derogado') {
+                                vigBadge = '<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-rose-500/15 text-rose-300 border border-rose-500/30"><span class="w-1.5 h-1.5 rounded-full bg-rose-400"></span>Derogado</span>';
+                            } else if (vig === 'parcialmente-vigente') {
+                                vigBadge = '<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-500/15 text-amber-300 border border-amber-500/30"><span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>Parcial</span>';
+                            } else if (vig === 'en-proyecto') {
+                                vigBadge = '<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-sky-500/15 text-sky-300 border border-sky-500/30"><span class="w-1.5 h-1.5 rounded-full bg-sky-400"></span>En Proyecto</span>';
+                            } else {
+                                vigBadge = '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-slate-800 text-slate-400 border border-slate-700/50">N/A</span>';
+                            }
+
+                            const pubDate = doc.fecha_publicacion && doc.fecha_publicacion.trim() 
+                                ? `<span class="font-mono text-xs text-slate-300">${escapeHtml(doc.fecha_publicacion)}</span>`
+                                : '<span class="text-xs text-slate-600 font-mono">-</span>';
+
                             return `
                             <tr class="hover:bg-slate-900/40 transition-all">
                                 <td class="px-4 py-3 font-medium text-slate-200">${escapedTitle}</td>
@@ -81,12 +101,9 @@
                                         ${escapeHtml(doc.topic)}
                                     </span>
                                 </td>
+                                <td class="px-4 py-3 text-center">${vigBadge}</td>
+                                <td class="px-4 py-3 text-center">${pubDate}</td>
                                 <td class="px-4 py-3 text-center font-mono font-bold text-slate-300">${doc.chunks_count}</td>
-                                <td class="px-4 py-3 text-center">
-                                    <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                                        <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> Indexado
-                                    </span>
-                                </td>
                                 <td class="px-4 py-3 text-right flex items-center justify-end gap-2">
                                     <button onclick="viewDocumentStructure('${escapeHtml(doc.id)}', '${safeJsTitle}')" class="px-2.5 py-1 rounded-lg bg-purple-500/10 hover:bg-purple-600 text-purple-300 hover:text-white border border-purple-500/20 text-xs font-medium transition-all inline-flex items-center gap-1" title="Ver estructura de secciones y GPS Documental">
                                         <svg class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -104,6 +121,7 @@
                             </tr>
                         `;
                         }).join('');
+                    }
                     }
                 }
             } catch (err) {
@@ -637,4 +655,103 @@
             const modal = document.getElementById('modal-rag-structure');
             if (modal) modal.classList.add('hidden');
         }
+
+        async function openLibraryIndexModal() {
+            const modal = document.getElementById('modal-rag-library-index');
+            const body = document.getElementById('modal-library-body');
+            const subtitle = document.getElementById('modal-library-subtitle');
+            if (!modal || !body) return;
+
+            modal.classList.remove('hidden');
+            body.innerHTML = `<div class="py-12 text-center text-purple-400 font-mono text-sm animate-pulse">Cargando mapa ontológico global de la biblioteca...</div>`;
+
+            try {
+                const resp = await fetch('/api/rag/library-index');
+                const data = await resp.json();
+
+                if (!data.success) {
+                    body.innerHTML = `<div class="p-4 bg-rose-950/40 border border-rose-500/40 text-rose-300 rounded-xl">Error: ${escapeHtml(data.error || 'No se pudo cargar el mapa.')}</div>`;
+                    return;
+                }
+
+                if (subtitle) {
+                    subtitle.innerText = `Total: ${data.total_documents || 0} obras en ${data.domains_count || 0} dominios (~${(data.total_tokens || 0).toLocaleString()} tokens acumulados)`;
+                }
+
+                const domains = data.domains || {};
+                let htmlParts = [];
+
+                for (const [dom, docs] of Object.entries(domains)) {
+                    let icon = '📚';
+                    const domLower = dom.toLowerCase();
+                    if (domLower.includes('derecho')) icon = '⚖️';
+                    else if (domLower.includes('procedimiento') || domLower.includes('soporte')) icon = '🛠️';
+                    else if (domLower.includes('filosof') || domLower.includes('etica')) icon = '🧠';
+                    else if (domLower.includes('patron') || domLower.includes('ingenier')) icon = '💻';
+
+                    let docRows = docs.map(d => {
+                        let vigBadge = '';
+                        const vig = (d.vigencia || 'NA (no aplica)').toLowerCase();
+                        if (vig === 'vigente') {
+                            vigBadge = '<span class="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">Vigente</span>';
+                        } else if (vig === 'derogado') {
+                            vigBadge = '<span class="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-rose-500/15 text-rose-300 border border-rose-500/30">Derogado</span>';
+                        } else if (vig === 'parcialmente-vigente') {
+                            vigBadge = '<span class="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-500/15 text-amber-300 border border-amber-500/30">Parcial</span>';
+                        } else if (vig === 'en-proyecto') {
+                            vigBadge = '<span class="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-sky-500/15 text-sky-300 border border-sky-500/30">En Proyecto</span>';
+                        } else {
+                            vigBadge = '<span class="px-2 py-0.5 rounded-full text-[11px] font-medium bg-slate-800 text-slate-400 border border-slate-700/50">N/A</span>';
+                        }
+
+                        const pub = d.fecha_publicacion ? `<span class="text-slate-400 text-xs">B.O.: ${escapeHtml(d.fecha_publicacion)}</span>` : '';
+                        const safeTitle = escapeHtml(d.title);
+                        const safeJsTitle = d.title.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+
+                        return `
+                        <div class="p-3.5 bg-slate-900/60 rounded-xl border border-slate-800/80 hover:border-purple-500/40 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                            <div class="flex flex-col gap-1">
+                                <div class="flex items-center gap-2 flex-wrap">
+                                    <span class="font-bold text-slate-100 text-sm">${safeTitle}</span>
+                                    ${vigBadge}
+                                </div>
+                                <div class="text-xs text-slate-400 flex items-center gap-3 font-mono">
+                                    <span>ID: <code class="text-purple-300 bg-slate-950 px-1.5 py-0.5 rounded">${escapeHtml(d.id)}</code></span>
+                                    <span>Tokens: ~${(d.total_tokens || 0).toLocaleString()}</span>
+                                    <span>Chunks: ${d.chunks_count || 0}</span>
+                                    ${pub}
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-2 self-end sm:self-center">
+                                <button onclick="closeLibraryIndexModal(); viewDocumentStructure('${escapeHtml(d.id)}', '${safeJsTitle}')" class="px-3 py-1.5 rounded-xl bg-purple-600/20 hover:bg-purple-600 text-purple-300 hover:text-white border border-purple-500/30 text-xs font-semibold transition-all flex items-center gap-1">
+                                    GPS Documental
+                                </button>
+                            </div>
+                        </div>
+                        `;
+                    }).join('');
+
+                    htmlParts.push(`
+                        <div class="flex flex-col gap-2">
+                            <h4 class="text-sm font-bold text-slate-200 flex items-center gap-2 border-b border-slate-800 pb-2">
+                                <span>${icon}</span> Dominio: <span class="text-purple-300">${escapeHtml(dom)}</span> <span class="text-xs font-normal text-slate-500">(${docs.length} obras)</span>
+                            </h4>
+                            <div class="flex flex-col gap-2">
+                                ${docRows}
+                            </div>
+                        </div>
+                    `);
+                }
+
+                body.innerHTML = `<div class="flex flex-col gap-6 font-sans">${htmlParts.join('')}</div>`;
+            } catch (err) {
+                body.innerHTML = `<div class="p-4 bg-rose-950/40 border border-rose-500/40 text-rose-300 rounded-xl">Error de red: ${escapeHtml(err.message)}</div>`;
+            }
+        }
+
+        function closeLibraryIndexModal() {
+            const modal = document.getElementById('modal-rag-library-index');
+            if (modal) modal.classList.add('hidden');
+        }
+
 

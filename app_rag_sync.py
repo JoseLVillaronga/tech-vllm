@@ -403,16 +403,43 @@ def sync_knowledge_base(
 
     # 2. Mapear documentos ya indexados localmente en LanceDB
     local_doc_dates = {}
-    if table is not None and not force:
+    local_doc_vigencias = {}
+    local_doc_fechas_pub = {}
+    
+    if table is not None:
         try:
-            df = table.to_arrow()
-            if "doc_id" in df.schema.names and "doc_date" in df.schema.names:
-                for d_id, d_date in zip(df["doc_id"].to_pylist(), df["doc_date"].to_pylist()):
-                    local_doc_dates[d_id] = d_date
+            # Asegurar que la tabla tenga las columnas de vigencia y fecha de publicacion
+            schema_names = table.schema.names
+            cols_to_add = {}
+            if "doc_vigencia" not in schema_names:
+                cols_to_add["doc_vigencia"] = "'NA (no aplica)'"
+            if "doc_fecha_publicacion" not in schema_names:
+                cols_to_add["doc_fecha_publicacion"] = "cast(null as string)"
+                
+            if cols_to_add:
+                print(f"🛠️ [RAG Sync] Extendiendo esquema de LanceDB con nuevas columnas: {list(cols_to_add.keys())}...")
+                table.add_columns(cols_to_add)
+                # Re-obtener tabla con esquema actualizado
+                table = get_table()
+
+            if not force:
+                df = table.to_arrow()
+                schema_names = df.schema.names
+                if "doc_id" in schema_names and "doc_date" in schema_names:
+                    d_ids = df["doc_id"].to_pylist()
+                    d_dates = df["doc_date"].to_pylist()
+                    d_vigs = df["doc_vigencia"].to_pylist() if "doc_vigencia" in schema_names else ["NA (no aplica)"] * len(d_ids)
+                    d_fpubs = df["doc_fecha_publicacion"].to_pylist() if "doc_fecha_publicacion" in schema_names else [None] * len(d_ids)
+                    
+                    for d_id, d_date, d_vig, d_fpub in zip(d_ids, d_dates, d_vigs, d_fpubs):
+                        local_doc_dates[d_id] = d_date
+                        local_doc_vigencias[d_id] = d_vig
+                        local_doc_fechas_pub[d_id] = d_fpub
         except Exception as e:
-            print(f"⚠️ [RAG Sync] Advertencia leyendo estado de LanceDB: {e}", file=sys.stderr)
+            print(f"⚠️ [RAG Sync] Advertencia leyendo/actualizando estado de LanceDB: {e}", file=sys.stderr)
 
     docs_to_sync = []
+    docs_to_metadata_update = []
     docs_to_delete = []
     
     remote_ids = set()
@@ -420,10 +447,14 @@ def sync_knowledge_base(
         d_id = doc.get("id")
         remote_ids.add(d_id)
         d_date = doc.get("fecha_creacion", "")
+        d_vig = doc.get("vigencia") or "NA (no aplica)"
+        d_fpub = doc.get("fecha_publicacion") or ""
         
-        # Si es nuevo, o cambió de fecha o forzamos re-indexación
+        # Si es nuevo, o cambió de fecha de creación o forzamos re-indexación
         if force or (d_id not in local_doc_dates) or (local_doc_dates.get(d_id) != d_date):
             docs_to_sync.append(doc)
+        elif (local_doc_vigencias.get(d_id) != d_vig) or (str(local_doc_fechas_pub.get(d_id) or "") != str(d_fpub)):
+            docs_to_metadata_update.append(doc)
             
     # Detectar documentos eliminados remotamente
     if not doc_id_filter:
@@ -431,8 +462,9 @@ def sync_knowledge_base(
             if local_id not in remote_ids:
                 docs_to_delete.append(local_id)
 
-    print(f"📦 Documentos a procesar/actualizar: {len(docs_to_sync)}")
-    print(f"🗑️ Documentos obsoletos a purgar:    {len(docs_to_delete)}")
+    print(f"📦 Documentos a procesar/vectorizar:   {len(docs_to_sync)}")
+    print(f"⚡ Documentos con cambio de metadata: {len(docs_to_metadata_update)}")
+    print(f"🗑️ Documentos obsoletos a purgar:       {len(docs_to_delete)}")
     
     # 3. Eliminar documentos obsoletos en LanceDB
     if table is not None and docs_to_delete:
@@ -442,6 +474,27 @@ def sync_knowledge_base(
                 print(f"   🗑️ Purgado documento ID: {del_id}")
             except Exception as de:
                 print(f"   ⚠️ Error eliminando {del_id}: {de}", file=sys.stderr)
+
+    # 3.1 Actualizar metadatos in-place para documentos cuyo contenido no cambió (ultrarrápido, 0 VRAM)
+    if table is not None and docs_to_metadata_update and not force:
+        print(f"\n⚡ Actualizando metadata de {len(docs_to_metadata_update)} documentos in-place en LanceDB...")
+        for mdoc in docs_to_metadata_update:
+            m_id = mdoc.get("id")
+            m_title = mdoc.get("titulo", "Sin título")
+            m_vig = mdoc.get("vigencia") or "NA (no aplica)"
+            m_fpub = mdoc.get("fecha_publicacion") or ""
+            try:
+                clean_m_id = m_id.replace("'", "''")
+                table.update(
+                    where=f"doc_id = '{clean_m_id}'",
+                    values={
+                        "doc_vigencia": m_vig,
+                        "doc_fecha_publicacion": str(m_fpub)
+                    }
+                )
+                print(f"   ✔ [{m_title[:40]}] -> Vigencia: '{m_vig}' | Publicación: '{m_fpub or 'N/D'}'")
+            except Exception as m_err:
+                print(f"   ⚠️ Error actualizando metadata de {m_id}: {m_err}", file=sys.stderr)
 
     # 4. Procesar y vectorizar cada documento nuevo/modificado
     synced_details = []
@@ -453,6 +506,8 @@ def sync_knowledge_base(
         doc_author = doc.get("autor", "Desconocido")
         doc_topic = doc.get("tema", "General")
         doc_date = doc.get("fecha_creacion", "")
+        doc_vigencia = doc.get("vigencia") or "NA (no aplica)"
+        doc_fecha_pub = doc.get("fecha_publicacion") or ""
         
         print(f"\n📖 [{idx}/{len(docs_to_sync)}] Descargando '{doc_title}' ({doc_topic})...")
         try:
@@ -462,6 +517,12 @@ def sync_knowledge_base(
                 print(f"   ⚠️ El documento '{doc_title}' está vacío. Omitiendo.")
                 continue
                 
+            # Si el detalle remoto tiene vigencia o fecha más específica
+            if detail.get("vigencia"):
+                doc_vigencia = detail.get("vigencia")
+            if detail.get("fecha_publicacion"):
+                doc_fecha_pub = detail.get("fecha_publicacion")
+
             # Chunking jerárquico con fronteras de oración y solapamiento
             chunks = hierarchical_chunk_markdown(
                 raw_markdown,
@@ -487,6 +548,7 @@ def sync_knowledge_base(
                 enriched = (
                     f"DOCUMENTO: {doc_title}\n"
                     f"TEMA: {doc_topic}\n"
+                    f"VIGENCIA: {doc_vigencia}\n"
                     f"SECCIÓN: {section}\n"
                     f"AUTOR: {doc_author}\n\n"
                     f"{content}"
@@ -501,6 +563,8 @@ def sync_knowledge_base(
                     "doc_author": doc_author,
                     "doc_topic": doc_topic,
                     "doc_date": doc_date,
+                    "doc_vigencia": doc_vigencia,
+                    "doc_fecha_publicacion": str(doc_fecha_pub),
                     "section_path": section,
                     "chunk_index": c_idx,
                     "chunk_tokens": c_tokens,

@@ -6,7 +6,7 @@ git_url: https://github.com/JoseLVillaronga/tech-vllm
 description: Consulta y lee documentos de la base de conocimiento documental de Teccam (Constitución Nacional, Código Civil, Procedimientos Teccam, Patrones de Reingeniería, Rick Rubin) indexada en LanceDB con vectores 1024D (Qwen3) y BM25.
 required_open_webui_version: 0.3.0
 requirements: requests, pydantic
-version: 2.0.0
+version: 2.1.0
 license: MIT
 """
 
@@ -194,3 +194,49 @@ class Tools:
             return data.get("content", "No se obtuvo contenido de estructura.")
         except Exception as e:
             return f"Error de conexión con el Gateway RAG ({url}): {str(e)}"
+
+    def obtener_indice_biblioteca(
+        self,
+        solo_vigentes: bool = False,
+        dominio: Optional[str] = None
+    ) -> str:
+        """
+        Obtiene el 'Mapa Ontológico Global' y el Índice Jerárquico Completo de toda la biblioteca de conocimiento disponible en Teccam.
+        Muestra todas las obras organizadas por ramas temáticas (Derecho Argentino, Procedimientos Teccam, Filosofía/Ética, etc.), con su estado de vigencia [VIGENTE, DEROGADO, PARCIALMENTE VIGENTE, EN PROYECTO], IDs y tokens.
+        Utiliza esta herramienta como primer paso para auto-orientarte cuando no sepas qué documentos existen o quieras explorar el catálogo macro.
+        :param solo_vigentes: Si es True, filtra exclusivamente obras y normas vigentes.
+        :param dominio: Opcional: Filtrar por un dominio específico (ej: 'Derecho', 'Filosofia', 'Teccam').
+        """
+        base_url = str(self.valves.GATEWAY_URL).rstrip("/")
+        if not base_url.endswith("/api/tools/rag-library-index") and not base_url.endswith("/v1/rag/library-index"):
+            url = f"{base_url}/api/tools/rag-library-index"
+        else:
+            url = base_url
+
+        headers = {
+            "Authorization": f"Bearer {self.valves.API_KEY}",
+            "Content-Type": "application/json"
+        }
+
+        clean_dominio = str(dominio).strip() if dominio and not str(type(dominio)).endswith("FieldInfo'>") else None
+        is_solo_vigentes = bool(solo_vigentes) if not str(type(solo_vigentes)).endswith("FieldInfo'>") else False
+
+        payload = {
+            "solo_vigentes": is_solo_vigentes,
+            "tema": clean_dominio
+        }
+
+        try:
+            response = requests.post(url, json=payload, headers=headers, timeout=20.0)
+
+            if response.status_code == 503:
+                return "Aviso: El servicio de Base de Conocimiento RAG está temporalmente desactivado globalmente."
+
+            if response.status_code != 200:
+                return f"Error consultando índice de biblioteca RAG (HTTP {response.status_code}): {response.text}"
+
+            data = response.json()
+            return data.get("content", "No se obtuvo contenido del índice de la biblioteca.")
+        except Exception as e:
+            return f"Error de conexión con el Gateway RAG ({url}): {str(e)}"
+

@@ -1768,6 +1768,21 @@ def api_rag_structure(doc_id):
     except Exception as e:
         return jsonify({"error": f"Error obteniendo estructura RAG: {str(e)}"}), 500
 
+@app.route("/api/rag/library-index", methods=["GET"])
+def api_rag_library_index():
+    """Obtiene el Mapa Ontológico Global y árbol temático jerárquico de la biblioteca LanceDB."""
+    try:
+        from rag_engine import get_library_index
+        solo_vigentes = request.args.get("solo_vigentes", "false").lower() in ("true", "1", "yes")
+        tema = request.args.get("tema") or None
+        res = get_library_index(solo_vigentes=solo_vigentes, tema=tema)
+        if not res.get("success"):
+            return jsonify({"error": res.get("error", "Error generando índice de biblioteca")}), 500
+        return jsonify(res)
+    except Exception as e:
+        return jsonify({"error": f"Error obteniendo índice de biblioteca: {str(e)}"}), 500
+
+
 # ==============================================================================
 # ENDPOINTS: ALINEACIÓN Y POLÍTICAS MEA
 # ==============================================================================

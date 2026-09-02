@@ -23,7 +23,7 @@ from gateway.telemetry.blocked_logger import save_blocked_request_log
 from gateway.tools.web_search import handle_web_search, perform_ollama_web_search
 from gateway.tools.pdf_generator import handle_pdf_generation, handle_pdf_download
 from gateway.tools.doc_reader import handle_doc_reader
-from gateway.tools.rag_endpoints import handle_rag_search, handle_rag_document, handle_rag_structure
+from gateway.tools.rag_endpoints import handle_rag_search, handle_rag_document, handle_rag_structure, handle_rag_library_index
 from gateway.cloud.cloud_router import handle_models_list, resolve_cloud_model
 from gateway.core.alignment_engine import enrich_chat_payload
 
@@ -212,6 +212,10 @@ def create_proxy_app(service_name: str, target_port: int, fallback_port: Optiona
         # Interceptar consulta de estructura y GPS Documental RAG
         if path.strip("/") in ["v1/rag/structure", "rag/structure", "api/tools/rag-structure", "api/tools/document-structure"] and request.method == "POST":
             return await handle_rag_structure(request, body)
+
+        # Interceptar consulta de índice jerárquico macro de biblioteca RAG
+        if path.strip("/") in ["v1/rag/library-index", "rag/library-index", "api/tools/rag-library-index", "api/tools/library-index"] and request.method in ["GET", "POST"]:
+            return await handle_rag_library_index(request, body)
 
         # Resolución de modelos y enrutamiento inteligente (Cloud vs Local)
         is_cloud_request = False

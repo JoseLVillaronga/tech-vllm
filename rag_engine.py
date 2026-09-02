@@ -7,8 +7,10 @@ e indexación híbrida (Vectores densos Qwen3 de 1024D + Búsqueda de texto comp
 
 import os
 import sys
+import re
 import time
 import json
+import unicodedata
 import httpx
 from typing import List, Dict, Any, Optional
 from dotenv import load_dotenv
@@ -39,7 +41,12 @@ def get_lancedb():
 def get_table():
     """Obtiene la tabla de base de conocimiento o None si no existe aún."""
     db = get_lancedb()
-    if TABLE_NAME in db.table_names():
+    try:
+        res = db.list_tables()
+        tables = res.tables if hasattr(res, "tables") else (res if isinstance(res, (list, set)) else db.table_names())
+    except Exception:
+        tables = db.table_names()
+    if TABLE_NAME in tables:
         return db.open_table(TABLE_NAME)
     return None
 
@@ -179,6 +186,8 @@ def search_knowledge_base(
     tema: Optional[Any] = None,
     temas: Optional[List[str]] = None,
     documento_id: Optional[str] = None,
+    vigencia: Optional[str] = None,
+    solo_vigentes: bool = False,
     top_k: int = 5,
     min_score: float = 0.25
 ) -> List[Dict[str, Any]]:
@@ -190,6 +199,8 @@ def search_knowledge_base(
         tema: Filtro opcional por tema/dominio (string o lista de strings).
         temas: Filtro opcional por lista de dominios múltiples.
         documento_id: Filtro opcional por ID de libro específico.
+        vigencia: Filtro opcional por estado de vigencia ('vigente', 'derogado', etc.).
+        solo_vigentes: Si es True, restringe exclusivamente a normas con doc_vigencia = 'vigente'.
         top_k: Cantidad de fragmentos más relevantes a retornar.
         min_score: Umbral mínimo de similitud/relevancia.
         
@@ -237,6 +248,12 @@ def search_knowledge_base(
     if documento_id and documento_id.strip():
         clean_doc_id = documento_id.strip().replace("'", "''")
         filter_clauses.append(f"doc_id = '{clean_doc_id}'")
+
+    if solo_vigentes:
+        filter_clauses.append("doc_vigencia = 'vigente'")
+    elif vigencia and vigencia.strip():
+        clean_vig = vigencia.strip().replace("'", "''")
+        filter_clauses.append(f"doc_vigencia = '{clean_vig}'")
         
     filter_expr = " AND ".join(filter_clauses) if filter_clauses else None
 
@@ -309,6 +326,8 @@ def search_knowledge_base(
                 "doc_title": item.get("doc_title"),
                 "doc_author": item.get("doc_author"),
                 "doc_topic": item.get("doc_topic"),
+                "doc_vigencia": item.get("doc_vigencia") or "NA (no aplica)",
+                "doc_fecha_publicacion": item.get("doc_fecha_publicacion") or "",
                 "section_path": item.get("section_path"),
                 "chunk_index": item.get("chunk_index"),
                 "chunk_tokens": item.get("chunk_tokens"),
@@ -327,7 +346,7 @@ def search_knowledge_base(
     return final_results
 
 def format_rag_context_for_llm(results: List[Dict[str, Any]]) -> str:
-    """Formatea los resultados de búsqueda en un bloque de contexto claro y estructurado con citas y doc_id para el LLM."""
+    """Formatea los resultados de búsqueda en un bloque de contexto claro y estructurado con citas, vigencia y doc_id para el LLM."""
     if not results:
         return "No se encontraron fragmentos relevantes en la base de conocimiento de Teccam."
         
@@ -336,6 +355,8 @@ def format_rag_context_for_llm(results: List[Dict[str, Any]]) -> str:
         doc_title = item.get("doc_title", "Documento sin título")
         doc_id = item.get("doc_id", "")
         doc_topic = item.get("doc_topic", "General")
+        doc_vigencia = item.get("doc_vigencia") or "NA (no aplica)"
+        doc_fecha_pub = item.get("doc_fecha_publicacion") or ""
         section = item.get("section_path", "Sección Principal")
         author = item.get("doc_author", "Desconocido")
         content = item.get("content", "").strip()
@@ -343,6 +364,20 @@ def format_rag_context_for_llm(results: List[Dict[str, Any]]) -> str:
         c_tokens = item.get("chunk_tokens")
         tot_tokens = item.get("total_doc_tokens") or 0
         tokens_tag = f" | Tokens: ~{c_tokens}" if c_tokens else ""
+        
+        # Tags de metadata de vigencia y publicación
+        vig_tag = f" | Vigencia: {doc_vigencia.upper()}" if doc_vigencia and doc_vigencia != "NA (no aplica)" else ""
+        pub_tag = f" | B.O.: {doc_fecha_pub}" if doc_fecha_pub and doc_fecha_pub.strip() else ""
+
+        # Advertencia proactiva para el LLM en caso de normas no vigentes
+        if doc_vigencia == "derogado":
+            vig_alert = "⚠️ [Aviso Crítico de Vigencia]: Esta norma se encuentra DEROGADA. Citarla exclusivamente con fines comparativos o doctrinales, no como derecho positivo aplicable.\n"
+        elif doc_vigencia == "parcialmente-vigente":
+            vig_alert = "⚠️ [Aviso de Vigencia]: Esta norma posee reformas o vigencia PARCIAL. Verificar si los artículos citados continúan vigentes.\n"
+        elif doc_vigencia == "en-proyecto":
+            vig_alert = "ℹ️ [Aviso de Estado]: Este documento es un ANTEPROYECTO / PROYECTO de ley en trámite parlamentario, no constituye norma sancionada.\n"
+        else:
+            vig_alert = ""
         
         # Si el documento supera los 30.000 tokens o 100 fragmentos, incluir guía de GPS Documental y lectura por sección
         if tot_tokens > 30000 or item.get("total_chunks", 0) > 100:
@@ -356,7 +391,8 @@ def format_rag_context_for_llm(results: List[Dict[str, Any]]) -> str:
             action_hint = f"💡 [Acción Disponible: Para leer este documento completo o hacer una síntesis integral usa: leer_documento_completo(doc_id=\"{doc_id}\")]"
         
         snippets.append(
-            f"--- FUENTE [{idx}]: \"{doc_title}\" [doc_id: {doc_id}] (Tema: {doc_topic} | Sección: {section} | Autor: {author}{tokens_tag} | Coincidencia: {sim_pct}%) ---\n"
+            f"--- FUENTE [{idx}]: \"{doc_title}\" [doc_id: {doc_id}] (Tema: {doc_topic}{vig_tag}{pub_tag} | Sección: {section} | Autor: {author}{tokens_tag} | Coincidencia: {sim_pct}%) ---\n"
+            f"{vig_alert}"
             f"{action_hint}\n"
             f"{content}"
         )
@@ -384,14 +420,18 @@ def get_rag_stats() -> Dict[str, Any]:
         doc_ids = df["doc_id"].to_pylist() if "doc_id" in df.schema.names else []
         doc_titles = df["doc_title"].to_pylist() if "doc_title" in df.schema.names else []
         doc_topics = df["doc_topic"].to_pylist() if "doc_topic" in df.schema.names else []
+        doc_vigs = df["doc_vigencia"].to_pylist() if "doc_vigencia" in df.schema.names else ["NA (no aplica)"] * len(doc_ids)
+        doc_fpubs = df["doc_fecha_publicacion"].to_pylist() if "doc_fecha_publicacion" in df.schema.names else [None] * len(doc_ids)
         
         docs_map = {}
-        for d_id, d_title, d_topic in zip(doc_ids, doc_titles, doc_topics):
+        for d_id, d_title, d_topic, d_vig, d_fpub in zip(doc_ids, doc_titles, doc_topics, doc_vigs, doc_fpubs):
             if d_id not in docs_map:
                 docs_map[d_id] = {
                     "id": d_id,
                     "title": d_title,
                     "topic": d_topic,
+                    "vigencia": d_vig or "NA (no aplica)",
+                    "fecha_publicacion": d_fpub or "",
                     "chunks_count": 0
                 }
             docs_map[d_id]["chunks_count"] += 1
@@ -402,6 +442,11 @@ def get_rag_stats() -> Dict[str, Any]:
                 topics_count[t] = topics_count.get(t, 0) + 1
                 
         topics_list = [{"name": k, "chunks_count": v} for k, v in topics_count.items()]
+
+        vigencias_count = {}
+        for d in docs_map.values():
+            v = d.get("vigencia") or "NA (no aplica)"
+            vigencias_count[v] = vigencias_count.get(v, 0) + 1
         
         rag_sett = get_rag_settings()
         return {
@@ -411,6 +456,7 @@ def get_rag_stats() -> Dict[str, Any]:
             "total_documents": len(docs_map),
             "documents": list(docs_map.values()),
             "topics": topics_list,
+            "vigencias_summary": vigencias_count,
             "active_topics": rag_sett.get("active_topics", []),
             "lancedb_path": LANCEDB_DIR,
             "table_name": TABLE_NAME
@@ -558,6 +604,8 @@ def get_document_structure(doc_id: str) -> Dict[str, Any]:
     doc_title = results["doc_title"][0].as_py() if "doc_title" in results.schema.names else "Documento"
     doc_topic = results["doc_topic"][0].as_py() if "doc_topic" in results.schema.names else "General"
     doc_author = results["doc_author"][0].as_py() if "doc_author" in results.schema.names else "Desconocido"
+    doc_vigencia = results["doc_vigencia"][0].as_py() if "doc_vigencia" in results.schema.names else "NA (no aplica)"
+    doc_fecha_pub = results["doc_fecha_publicacion"][0].as_py() if "doc_fecha_publicacion" in results.schema.names else ""
     total_chunks = len(results)
 
     ids = results["id"].to_pylist() if "id" in results.schema.names else []
@@ -639,10 +687,13 @@ def get_document_structure(doc_id: str) -> Dict[str, Any]:
         other_matches = [f"'{c['title']}' (doc_id: {c['doc_id']})" for c in candidates[1:4]]
         alt_notice = f"💡 *Nota de Búsqueda:* Se seleccionó '{doc_title}'. Otras coincidencias: {', '.join(other_matches)}\n\n"
 
+    vig_badge = f" | **Vigencia:** `{doc_vigencia.upper()}`" if doc_vigencia and doc_vigencia != "NA (no aplica)" else ""
+    pub_badge = f" | **B.O. / Publicación:** {doc_fecha_pub}" if doc_fecha_pub else ""
+
     content_md = (
         f"# 🗺️ GPS Documental: Mapa de Estructura de Secciones\n"
         f"**Documento:** \"{doc_title}\" [doc_id: `{actual_doc_id}`]\n"
-        f"**Tema:** {doc_topic} | **Autor:** {doc_author} | **Total Obra:** ~{total_doc_tokens:,} tokens ({total_chunks} fragmentos, {len(sections_list)} secciones detectadas)\n\n"
+        f"**Tema:** {doc_topic}{vig_badge}{pub_badge} | **Autor:** {doc_author} | **Total Obra:** ~{total_doc_tokens:,} tokens ({total_chunks} fragmentos, {len(sections_list)} secciones detectadas)\n\n"
         f"{alt_notice}"
         f"A continuación se presenta el árbol estructural de la obra para orientar la lectura y análisis focalizado:\n\n"
         f"{table_header}" + "\n".join(md_rows) + "\n\n"
@@ -960,3 +1011,139 @@ def get_document_full_content(
         "total_partes": total_partes,
         "content": header + slice_text
     }
+
+def get_library_index(
+    solo_vigentes: bool = False,
+    tema: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Genera un índice jerárquico macro de la biblioteca de conocimiento (Mapa Ontológico Global).
+    
+    Permite que modelos compactos (ej. 12B) o usuarios comprendan de inmediato la estructura completa
+    de las obras disponibles, organizadas por dominios, con su estado de vigencia, ID y volumen de tokens.
+    """
+    table = get_table()
+    if table is None or len(table) == 0:
+        return {
+            "success": False,
+            "error": "Base vectorial LanceDB no inicializada o vacía.",
+            "total_documents": 0,
+            "domains": {},
+            "content": "⚠️ La base de conocimiento de Teccam no tiene documentos indexados actualmente."
+        }
+
+    try:
+        df = table.to_arrow()
+        names = df.schema.names
+        
+        d_ids = df["doc_id"].to_pylist() if "doc_id" in names else []
+        d_titles = df["doc_title"].to_pylist() if "doc_title" in names else []
+        d_topics = df["doc_topic"].to_pylist() if "doc_topic" in names else []
+        d_authors = df["doc_author"].to_pylist() if "doc_author" in names else ["Desconocido"] * len(d_ids)
+        d_tokens = df["total_doc_tokens"].to_pylist() if "total_doc_tokens" in names else [0] * len(d_ids)
+        d_vigs = df["doc_vigencia"].to_pylist() if "doc_vigencia" in names else ["NA (no aplica)"] * len(d_ids)
+        d_fpubs = df["doc_fecha_publicacion"].to_pylist() if "doc_fecha_publicacion" in names else [""] * len(d_ids)
+        
+        docs_map = {}
+        for d_id, d_t, d_top, d_auth, d_tok, d_v, d_fp in zip(d_ids, d_titles, d_topics, d_authors, d_tokens, d_vigs, d_fpubs):
+            if d_id not in docs_map:
+                docs_map[d_id] = {
+                    "id": d_id,
+                    "title": d_t,
+                    "topic": d_top or "General",
+                    "author": d_auth or "Desconocido",
+                    "total_tokens": d_tok or 0,
+                    "vigencia": d_v or "NA (no aplica)",
+                    "fecha_publicacion": d_fp or "",
+                    "chunks_count": 0
+                }
+            docs_map[d_id]["chunks_count"] += 1
+
+        # Filtrar si se solicitó
+        filtered_docs = list(docs_map.values())
+        if solo_vigentes:
+            filtered_docs = [d for d in filtered_docs if d["vigencia"] == "vigente"]
+        if tema and tema.strip():
+            # Separar por comas, barras, guiones o espacios para búsqueda tolerante (ej: 'Filosofia/Etica')
+            clean_terms = [
+                re.sub(r'[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ]', '', t.lower())
+                for t in re.split(r'[/,|+& -]+', tema.strip())
+                if t.strip()
+            ]
+            clean_terms = [t for t in clean_terms if len(t) >= 3]
+            if clean_terms:
+                filtered_docs = [
+                    d for d in filtered_docs
+                    if any(term in d["topic"].lower() for term in clean_terms)
+                ]
+
+        # Agrupar por Dominio / Tema
+        domains = {}
+        for d in filtered_docs:
+            top = d["topic"]
+            if top not in domains:
+                domains[top] = []
+            domains[top].append(d)
+
+        # Ordenar documentos dentro de cada dominio por vigencia (vigente primero) y título
+        vig_priority = {
+            "vigente": 1,
+            "parcialmente-vigente": 2,
+            "en-proyecto": 3,
+            "NA (no aplica)": 4,
+            "derogado": 5
+        }
+        for top in domains:
+            domains[top].sort(key=lambda x: (vig_priority.get(x["vigencia"], 99), x["title"]))
+
+        # Construir representación Markdown para el LLM y Usuario
+        total_docs = len(filtered_docs)
+        total_chunks = sum(d["chunks_count"] for d in filtered_docs)
+        total_tokens = sum(d["total_tokens"] for d in filtered_docs)
+        
+        md_lines = [
+            "# 🗺️ Mapa Ontológico Global de la Biblioteca (Base RAG Teccam)",
+            f"**Obras Disponibles:** {total_docs} | **Dominios:** {len(domains)} | **Total Fragmentos:** {total_chunks:,} | **Tokens Acumulados:** ~{total_tokens:,}\n",
+            "A continuación se detalla el catálogo temático jerarquizado para orientar consultas y navegación precisa:\n"
+        ]
+        
+        for dom, d_list in sorted(domains.items()):
+            icon = "⚖️" if "derecho" in dom.lower() else "🛠️" if "procedimiento" in dom.lower() or "soporte" in dom.lower() else "🧠" if "filosof" in dom.lower() or "etica" in dom.lower() else "💻" if "patron" in dom.lower() or "ingenier" in dom.lower() else "📚"
+            md_lines.append(f"### {icon} Dominio: {dom} ({len(d_list)} obras)")
+            for d in d_list:
+                vig_str = d["vigencia"]
+                vig_badge = f"**[{vig_str.upper()}]**" if vig_str != "NA (no aplica)" else "[N/A]"
+                fpub_str = f" | B.O.: {d['fecha_publicacion']}" if d.get("fecha_publicacion") else ""
+                tokens_str = f"~{d['total_tokens']:,} tokens" if d.get("total_tokens") else f"{d['chunks_count']} chunks"
+                
+                md_lines.append(
+                    f"- 📖 **{d['title']}** {vig_badge} [doc_id: `{d['id']}`] ({tokens_str}{fpub_str})\n"
+                    f"  * Explorar índice de capítulos: `obtener_estructura_documento(doc_id=\"{d['id']}\")`\n"
+                    f"  * Lectura directa: `leer_documento_completo(doc_id=\"{d['id']}\")`"
+                )
+            md_lines.append("")
+
+        md_lines.append(
+            "---\n"
+            "💡 **Guía de Uso para el LLM:**\n"
+            "1. Para ubicar temas específicos dentro de una ley o libro extenso, invoca primero `obtener_estructura_documento(doc_id)`. Nunca adivines la sección.\n"
+            "2. Para leer capítulos o artículos específicos, invoca `leer_documento_completo(doc_id, seccion=\"<nombre>\")`.\n"
+            "3. En consultas jurídicas, prioriza fuentes con estado `[VIGENTE]`. Si citas normas `[DEROGADO]`, adviértelo explícitamente al usuario."
+        )
+
+        return {
+            "success": True,
+            "total_documents": total_docs,
+            "total_chunks": total_chunks,
+            "total_tokens": total_tokens,
+            "domains_count": len(domains),
+            "domains": domains,
+            "content": "\n".join(md_lines)
+        }
+    except Exception as e:
+        print(f"⚠️ [RAG Engine] Error generando índice de biblioteca: {e}", file=sys.stderr)
+        return {
+            "success": False,
+            "error": str(e),
+            "content": f"Error al generar índice de biblioteca: {str(e)}"
+        }
