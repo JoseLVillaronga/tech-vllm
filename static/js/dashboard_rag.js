@@ -122,7 +122,6 @@
                         `;
                         }).join('');
                     }
-                    }
                 }
             } catch (err) {
                 console.error("Error cargando estadísticas RAG:", err);
