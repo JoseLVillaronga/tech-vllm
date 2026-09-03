@@ -578,7 +578,7 @@ def fetch_teccam_document_raw(doc_id: str) -> Optional[Dict[str, Any]]:
         print(f"⚠️ [RAG Engine] Error al consultar API de Teccam PDF ({url}): {e}", file=sys.stderr)
     return None
 
-def get_document_structure(doc_id: str) -> Dict[str, Any]:
+def get_document_structure(doc_id: str, filtro: Optional[str] = None) -> Dict[str, Any]:
     """
     Construye el 'GPS Documental' (Árbol y Mapa de Estructura de Secciones) de una obra desde LanceDB.
     
@@ -681,9 +681,18 @@ def get_document_structure(doc_id: str) -> Dict[str, Any]:
             "estimated_tokens": current_sec_tokens
         })
 
-    # 4. Formatear la tabla Markdown del GPS Documental
+    # Filtrar secciones por palabra clave si se proporcionó filtro
+    clean_filtro = normalize_text(filtro) if filtro and filtro.strip() else ""
+    if clean_filtro:
+        sections_list = [s for s in sections_list if clean_filtro in normalize_text(s["section"])]
+
+    # 4. Formatear la tabla Markdown del GPS Documental con límite seguro de filas
+    MAX_GPS_ROWS = 50
+    total_found_sections = len(sections_list)
+    display_sections = sections_list[:MAX_GPS_ROWS]
+
     md_rows = []
-    for s in sections_list:
+    for s in display_sections:
         sec_display = s["section"]
         if len(sec_display) > 80:
             sec_display = sec_display[:77] + "..."
@@ -704,16 +713,25 @@ def get_document_structure(doc_id: str) -> Dict[str, Any]:
         other_matches = [f"'{c['title']}' (doc_id: {c['doc_id']})" for c in candidates[1:4]]
         alt_notice = f"💡 *Nota de Búsqueda:* Se seleccionó '{doc_title}'. Otras coincidencias: {', '.join(other_matches)}\n\n"
 
+    overflow_notice = ""
+    if total_found_sections > MAX_GPS_ROWS:
+        overflow_notice = (
+            f"\n\n> ⚠️ **Aviso de Granularidad:** Mostrando las primeras {MAX_GPS_ROWS} secciones de {total_found_sections:,} totales. "
+            f"Para acotar la estructura, ejecuta `obtener_estructura_documento(doc_id=\"{actual_doc_id}\", filtro=\"<palabra_clave>\")` "
+            f"o utiliza directamente `buscar_en_base_de_conocimiento(consulta=\"...\", doc_id=\"{actual_doc_id}\")` para recuperar los artículos puntuales."
+        )
+
+    filtro_notice = f" (Filtrado por: '{filtro}')" if clean_filtro else ""
     vig_badge = f" | **Vigencia:** `{doc_vigencia.upper()}`" if doc_vigencia and doc_vigencia != "NA (no aplica)" else ""
     pub_badge = f" | **B.O. / Publicación:** {doc_fecha_pub}" if doc_fecha_pub else ""
 
     content_md = (
-        f"# 🗺️ GPS Documental: Mapa de Estructura de Secciones\n"
+        f"# 🗺️ GPS Documental: Mapa de Estructura de Secciones{filtro_notice}\n"
         f"**Documento:** \"{doc_title}\" [doc_id: `{actual_doc_id}`]\n"
-        f"**Tema:** {doc_topic}{vig_badge}{pub_badge} | **Autor:** {doc_author} | **Total Obra:** ~{total_doc_tokens:,} tokens ({total_chunks} fragmentos, {len(sections_list)} secciones detectadas)\n\n"
+        f"**Tema:** {doc_topic}{vig_badge}{pub_badge} | **Autor:** {doc_author} | **Total Obra:** ~{total_doc_tokens:,} tokens ({total_chunks} fragmentos, {total_found_sections} secciones{filtro_notice})\n\n"
         f"{alt_notice}"
         f"A continuación se presenta el árbol estructural de la obra para orientar la lectura y análisis focalizado:\n\n"
-        f"{table_header}" + "\n".join(md_rows) + "\n\n"
+        f"{table_header}" + "\n".join(md_rows) + overflow_notice + "\n\n"
         f"---\n"
         f"💡 **Guía de Navegación para el LLM y Usuario:**\n"
         f"- Para leer una sección específica sin desbordar el contexto, ejecuta: `leer_documento_completo(doc_id=\"{actual_doc_id}\", seccion=\"<nombre_de_seccion>\")`.\n"

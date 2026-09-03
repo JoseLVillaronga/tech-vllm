@@ -42,10 +42,11 @@ class Tools:
     ) -> str:
         """
         Consulta fragmentos relevantes en la base de datos documental y jurídica de Teccam en LanceDB.
-        Utiliza esta herramienta siempre que el usuario haga preguntas puntuales sobre leyes argentinas, artículos de la Constitución, Código Civil, procedimientos internos de Teccam o patrones de arquitectura.
-        :param consulta: Pregunta o términos de búsqueda específicos para consultar en los libros y procedimientos.
+        HERRAMIENTA PRINCIPAL OBLIGATORIA: Utilízala siempre como primera opción para responder preguntas sobre leyes, artículos (ej: 'artículo 957'), definiciones, conceptos, procedimientos o jurisprudencia.
+        NO requieres llamar a 'obtener_estructura_documento' para responder una pregunta puntual; esta herramienta localiza y recupera directamente los artículos pertinentes.
+        :param consulta: Pregunta o términos de búsqueda específicos para consultar en los libros y procedimientos (ej: 'definición de contrato artículo 957', 'régimen de vacaciones LCT').
         :param dominios: Opcional: Tema o temas a filtrar separados por comas. Dejar vacío para buscar en toda la base.
-        :param doc_id: Opcional: ID de la obra obtenido de 'obtener_indice_biblioteca' para acotar la búsqueda exclusivamente a ese documento.
+        :param doc_id: Opcional: ID de la obra (ej: '6a976eb89e1c2342dd2e5b34' para CCCN) obtenido de 'obtener_indice_biblioteca' para acotar la búsqueda exclusivamente a ese documento.
         """
         base_url = str(self.valves.GATEWAY_URL).rstrip("/")
         if not base_url.endswith("/api/tools/rag-search") and not base_url.endswith("/v1/rag/search"):
@@ -163,12 +164,15 @@ class Tools:
 
     def obtener_estructura_documento(
         self,
-        doc_id: str
+        doc_id: str,
+        filtro: Optional[str] = None
     ) -> str:
         """
         Obtiene el 'GPS Documental' (Mapa y Árbol de Estructura de Secciones) de una obra, libro o código extenso (ej: Código Civil, Constitución Nacional, manuales técnicos).
-        PASO OBLIGATORIO antes de llamar a 'leer_documento_completo' en cualquier obra de más de 10.000 tokens. Permite conocer todos los capítulos, títulos, artículos, rangos de fragmentos y volumen de tokens antes de leer o resumir partes específicas.
-        :param doc_id: ID único del documento (ej: '6a8b02cface6becbcb49b20d') o título de la obra (ej: 'Codigo Civil Argentino').
+        Úsalo para conocer los capítulos, títulos o partes principales de una obra antes de llamar a 'leer_documento_completo'.
+        IMPORTANTE: Para responder preguntas puntuales (ej: 'definición de contrato', 'artículo 957'), NO uses esta herramienta; utiliza directamente 'buscar_en_base_de_conocimiento(consulta="...", doc_id="...")'.
+        :param doc_id: ID único del documento (ej: '6a976eb89e1c2342dd2e5b34' para CCCN) o título de la obra.
+        :param filtro: Opcional: Palabra clave para filtrar capítulos o títulos específicos (ej: 'contrato', 'fideicomiso', 'familia', 'sociedades').
         """
         base_url = str(self.valves.GATEWAY_URL).rstrip("/")
         if not base_url.endswith("/api/tools/rag-structure") and not base_url.endswith("/v1/rag/structure"):
@@ -182,7 +186,11 @@ class Tools:
         }
 
         clean_doc_id = str(doc_id).strip() if doc_id and not str(type(doc_id)).endswith("FieldInfo'>") else ""
+        clean_filtro = str(filtro).strip() if filtro and not str(type(filtro)).endswith("FieldInfo'>") else None
+
         payload = {"doc_id": clean_doc_id}
+        if clean_filtro:
+            payload["filtro"] = clean_filtro
 
         try:
             response = requests.post(url, json=payload, headers=headers, timeout=20.0)

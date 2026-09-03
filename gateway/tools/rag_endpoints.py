@@ -139,12 +139,13 @@ async def handle_rag_structure(request: Request, body: bytes) -> JSONResponse:
 
         body_data = json.loads(body) if body else {}
         doc_id = body_data.get("doc_id", "").strip()
+        filtro = body_data.get("filtro") or None
 
         if not doc_id:
             raise HTTPException(status_code=400, detail="El parámetro 'doc_id' es obligatorio para consultar la estructura.")
 
         t_struct_0 = time.time()
-        res = get_document_structure(doc_id=doc_id)
+        res = get_document_structure(doc_id=doc_id, filtro=filtro)
         dur_struct_ms = round((time.time() - t_struct_0) * 1000, 2)
 
         if not res.get("success", False):
