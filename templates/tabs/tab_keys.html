@@ -33,6 +33,10 @@
                                         Gemma LLM & Visión (Puerto 8000)
                                     </label>
                                     <label class="flex items-center gap-2.5 text-xs text-slate-300 cursor-pointer">
+                                        <input type="checkbox" name="key-services" value="gemma_raw" class="rounded border-slate-800 text-amber-500 focus:ring-amber-500 bg-slate-950">
+                                        LLM Raw / Directo (Puerto 8010)
+                                    </label>
+                                    <label class="flex items-center gap-2.5 text-xs text-slate-300 cursor-pointer">
                                         <input type="checkbox" name="key-services" value="whisper" class="rounded border-slate-800 text-cyan-600 focus:ring-cyan-500 bg-slate-950">
                                         Whisper STT (Puerto 8001)
                                     </label>
@@ -274,7 +278,8 @@
                             <label class="block text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">Servicio</label>
                             <select id="sec-filter-service" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500">
                                 <option value="">Todos</option>
-                                <option value="gemma">Gemma (LLM)</option>
+                                <option value="gemma">Gemma (LLM 8000)</option>
+                                <option value="gemma_raw">LLM Raw (8010)</option>
                                 <option value="whisper">Whisper (ASR)</option>
                                 <option value="tts">F5-TTS (Voz)</option>
                                 <option value="diarization">Diarización (PyAnnote)</option>
@@ -362,6 +367,10 @@
                                 <label class="flex items-center gap-2.5 text-xs text-slate-300 cursor-pointer">
                                     <input type="checkbox" id="edit-key-service-gemma" class="rounded border-slate-800 text-cyan-600 focus:ring-cyan-500 bg-slate-950">
                                     Gemma LLM & Visión (Puerto 8000)
+                                </label>
+                                <label class="flex items-center gap-2.5 text-xs text-slate-300 cursor-pointer">
+                                    <input type="checkbox" id="edit-key-service-gemma_raw" class="rounded border-slate-800 text-amber-500 focus:ring-amber-500 bg-slate-950">
+                                    LLM Raw / Directo (Puerto 8010)
                                 </label>
                                 <label class="flex items-center gap-2.5 text-xs text-slate-300 cursor-pointer">
                                     <input type="checkbox" id="edit-key-service-whisper" class="rounded border-slate-800 text-cyan-600 focus:ring-cyan-500 bg-slate-950">

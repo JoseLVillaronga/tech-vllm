@@ -333,7 +333,8 @@
                     
                     let servicesHtml = '';
                     const svcMap = {
-                        'gemma': { name: 'LLM Local', color: 'bg-indigo-500/10 text-indigo-400' },
+                        'gemma': { name: 'LLM MEA (8000)', color: 'bg-indigo-500/10 text-indigo-400' },
+                        'gemma_raw': { name: 'LLM RAW (8010)', color: 'bg-amber-500/10 text-amber-400' },
                         'whisper': { name: 'STT', color: 'bg-cyan-500/10 text-cyan-400' },
                         'tts': { name: 'TTS', color: 'bg-emerald-500/10 text-emerald-400' },
                         'diarization': { name: 'DIAR', color: 'bg-amber-500/10 text-amber-400' },
@@ -557,6 +558,8 @@
             document.getElementById('edit-key-active').value = String(isActive);
             
             document.getElementById('edit-key-service-gemma').checked = services.includes('gemma');
+            const gemmaRawEl = document.getElementById('edit-key-service-gemma_raw');
+            if (gemmaRawEl) gemmaRawEl.checked = services.includes('gemma_raw');
             document.getElementById('edit-key-service-whisper').checked = services.includes('whisper');
             document.getElementById('edit-key-service-tts').checked = services.includes('tts');
             document.getElementById('edit-key-service-diarization').checked = services.includes('diarization');
@@ -601,6 +604,8 @@
             
             const services = [];
             if (document.getElementById('edit-key-service-gemma').checked) services.push('gemma');
+            const gemmaRawElUpdate = document.getElementById('edit-key-service-gemma_raw');
+            if (gemmaRawElUpdate && gemmaRawElUpdate.checked) services.push('gemma_raw');
             if (document.getElementById('edit-key-service-whisper').checked) services.push('whisper');
             if (document.getElementById('edit-key-service-tts').checked) services.push('tts');
             if (document.getElementById('edit-key-service-diarization').checked) services.push('diarization');

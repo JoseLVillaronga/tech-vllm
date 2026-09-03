@@ -58,7 +58,7 @@ def get_key_doc(token: str):
     if token == MASTER_KEY:
         return {
             "name": "Master Key",
-            "services": ["gemma", "whisper", "tts", "diarization", "embeddings", "image", "docling"],
+            "services": ["gemma", "gemma_raw", "whisper", "tts", "diarization", "embeddings", "image", "docling"],
             "allowed_providers": ["*"],
             "is_active": True
         }
@@ -124,9 +124,10 @@ def validate_token_doc(key_doc: dict, service_name: str) -> bool:
     allowed_services = key_doc.get("services", [])
     allowed_providers = key_doc.get("allowed_providers", [])
 
-    if service_name == "gemma":
-        # En el proxy gemma (puerto 8000), se permite el paso si tiene 'gemma' local o algún proveedor en la nube
-        if "gemma" not in allowed_services and not allowed_providers:
+    if service_name in ["gemma", "gemma_raw"]:
+        # En los proxies LLM (puerto 8000 o 8010), se permite el paso si la clave tiene
+        # el servicio específico habilitado (gemma o gemma_raw) o proveedores en la nube
+        if service_name not in allowed_services and not allowed_providers:
             return False
     else:
         if service_name not in allowed_services:
