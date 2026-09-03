@@ -12,6 +12,7 @@ Este directorio almacena los registros empíricos y transcripciones de conversac
 | **2026-09-01** | [`prueba_campo_rag_jerarquico_v2_2026-09-01.md`](prueba_campo_rag_jerarquico_v2_2026-09-01.md) | `google/gemma-4-12B-it` (Local 4-bit) | ~27.5K | `buscar_en_base_de_conocimiento`<br>`obtener_estructura_documento`<br>`leer_documento_completo` | **Flujo completo de 3 pasos (Búsqueda ➔ GPS Documental de 196 secciones ➔ Extracción quirúrgica de 5.7K tokens).** |
 | **2026-09-01** | [`prueba_campo_62k_matrimonio_pdf_2026-09-01.md`](prueba_campo_62k_matrimonio_pdf_2026-09-01.md) | `google/gemma-4-12B-it` (Local 4-bit) | **62.012 tokens** | `buscar_en_base_de_conocimiento`<br>`leer_documento_completo` (59.3K tokens)<br>`generate_pdf_document` | **Digestión masiva de 59.3K tokens del Código Civil y compilación exitosa de PDF oficial de 2 páginas.** |
 | **2026-09-01** | *Comparativa Local vs Cloud* | `gemma-4-12B-it` vs `gemma-4:31b-cloud` | ~13.2K | `buscar_en_base_de_conocimiento` | **Razonamiento dogmático y contextualización histórica (Ley 340 vs CCyCN de 2015).** |
+| **2026-09-02** | [`prueba_campo_freno_mano_rag_y_secuencia_embudo_2026-09-02.md`](prueba_campo_freno_mano_rag_y_secuencia_embudo_2026-09-02.md) | `gemma-4-12B-it-awq` (Local) | **8.175 tokens** | `obtener_indice_biblioteca`<br>`buscar_en_base_de_conocimiento`<br>`obtener_estructura_documento`<br>`leer_documento_completo` (intercepción) | **Freno de mano RAG contra desbordamiento de contexto (de 122.8K a 8.1K tokens, -93.3%) y rigor jurídico con cero alucinación.** |
 
 ---
 

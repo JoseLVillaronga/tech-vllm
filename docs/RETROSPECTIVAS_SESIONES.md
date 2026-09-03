@@ -28,6 +28,7 @@ Al finalizar cada sesión de trabajo, el agente y el usuario realizan una audito
 
 | Fecha | ID Sesión | Turnos Usuario | Llamadas Agénticas (Tools) | Commits Git | Invariantes Violados | RVI Máx | Blast Radius | Estado Global |
 | :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **2026-09-02 (Noche - Freno de Mano RAG & Secuencia Embudo)** | `bba5ef3a` | 6 | ~30 | 2 | **0** | 1/10 | Mínimo (Quirúrgico) | 🟢 **100% Exitoso** |
 | **2026-09-02 (Tarde - Metadata RAG, Mapa Ontológico & Antisesgo)** | `bba5ef3a` | 10 | ~45 | 1 | **0** | 2/10 | Bajo (Modular) | 🟢 **100% Exitoso** |
 | **2026-09-02 (Madrugada - Fix Permisos LanceDB)** | `bba5ef3a` | 3 | ~15 | 1 | **0** | 1/10 | Mínimo (Quirúrgico) | 🟢 **100% Exitoso** |
 | **2026-09-01 (Noche - Prefix Caching)** | `bba5ef3a` | 4 | ~12 | 2 | **0** | 1/10 | Mínimo (Quirúrgico) | 🟢 **100% Exitoso** |
@@ -40,6 +41,28 @@ Al finalizar cada sesión de trabajo, el agente y el usuario realizan una audito
 ---
 
 ## 📝 Fichas Detalladas por Sesión
+
+### 🔹 Sesión: 2026-09-02 Noche (`bba5ef3a-c9c3-41a0-9e67-95058f9b5fb1`) - Freno de Mano RAG, Prevención de Desbordamiento y Embudo Agéntico
+* **Hitos Principales:**
+  1. **Análisis Forense de Historiales de Chat (`temp_historial_chat/`):**
+     - Identificación del origen del error de vLLM `131073 tokens > 131072 tokens` por avidez estocástica en Gemma 4 12B local al intentar volcar la "Sección General" del CCCN (~425.630 tokens), inflando el prompt a 122.881 tokens y el archivo JSON a 2.37 MB.
+  2. **Implementación de Freno de Mano en Motor RAG ([`rag_engine.py`](../rag_engine.py)):**
+     - Detección y bloqueo automático de solicitudes de lectura completa o secciones masivas en obras > 25.000 tokens sin pasar por el GPS Documental.
+     - Límite duro `MAX_SAFE_TOOL_TOKENS = 15.000 tokens` con truncado preventivo seguro para impedir saturación de contexto bajo cualquier circunstancia.
+  3. **Protocolo Obligatorio de Secuencia en Embudo ([`gateway/core/alignment_engine.py`](../gateway/core/alignment_engine.py)):**
+     - Refuerzo de la Regla 4 del MEA con el protocolo canónico de 3 pasos (Macro: Índice ➔ Medio: GPS ➔ Quirúrgico: Lectura acotada) y sincronización inmediata con MongoDB (`alignment_settings`).
+  4. **Actualización de Tool Open-WebUI a v2.2.0 ([`tools/openwebui_rag_tool.py`](../tools/openwebui_rag_tool.py)):**
+     - Ajuste de `token_threshold = 15000` y docstring con la *Regla de Oro Obligatoria*.
+  5. **Verificación Empírica Inmediata:**
+     - Chat ID `0e8daf98-36ff-4733-ba73-5d0f00942f98`: Activación exitosa del freno de mano, reducción del 93.3% en uso de contexto (de 122.8K a **8.175 tokens**), cero saturación y respuesta jurídica con **cero alucinación** sobre el Art. 957 y requisitos de validez del CCyC argentino.
+  6. **Documentación Técnica de Prueba de Campo:**
+     - Elaboración de [`docs/pruebas_campo/prueba_campo_freno_mano_rag_y_secuencia_embudo_2026-09-02.md`](pruebas_campo/prueba_campo_freno_mano_rag_y_secuencia_embudo_2026-09-02.md).
+* **Evaluación MEA v2.1 & Leyes de Ingeniería:**
+  * **Invariantes (Gate 1):** **0 violaciones**.
+  * **Ley 1 (Modularización):** Cumplida al 100%. Lógica de control encapsulada en el motor de RAG y alineación.
+  * **Ley 2 (Causa Raíz):** Cumplida al 100%. Se atacó el origen del desbordamiento en el backend y en la directiva de sampling en lugar de aplicar parches superficiales.
+  * **Ley 3 (Mínimo Blast Radius):** Cumplida al 100%. Intervenciones mínimas con 21/21 tests unitarios pasando en verde.
+  * **RVI Máximo:** `1/10`.
 
 ### 🔹 Sesión: 2026-09-02 Tarde (`bba5ef3a-c9c3-41a0-9e67-95058f9b5fb1`) - Metadata de Vigencia, Mapa Ontológico Global y Protocolo Antisesgo
 * **Hitos Principales:**
