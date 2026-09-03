@@ -27,7 +27,7 @@ Al finalizar cada sesión de trabajo, el agente y el usuario realizan una audito
 ## 📈 Historial Consolidado de Sesiones
 
 | Fecha | ID Sesión | Turnos Usuario | Llamadas Agénticas (Tools) | Commits Git | Invariantes Violados | RVI Máx | Blast Radius | Estado Global |
-| :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **2026-09-03 (Tarde - Re-chunking LanceDB, GPS Anti-Overflow & Búsqueda RAG)** | `bba5ef3a` | 8 | ~50 | 4 | **0** | 2/10 | Mínimo (Quirúrgico) | 🟢 **100% Exitoso** |
 | **2026-09-03 (Mañana - Motor Llama.cpp MoE, Exclusión Mutua & Control GUI)** | `bba5ef3a` | 4 | ~45 | 1 | **0** | 1/10 | Mínimo (Modular) | 🟢 **100% Exitoso** |
 | **2026-09-02 (Noche - Freno de Mano RAG & Secuencia Embudo)** | `bba5ef3a` | 6 | ~30 | 2 | **0** | 1/10 | Mínimo (Quirúrgico) | 🟢 **100% Exitoso** |
 | **2026-09-02 (Tarde - Metadata RAG, Mapa Ontológico & Antisesgo)** | `bba5ef3a` | 10 | ~45 | 1 | **0** | 2/10 | Bajo (Modular) | 🟢 **100% Exitoso** |
@@ -42,6 +42,37 @@ Al finalizar cada sesión de trabajo, el agente y el usuario realizan una audito
 ---
 
 ## 📝 Fichas Detalladas por Sesión
+
+### 🔹 Sesión: 2026-09-03 Tarde (`bba5ef3a-c9c3-41a0-9e67-95058f9b5fb1`) - Re-chunking Jerárquico en LanceDB, GPS Anti-Desbordamiento y Búsqueda RAG Quirúrgica
+* **Hitos Principales:**
+  1. **Aceleración de Ingesta (Prefill) con `--ubatch-size 1024` ([Commit `d78a01d`](file:///home/jose/vllm/llama-srv.sh)):**
+     - Configuración de `LLAMA_UBATCH_SIZE=1024` en `.env` y `llama-srv.sh` para acelerar el procesamiento de contexto masivo en RTX 3090.
+     - Medición en caliente: VRAM subió de 18.6 GB a 19.17 GB (solo ~570 MB temporales), dejando ~5.0 GB libres y alcanzando 54.7 t/s.
+     - Controles reactivos integrados en Dashboard (`tab_config.html` y `dashboard_core.js`).
+  2. **Diagnóstico Forense de LanceDB y Causas Raíz Estructurales:**
+     - Identificado colapso en CCCN (1 hiper-chunk de 425k tokens en 1 sección) debido a pseudo-tablas continuas de OCR con 2.3M caracteres.
+     - Identificada miopía de encabezados en obras sin `# ` como *El Príncipe* (1 sección para 26 capítulos) y *DNU 70/2023*.
+  3. **Reestructuración del Chunking Jerárquico ([`app_rag_sync.py`](file:///home/jose/vllm/app_rag_sync.py) - [Commit `f859572`](file:///home/jose/vllm/app_rag_sync.py)):**
+     - Función `unpack_pseudo_tables`: desarticula pseudo-tablas masivas de OCR (>1.500 chars) restituyendo saltos de línea estructurales.
+     - Función `detect_heuristic_header`: detección multinivel de títulos (Libros, Títulos, Capítulos, Artículos y negritas).
+     - Subdivisión acotada (*Bounded Chunks*): garantiza que ningún fragmento supere `max_chars` (1.100 caracteres ~ 220 tokens).
+     - Purga determinista: asegura la eliminación previa de registros antiguos (`table.delete(doc_id)`) antes de insertar nuevos.
+     - Re-indexación CCCN: pasó de 2 chunks y 1 sección a **3.300 chunks y 3.042 secciones**.
+     - Re-indexación El Príncipe: pasó de 1 sección a **27 secciones (26 capítulos)**.
+     - Re-indexación DNU 70/2023: pasó de 2 secciones a **419 secciones**.
+     - Cero regresión en Ley 20.744 (148 chunks, 63 secciones intactas).
+  4. **Protección Anti-Desbordamiento en GPS Documental ([`rag_engine.py`](file:///home/jose/vllm/rag_engine.py) - [Commit `3d19042`](file:///home/jose/vllm/rag_engine.py)):**
+     - Límite de seguridad `MAX_GPS_ROWS = 50` con advertencia de granularidad, reduciendo el payload de 667 KB a 11.9 KB (-98.3% tokens).
+     - Soporte para parámetro `filtro` opcional en `get_document_structure(doc_id, filtro=...)` para acotamiento temático.
+     - Afinación de docstrings en [`tools/openwebui_rag_tool.py`](file:///home/jose/vllm/tools/openwebui_rag_tool.py) y endpoints del Gateway.
+  5. **Búsqueda Flexible por Tema ([`rag_engine.py`](file:///home/jose/vllm/rag_engine.py) - [Commit `e0ecbd8`](file:///home/jose/vllm/rag_engine.py)):**
+     - Cláusula `doc_topic LIKE '%...%'` en LanceDB para que consultas con `dominios="Derecho"` coincidan directamente con `"Derecho Argentino"`.
+  6. **Validación Empírica en Open-WebUI:**
+     - Consulta: *"Busca en la documentacion definicion de contrato"*.
+     - El modelo Qwen 3.6 MoE navegó las herramientas, extrajo el **Artículo 957 del CCCN** con precisión literal del 100% y cero alucinaciones dentro del presupuesto de contexto.
+* **Métricas MEA:** Invariantes violados: **0** | RVI Máx: **2/10** | Blast Radius: **Mínimo (Quirúrgico)** | Tests Unitarios: **21/21 OK**.
+
+---
 
 ### 🔹 Sesión: 2026-09-03 Mañana (`bba5ef3a-c9c3-41a0-9e67-95058f9b5fb1`) - Motor Llama.cpp Qwen 3.6 MoE, Exclusión Mutua Systemd y Control GUI
 * **Hitos Principales:**
