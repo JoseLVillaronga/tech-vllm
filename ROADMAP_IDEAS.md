@@ -716,12 +716,16 @@ Tras la exitosa validación en producción del motor de generación de **PDFs le
 
 ## 12. Optimización del Motor RAG: Ajuste Fino de Consulta Semántica, Normalización de Word Keys y Granularidad Fina
 
-### 12.1. Contexto del Hallazgo (Evidencia Empírica con DeepSeek-V4 y Gemma 4 12B)
-En las pruebas de campo del 2 de septiembre de 2026, ante la consulta *"definición de contrato"*, tanto el modelo local (Gemma 4 12B) como el modelo de frontera Cloud (DeepSeek-V4) experimentaron una limitación en la recuperación de artículos específicos del derecho positivo vigente (específicamente el **Art. 957 del Código Civil y Comercial de la Nación - CCCN**).
+### 12.1. Contexto del Hallazgo (Evidencia Empírica con DeepSeek-V4, Gemma 4 12B y Qwen 3.6 35B A3B)
+En las pruebas de campo del 2 y 3 de septiembre de 2026, ante consultas sobre contratos y contratos de trabajo, se comparó el comportamiento de los modelos frente a dos tipos de obras:
+* **Caso de Éxito Rotundo (Ley N° 20.744 - Régimen de Contrato de Trabajo):**  
+  La ley contaba con **63 secciones detectadas** en LanceDB con nombres canónicos (`Art. 5°. Empresa-Empresario.`, `Art. 21. Contrato de trabajo.`, `Art. 22. Relación de trabajo.`). Tanto Gemma 4 12B como Qwen 3.6 35B A3B navegaron el GPS Documental (`obtener_estructura_documento`), fueron directo a la sección `Art. 21. Contrato de trabajo.` y extrajeron la norma con fidelidad quirúrgica y cero alucinación.
+* **Caso de Bloqueo por Hiper-Chunking (Código Civil y Comercial de la Nación - CCCN):**  
+  El CCCN (425.630 tokens) se encontraba provisionalmente indexado en LanceDB en **solo 1 sección ("Sección General", 2 fragmentos masivos)**. Al intentar consultar el GPS, los modelos descubrieron que no había desglose de libros ni títulos. Qwen 3.6 35B intentó adivinar secciones (`Art. 960`, `Libro II`, `Fuentes de las obligaciones`, `Libro I`) siendo contenido sistemáticamente por el freno de mano de seguridad.
 
-El análisis forense reveló dos causas raíz convergentes:
-1. **Dilución Vectorial por Hiper-Chunks (> 200.000 tokens):**  
-   El CCCN (425.630 tokens) se encontraba provisionalmente indexado en LanceDB en **solo 2 fragmentos masivos**. Un vector de incrustación de 1024 dimensiones (Qwen3) promediado sobre ~212.000 tokens pierde la resolución de artículos individuales, provocando que fragmentos breves y densos del código derogado (Ley 340, con ~300 tokens por chunk) ganen artificialmente en la similitud coseno.
+El análisis forense confirmó dos causas raíz convergentes:
+1. **Dilución Vectorial y Ceguera de GPS por Falta de Segmentación:**  
+   Un vector de incrustación de 1024 dimensiones (Qwen3) promediado sobre ~212.000 tokens pierde la resolución de artículos individuales, y un GPS de 1 sola sección impide que el LLM ejecute la lectura quirúrgica de capítulos.
 2. **Normalización y Ponderación de Claves Léxicas en Consultas Complejas:**  
    Cuando el LLM busca *"artículo 957 definición de contrato Código Civil y Comercial"*, la presencia de stop words y términos dispersos compite con la coincidencia exacta de los identificadores normativos.
 
@@ -747,7 +751,7 @@ El análisis forense reveló dos causas raíz convergentes:
   ```
 * Esto permite al LLM, tras identificar la obra en el índice (Paso 1), acotar su búsqueda al documento específico, impidiendo que fragmentos de normas derogadas o secundarias compitan por los primeros puestos.
 
-#### C. Granularidad Jerárquica y Re-chunking en Teccam PDF
-* En Teccam PDF, asegurar que las obras jurídicas colosales (> 50.000 tokens) se procesen reconociendo encabezados de segundo y tercer nivel (`## Libro`, `### Título`, `#### Capítulo`).
-* Mantener un tamaño objetivo de fragmento entre **400 y 1.200 tokens**, garantizando que cada artículo clave disponga de un vector dedicado de alta nitidez en el espacio latente.
+#### C. Granularidad Jerárquica y Re-chunking en Teccam PDF (PRIORIDAD ALTA)
+* **El estándar de oro comprobado por la Ley 20.744:** Re-segmentar el CCCN y las obras jurídicas colosales (> 50.000 tokens) en Teccam PDF reconociendo encabezados de segundo y tercer nivel (`## Libro`, `### Título`, `#### Capítulo`, `Art. X`).
+* Mantener un tamaño objetivo de fragmento entre **400 y 1.200 tokens**, garantizando que el GPS Documental devuelva un árbol navegable de capítulos y que cada artículo clave disponga de un vector dedicado de alta nitidez en el espacio latente.
 
