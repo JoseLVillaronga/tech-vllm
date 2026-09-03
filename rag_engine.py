@@ -782,10 +782,11 @@ def get_document_full_content(
             "doc_id": clean_doc_id
         }
 
-    # Compatibilidad hacia atrás si se pasa chunk_threshold
-    effective_token_threshold = token_threshold
+    # Compatibilidad hacia atrás y límite de seguridad para proteger ventanas de contexto en tool calls
+    MAX_SAFE_TOOL_TOKENS = 15000
+    effective_token_threshold = min(token_threshold, MAX_SAFE_TOOL_TOKENS)
     if chunk_threshold is not None and chunk_threshold > 0:
-        effective_token_threshold = chunk_threshold * 220
+        effective_token_threshold = min(chunk_threshold * 220, MAX_SAFE_TOOL_TOKENS)
 
     # 1. Consultar todos los chunks de este documento en LanceDB por doc_id exacto
     clean_sql_id = clean_doc_id.replace("'", "''")
@@ -835,6 +836,24 @@ def get_document_full_content(
         alt_notice = f"💡 *Nota de Búsqueda:* Se seleccionó '{doc_title}'. Otras coincidencias posibles: {', '.join(other_matches)}\n\n"
 
     # =========================================================================
+    # FRENO DE MANO: PROTECCIÓN DE OBRAS EXTENSAS SIN SECCIÓN ACOTADA
+    # =========================================================================
+    clean_sec_check = (seccion or "").strip().lower()
+    is_generic_or_missing_sec = (not seccion or clean_sec_check in ("sección general", "seccion general", "general"))
+    if is_generic_or_missing_sec and total_doc_tokens > 25000:
+        return {
+            "success": False,
+            "error": (
+                f"⚠️ AVISO DE SEGURIDAD (OBRA EXTENSA): '{doc_title}' contiene ~{total_doc_tokens:,} tokens ({total_chunks} fragmentos).\n\n"
+                f"Para proteger tu ventana de contexto y evitar desbordamiento de memoria, NO está permitido volcar esta obra completa o secciones masivas a ciegas.\n\n"
+                f"👉 PASO OBLIGATORIO: Invoca primero 'obtener_estructura_documento(doc_id=\"{actual_doc_id}\")' para identificar el capítulo o artículo puntual que buscas, "
+                f"o utiliza 'buscar_en_base_de_conocimiento(consulta=\"...\")' para recuperar directamente los fragmentos pertinentes."
+            ),
+            "doc_id": actual_doc_id,
+            "total_doc_tokens": total_doc_tokens
+        }
+
+    # =========================================================================
     # CASO 1: BÚSQUEDA FOCALIZADA POR SECCIÓN O CAPÍTULO
     # =========================================================================
     if seccion and seccion.strip():
@@ -869,6 +888,8 @@ def get_document_full_content(
                     body_parts.append(f"\n\n### {s}\n")
                 body_parts.append(cont)
             slice_text = "\n\n".join(body_parts).strip()
+            if len(slice_text) > MAX_SAFE_TOOL_TOKENS * 4:
+                slice_text = slice_text[:MAX_SAFE_TOOL_TOKENS * 4] + f"\n\n... [Aviso: Fragmento extenso acotado preventivamente a ~{MAX_SAFE_TOOL_TOKENS:,} tokens para proteger la ventana de contexto de la IA. Si necesitas una subsección específica, indícala en el parámetro 'seccion']."
             header = (
                 f"# {doc_title} — Sección: \"{sec_name}\"\n"
                 f"**ID:** {actual_doc_id} | **Tema:** {doc_topic} | **Autor:** {doc_author} | **Tokens Sección:** ~{sec_tokens:,} ({len(matched_items)} fragmentos) | **Total Obra:** ~{total_doc_tokens:,} tokens\n"
@@ -906,6 +927,8 @@ def get_document_full_content(
                     body_parts.append(f"\n\n### {s}\n")
                 body_parts.append(cont)
             slice_text = "\n\n".join(body_parts).strip()
+            if len(slice_text) > MAX_SAFE_TOOL_TOKENS * 4:
+                slice_text = slice_text[:MAX_SAFE_TOOL_TOKENS * 4] + f"\n\n... [Aviso: Fragmento extenso acotado preventivamente a ~{MAX_SAFE_TOOL_TOKENS:,} tokens para proteger la ventana de contexto de la IA. Si necesitas una subsección específica, indícala en el parámetro 'seccion']."
             next_hint = f" (Para leer la siguiente parte de esta sección use parte={parte+1})" if parte < total_partes else " (Fin de la sección)"
             header = (
                 f"# {doc_title} — Sección: \"{sec_name}\" (Parte {parte} de {total_partes})\n"
