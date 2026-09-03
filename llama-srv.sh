@@ -57,6 +57,7 @@ PORT="${LLAMA_PORT:-${GEMMA_BACKEND_PORT:-18100}}"
 ALIAS="${LLAMA_ALIAS:-Qwen3.6-35B-A3B-Q4_K_M}"
 CTX_SIZE="${LLAMA_CTX_SIZE:-131072}"
 BATCH_SIZE="${LLAMA_BATCH_SIZE:-4096}"
+UBATCH_SIZE="${LLAMA_UBATCH_SIZE:-1024}"
 GPU_LAYERS="${LLAMA_GPU_LAYERS:-256}"
 N_CPU_MOE="${LLAMA_N_CPU_MOE:-18}"
 REASONING="${LLAMA_REASONING:-off}"
@@ -73,7 +74,8 @@ echo "📦 Modelo:           ${MODEL_PATH}"
 echo "🏷️ Alias:            ${ALIAS}"
 echo "🔌 Puerto Backend:   ${PORT}"
 echo "🧠 Contexto Máximo:  ${CTX_SIZE} tokens"
-echo "⚡ Batch Size:       ${BATCH_SIZE}"
+echo "⚡ Batch Lógico:     ${BATCH_SIZE}"
+echo "🚀 Micro-Batch (uB): ${UBATCH_SIZE}"
 echo "🎮 GPU Layers:       ${GPU_LAYERS} (MoE CPU: ${N_CPU_MOE})"
 echo "💭 Razonamiento:     ${REASONING}"
 echo "🔒 Modo de Carga:    --load-mode ${LOAD_MODE}"
@@ -86,6 +88,7 @@ exec "${LLAMA_BIN}" \
   --alias "${ALIAS}" \
   --ctx-size "${CTX_SIZE}" \
   --batch-size "${BATCH_SIZE}" \
+  --ubatch-size "${UBATCH_SIZE}" \
   --gpu-layers "${GPU_LAYERS}" \
   --n-cpu-moe "${N_CPU_MOE}" \
   --reasoning "${REASONING}" \

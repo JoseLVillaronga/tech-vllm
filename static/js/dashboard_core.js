@@ -300,7 +300,7 @@
         }
 
         // Configuración rápida de parámetros de Llama.cpp (Qwen MoE)
-        function selectQuickLlamaModel(alias, ctx, batch, gpuLayers, moeCpu, reasoning, loadMode, threads) {
+        function selectQuickLlamaModel(alias, ctx, batch, ubatch, gpuLayers, moeCpu, reasoning, loadMode, threads) {
             const form = document.getElementById('config-form');
             if (!form) return;
             if (form.elements['LLAMA_ALIAS']) form.elements['LLAMA_ALIAS'].value = alias;
@@ -308,6 +308,7 @@
             if (form.elements['LLAMA_PORT']) form.elements['LLAMA_PORT'].value = 18100;
             if (form.elements['LLAMA_CTX_SIZE']) form.elements['LLAMA_CTX_SIZE'].value = ctx;
             if (form.elements['LLAMA_BATCH_SIZE']) form.elements['LLAMA_BATCH_SIZE'].value = batch;
+            if (form.elements['LLAMA_UBATCH_SIZE']) form.elements['LLAMA_UBATCH_SIZE'].value = ubatch;
             if (form.elements['LLAMA_GPU_LAYERS']) form.elements['LLAMA_GPU_LAYERS'].value = gpuLayers;
             if (form.elements['LLAMA_N_CPU_MOE']) form.elements['LLAMA_N_CPU_MOE'].value = moeCpu;
             if (form.elements['LLAMA_REASONING']) form.elements['LLAMA_REASONING'].value = reasoning;
