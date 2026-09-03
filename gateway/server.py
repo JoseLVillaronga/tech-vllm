@@ -42,8 +42,10 @@ async def run_servers():
 
     whisper_fallback_port = int(os.getenv("STT_FALLBACK_PORT", "18011"))
     tts_fallback_port = int(os.getenv("TTS_FALLBACK_PORT", "18012"))
+    raw_gateway_port = int(os.getenv("LLM_RAW_GATEWAY_PORT", "8010"))
 
     gemma_app = create_proxy_app("gemma", gemma_port)
+    gemma_raw_app = create_proxy_app("gemma_raw", gemma_port, include_alignment=False)
     whisper_app = create_proxy_app("whisper", whisper_port, fallback_port=whisper_fallback_port)
     tts_app = create_proxy_app("tts", tts_port, fallback_port=tts_fallback_port)
     diarization_app = create_proxy_app("diarization", diarization_port)
@@ -52,6 +54,7 @@ async def run_servers():
     docling_app = create_proxy_app("docling", docling_port)
 
     config_gemma = uvicorn.Config(gemma_app, host="0.0.0.0", port=8000, log_level="warning")
+    config_gemma_raw = uvicorn.Config(gemma_raw_app, host="0.0.0.0", port=raw_gateway_port, log_level="warning")
     config_whisper = uvicorn.Config(whisper_app, host="0.0.0.0", port=8001, log_level="warning")
     config_tts = uvicorn.Config(tts_app, host="0.0.0.0", port=8002, log_level="warning")
     config_diarization = uvicorn.Config(diarization_app, host="0.0.0.0", port=8003, log_level="warning")
@@ -60,6 +63,7 @@ async def run_servers():
     config_docling = uvicorn.Config(docling_app, host="0.0.0.0", port=docling_gateway_port, log_level="warning")
 
     server_gemma = uvicorn.Server(config_gemma)
+    server_gemma_raw = uvicorn.Server(config_gemma_raw)
     server_whisper = uvicorn.Server(config_whisper)
     server_tts = uvicorn.Server(config_tts)
     server_diarization = uvicorn.Server(config_diarization)
@@ -69,7 +73,8 @@ async def run_servers():
 
     print("=" * 60)
     print("🛡️ Iniciando Gateway Modular de Autenticación y Proxy...")
-    print(f"🟢 Gemma Proxy:       8000 -> {gemma_port}")
+    print(f"🟢 LLM Proxy (MEA):   8000 -> {gemma_port}")
+    print(f"🟢 LLM Raw Proxy:     {raw_gateway_port} -> {gemma_port} (Sin Alineación / Temporal OK)")
     print(f"🟢 Whisper Proxy:     8001 -> {whisper_port} (Fallback CPU: {whisper_fallback_port})")
     print(f"🟢 F5-TTS Proxy:       8002 -> {tts_port} (Fallback CPU: {tts_fallback_port})")
     print(f"🟢 Diarización Proxy: 8003 -> {diarization_port}")
@@ -84,6 +89,7 @@ async def run_servers():
             sync_alignment_settings_loop(),
             sync_cloud_providers_loop(),
             server_gemma.serve(),
+            server_gemma_raw.serve(),
             server_whisper.serve(),
             server_tts.serve(),
             server_diarization.serve(),

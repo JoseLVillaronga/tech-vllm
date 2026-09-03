@@ -74,8 +74,8 @@ SERVICES = {
 
 # Puertos locales de cada servicio
 SERVICE_PORTS = {
-    "gemma": 8000,
-    "llama": 8000,
+    "gemma": "8000 / 8010",
+    "llama": "8000 / 8010",
     "whisper": 8001,
     "fallback_stt": 18011,
     "tts": 8002,

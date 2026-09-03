@@ -48,10 +48,11 @@ async def close_http_client():
         _http_client = None
 
 
-def create_proxy_app(service_name: str, target_port: int, fallback_port: Optional[int] = None) -> FastAPI:
+def create_proxy_app(service_name: str, target_port: int, fallback_port: Optional[int] = None, include_alignment: bool = True) -> FastAPI:
     """
     Fábrica de aplicaciones proxy para cada puerto del Gateway.
     Integra seguridad, cuotas, interceptores de tools y enrutamiento inteligente.
+    Si include_alignment=False, inyecta fecha/hora pero omite los invariantes MEA.
     """
     app = FastAPI(title=f"Gateway Proxy - {service_name}", docs_url=None, redoc_url=None)
 
@@ -221,7 +222,7 @@ def create_proxy_app(service_name: str, target_port: int, fallback_port: Optiona
         is_cloud_request = False
         cloud_provider = None
 
-        if current_service == "gemma" and body:
+        if current_service in ["gemma", "gemma_raw"] and body:
             try:
                 data = json.loads(body)
                 req_model = data.get("model", "")
@@ -240,7 +241,8 @@ def create_proxy_app(service_name: str, target_port: int, fallback_port: Optiona
                         data=data,
                         actual_model=actual_model,
                         is_cloud_request=is_cloud_request,
-                        apply_rag_injection=apply_rag_injection
+                        apply_rag_injection=apply_rag_injection,
+                        include_alignment=include_alignment
                     )
 
                 body = json.dumps(data).encode("utf-8")

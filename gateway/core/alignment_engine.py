@@ -166,7 +166,8 @@ async def enrich_chat_payload(
     data: Dict[str, Any],
     actual_model: str,
     is_cloud_request: bool = False,
-    apply_rag_injection: bool = False
+    apply_rag_injection: bool = False,
+    include_alignment: bool = True
 ) -> Dict[str, Any]:
     """Enriquece el payload de chat completions usando la configuración dinámica de MongoDB."""
     if "messages" not in data or not isinstance(data["messages"], list):
@@ -188,14 +189,16 @@ async def enrich_chat_payload(
     has_pdf_tool = "generate_pdf_document" in tool_names or "generate_pdf" in tool_names
     has_doc_tool = "leer_documento_completo" in tool_names or "read_document" in tool_names
 
-    # 1. Construir bloques del sistema
+    # 1. Construir bloques del sistema (Fecha/Hora siempre presente si inject_temporal=True)
     system_parts = []
     if settings.get("inject_temporal", True):
         system_parts.append(get_current_time_str())
 
-    invariants_block = get_invariants_system_prompt(settings, has_pdf_tool=has_pdf_tool, has_doc_tool=has_doc_tool)
-    if invariants_block:
-        system_parts.append(invariants_block)
+    # Bloque de invariantes éticos, protocolos y guías (omitido si include_alignment=False)
+    if include_alignment:
+        invariants_block = get_invariants_system_prompt(settings, has_pdf_tool=has_pdf_tool, has_doc_tool=has_doc_tool)
+        if invariants_block:
+            system_parts.append(invariants_block)
 
     full_system_header = "\n\n".join(system_parts).strip()
 
