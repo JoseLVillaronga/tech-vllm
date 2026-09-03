@@ -15,7 +15,9 @@ Servidor de Inferencia de Modelos de Lenguaje (LLM) de alto rendimiento basado e
 * **GPU:** NVIDIA GeForce RTX 3090 (24 GB VRAM, Compute Capability 8.6 - Ampere)
 * **Memoria RAM:** 64 GB DDR4/DDR5
 * **Entorno Python:** Virtualenv (`venv`) con Python 3.13
-* **Motor de Inferencia:** vLLM v0.26.0 (Engine V1)
+* **Motores de Inferencia Soportados:**
+  - **vLLM v0.26.0 (Engine V1):** Motor primario para Gemma 4 AWQ/PyTorch.
+  - **Llama.cpp (`llama-server`):** Motor alternativo de alto rendimiento compilado localmente desde [ggml-org/llama.cpp](https://github.com/ggml-org/llama.cpp) para modelos MoE masivos como Qwen 3.6 35B. Documentación detallada en [`docs/INTEGRACION_LLAMACPP_Y_QWEN_MOE.md`](docs/INTEGRACION_LLAMACPP_Y_QWEN_MOE.md).
 
 ---
 
@@ -113,6 +115,21 @@ Gracias a la arquitectura desacoplada de la suite, los **Fallbacks automáticos 
   - `Docling OCR`: **`INACTIVE`** o en demanda.
   - `Qwen3-Embedding`: Operando en CPU (`EMBEDDINGS_DEVICE=cpu`).
   - Sincronización RAG delegada a CPU para proteger la VRAM de audio.
+
+---
+
+### 5. 🦙 Perfil E: "Motor MoE Ultrarrápido con Llama.cpp" *(Qwen 3.6 35B MoE - 50 t/s)*
+
+* **Objetivo:** Inferencia agéntica ultrarrápida para modelos MoE (*Mixture of Experts*) masivos con contexto de **128K tokens**, prefill a **670 t/s** y generación sostenida a **50 tokens por segundo** con llamadas a herramientas sintácticas directas (`<tool_call>`).
+* **Motor:** `llama-server` nativo en C++/CUDA compilado localmente desde el repositorio de código abierto [ggml-org/llama.cpp](https://github.com/ggml-org/llama.cpp).
+* **Distribución de VRAM y RAM (~21.8 GB VRAM / 90.8% | ~2.2 GB libres):**
+  - **Qwen 3.6 35B MoE (`Qwen3.6-35B-A3B-Q4_K_M.gguf`):** `~21.8 GB` en GPU (256 capas offloaded a CUDA, 18 expertos derivados a CPU).
+  - **Bloqueo Físico de Memoria (`--load-mode mlock`):** Servicio ejecutado bajo `User=root` con `LimitMEMLOCK=infinity` para garantizar cero swapping a disco.
+  - **Prefix Caching LCP:** Reciclaje de más de 7.000 grafos de cálculo en turnos conversacionales continuos.
+* **Exclusión Mutua con vLLM:**
+  - Controlado por el guardia modular [`check_service_conflict.sh`](check_service_conflict.sh) en `ExecStartPre`: si `vllm.service` está activo, `vllm-llama.service` aborta el arranque protegiendo la VRAM, y viceversa.
+* **Control Web:** Administrable en 1 clic desde el Dashboard Web (`:8004`), con monitor de estado y pestaña de variables `.env` dedicada.
+* **Documentación Completa:** Véase [`docs/INTEGRACION_LLAMACPP_Y_QWEN_MOE.md`](docs/INTEGRACION_LLAMACPP_Y_QWEN_MOE.md).
 
 ---
 
