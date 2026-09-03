@@ -186,6 +186,7 @@ def search_knowledge_base(
     tema: Optional[Any] = None,
     temas: Optional[List[str]] = None,
     documento_id: Optional[str] = None,
+    doc_id: Optional[str] = None,
     vigencia: Optional[str] = None,
     solo_vigentes: bool = False,
     top_k: int = 5,
@@ -199,6 +200,7 @@ def search_knowledge_base(
         tema: Filtro opcional por tema/dominio (string o lista de strings).
         temas: Filtro opcional por lista de dominios múltiples.
         documento_id: Filtro opcional por ID de libro específico.
+        doc_id: Alias para documento_id (para compatibilidad con herramientas del LLM).
         vigencia: Filtro opcional por estado de vigencia ('vigente', 'derogado', etc.).
         solo_vigentes: Si es True, restringe exclusivamente a normas con doc_vigencia = 'vigente'.
         top_k: Cantidad de fragmentos más relevantes a retornar.
@@ -245,8 +247,9 @@ def search_knowledge_base(
         elif len(clean_temas) > 1:
             filter_clauses.append(f"doc_topic IN ({', '.join(clean_temas)})")
 
-    if documento_id and documento_id.strip():
-        clean_doc_id = documento_id.strip().replace("'", "''")
+    effective_doc_id = (documento_id or doc_id or "").strip()
+    if effective_doc_id:
+        clean_doc_id = effective_doc_id.replace("'", "''")
         filter_clauses.append(f"doc_id = '{clean_doc_id}'")
 
     if solo_vigentes:
@@ -256,6 +259,10 @@ def search_knowledge_base(
         filter_clauses.append(f"doc_vigencia = '{clean_vig}'")
         
     filter_expr = " AND ".join(filter_clauses) if filter_clauses else None
+
+    # Detectar si la consulta busca un artículo normativo específico para boosting
+    art_match = re.search(r"(?:art[ií]culo|art\.)\s*(\d+)", query_str, re.IGNORECASE)
+    target_art_num = art_match.group(1) if art_match else None
 
     all_candidates = {}
     
@@ -318,6 +325,16 @@ def search_knowledge_base(
             final_sim = (v_sim * 0.45) + (f_sim * 0.55)
         else:
             final_sim = v_sim
+
+        # Si la consulta busca un artículo específico, aplicar boosting al fragmento exacto
+        if target_art_num:
+            sec_p = item.get("section_path", "") or ""
+            cnt = item.get("content", "") or ""
+            art_regex = rf"(?:art[ií]culo|art\.)\s*{target_art_num}\b"
+            if re.search(art_regex, sec_p, re.IGNORECASE):
+                final_sim += 0.35 # Fuerte impulso si la sección es el artículo
+            elif re.search(art_regex, cnt[:150], re.IGNORECASE):
+                final_sim += 0.25 # Impulso si el contenido comienza con el artículo
             
         if final_sim >= min_score or len(results) < top_k:
             results.append({

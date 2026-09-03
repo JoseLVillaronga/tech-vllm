@@ -37,13 +37,15 @@ class Tools:
     def buscar_en_base_de_conocimiento(
         self,
         consulta: str,
-        dominios: Optional[str] = None
+        dominios: Optional[str] = None,
+        doc_id: Optional[str] = None
     ) -> str:
         """
         Consulta fragmentos relevantes en la base de datos documental y jurídica de Teccam en LanceDB.
         Utiliza esta herramienta siempre que el usuario haga preguntas puntuales sobre leyes argentinas, artículos de la Constitución, Código Civil, procedimientos internos de Teccam o patrones de arquitectura.
         :param consulta: Pregunta o términos de búsqueda específicos para consultar en los libros y procedimientos.
         :param dominios: Opcional: Tema o temas a filtrar separados por comas. Dejar vacío para buscar en toda la base.
+        :param doc_id: Opcional: ID de la obra obtenido de 'obtener_indice_biblioteca' para acotar la búsqueda exclusivamente a ese documento.
         """
         base_url = str(self.valves.GATEWAY_URL).rstrip("/")
         if not base_url.endswith("/api/tools/rag-search") and not base_url.endswith("/v1/rag/search"):
@@ -58,6 +60,7 @@ class Tools:
 
         # Sanitización defensiva contra FieldInfo de Pydantic
         clean_query = str(consulta).strip() if consulta and not str(type(consulta)).endswith("FieldInfo'>") else ""
+        clean_doc_id = str(doc_id).strip() if doc_id and not str(type(doc_id)).endswith("FieldInfo'>") else None
         temas_list = None
         if dominios and not str(type(dominios)).endswith("FieldInfo'>"):
             if isinstance(dominios, list):
@@ -75,6 +78,7 @@ class Tools:
         payload = {
             "query": clean_query,
             "temas": temas_list,
+            "doc_id": clean_doc_id,
             "top_k": top_k_val
         }
 

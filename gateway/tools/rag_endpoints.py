@@ -22,6 +22,7 @@ async def handle_rag_search(request: Request, body: bytes) -> JSONResponse:
         query = body_data.get("query", "").strip()
         tema = body_data.get("tema") or None
         temas = body_data.get("temas") or None
+        doc_id = body_data.get("doc_id") or body_data.get("documento_id") or None
         vigencia = body_data.get("vigencia") or None
         solo_vigentes = bool(body_data.get("solo_vigentes", False))
         top_k = int(body_data.get("top_k", 5))
@@ -34,6 +35,7 @@ async def handle_rag_search(request: Request, body: bytes) -> JSONResponse:
             query=query,
             tema=tema,
             temas=temas,
+            doc_id=doc_id,
             vigencia=vigencia,
             solo_vigentes=solo_vigentes,
             top_k=top_k
@@ -45,6 +47,7 @@ async def handle_rag_search(request: Request, body: bytes) -> JSONResponse:
             "query": query,
             "tema": tema,
             "temas": temas,
+            "doc_id": doc_id,
             "vigencia": vigencia,
             "solo_vigentes": solo_vigentes,
             "results_count": len(results),

@@ -15,7 +15,7 @@ import argparse
 import hashlib
 import httpx
 from datetime import datetime
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 from dotenv import load_dotenv
 
 # Asegurar umask permisivo para archivos compartidos en LanceDB
@@ -109,6 +109,97 @@ def split_into_sentences(text: str) -> List[str]:
             sentences.append(s_clean)
     return sentences
 
+def unpack_pseudo_tables(text: str) -> str:
+    """
+    Detecta líneas o tablas masivas (>1500 caracteres o con marcadores estructurales)
+    y las desarticula insertando saltos de línea para que los encabezados y artículos
+    queden en líneas independientes.
+    """
+    lines = text.split("\n")
+    processed_lines = []
+    
+    header_pattern = re.compile(
+        r"(?:^|\s+)(#{1,6}\s+|LIBRO\s+(?:PRIMERO|SEGUNDO|TERCERO|CUARTO|QUINTO|SEXTO|[IVXLCDM\d]+)|"
+        r"T[IÍ]TULO\s+(?:PRELIMINAR|[IVXLCDM\d]+)|CAP[IÍ]TULO\s+\d+|SECCI[OÓ]N\s+\d+|"
+        r"ART[IÍ]CULO\s+\d+[°º]?|Art\.\s*\d+[°º]?)",
+        re.IGNORECASE
+    )
+    
+    for line in lines:
+        stripped = line.strip()
+        is_table_line = stripped.startswith("|") and stripped.endswith("|")
+        
+        # Si es una línea de tabla corta y sin marcadores estructurales, conservarla
+        if is_table_line and len(stripped) < 1500 and not header_pattern.search(stripped):
+            processed_lines.append(line)
+            continue
+            
+        # Si es una pseudo-tabla gigante o contiene encabezados embebidos, desempaquetar
+        if is_table_line:
+            content = re.sub(r"^\|\s*|\s*\|$", "", stripped)
+            content = re.sub(r"\s*\|\s*", " ", content)
+            if re.match(r"^[\s\-:|]+$", content):
+                continue
+        else:
+            content = stripped
+            
+        if len(content) > 300 and header_pattern.search(content):
+            split_content = header_pattern.sub(r"\n\n\1", content)
+            for sub_l in split_content.split("\n"):
+                if sub_l.strip():
+                    processed_lines.append(sub_l.strip())
+        else:
+            if content:
+                processed_lines.append(content)
+                
+    return "\n".join(processed_lines)
+
+def detect_heuristic_header(line: str) -> Optional[Tuple[int, str, bool]]:
+    """
+    Detecta si una línea corresponde a un encabezado jerárquico (Markdown, legal o literario).
+    Retorna: (nivel: int, titulo_limpio: str, incluir_en_contenido: bool) o None.
+    incluir_en_contenido: True para Artículos (para no perder el texto del artículo en el chunk).
+    """
+    stripped = line.strip()
+    if not stripped:
+        return None
+        
+    clean = re.sub(r"^\*{1,3}|\*{1,3}$", "", stripped).strip()
+    clean = re.sub(r"\[([^\]]+)\]\([^\)]+\)", r"\1", clean).strip()
+    
+    # Encabezados Markdown Estándar (# ... ####)
+    if stripped.startswith("# "):
+        return (1, clean[2:].strip()[:90], False)
+    if stripped.startswith("## "):
+        return (2, clean[3:].strip()[:90], False)
+    if stripped.startswith("### "):
+        return (3, clean[4:].strip()[:90], False)
+    if stripped.startswith("#### "):
+        return (4, clean[5:].strip()[:90], False)
+        
+    # Nivel 1: Macro-estructuras (Libro, Parte, Título Preliminar)
+    if re.match(r"^(?:LIBRO\s+(?:PRIMERO|SEGUNDO|TERCERO|CUARTO|QUINTO|SEXTO|[IVXLCDM\d]+)|PARTE\s+[IVXLCDM\d]+|T[IÍ]TULO\s+PRELIMINAR|TITULO\s+PRELIMINAR)\b", clean, re.IGNORECASE):
+        if len(clean) < 120 and not re.search(r"\b(?:rige|establece|dispone|aplica|debe|pueden?)\b", clean, re.IGNORECASE):
+            return (1, clean[:90].strip(), False)
+            
+    # Nivel 2: Títulos
+    if re.match(r"^T[IÍ]TULO\s+[IVXLCDM\d]+\b", clean, re.IGNORECASE):
+        if len(clean) < 120 and not re.search(r"\b(?:rige|establece|dispone|aplica|debe|pueden?)\b", clean, re.IGNORECASE):
+            return (2, clean[:90].strip(), False)
+            
+    # Nivel 3: Capítulos y Secciones
+    if re.match(r"^(?:CAP[IÍ]TULO\s+[IVXLCDM\d]+|SECCI[OÓ]N\s+\d+|SECCION\s+\d+)\b", clean, re.IGNORECASE):
+        if len(clean) < 120:
+            return (3, clean[:90].strip(), False)
+            
+    # Nivel 4: Artículos Normativos
+    if re.match(r"^(?:ART[IÍ]CULO|Art\.)\s*\d+[°º]?\b", clean, re.IGNORECASE):
+        m = re.match(r"^((?:ART[IÍ]CULO|Art\.)\s*\d+[°º]?(?:\s*[\.\-:]\s*[^.\n]{1,60})?)", clean, re.IGNORECASE)
+        art_title = m.group(1).strip() if m else clean[:60].strip()
+        return (4, art_title, True)
+        
+    return None
+
 def hierarchical_chunk_markdown(
     text: str,
     max_chars: int = 1100,
@@ -122,6 +213,8 @@ def hierarchical_chunk_markdown(
     Returns:
         Lista de dicts: [{'section': 'H1 > H2 > H3', 'content': '...'}]
     """
+    # Desempaquetar previamente pseudo-tablas gigantes
+    text = unpack_pseudo_tables(text)
     lines = text.split('\n')
     sections = [] # Lista de tuplas: (section_path, list_of_blocks)
     
@@ -170,7 +263,7 @@ def hierarchical_chunk_markdown(
             code_buffer.append(line)
             continue
             
-        # Tablas Markdown (mantenerlas atómicas)
+        # Tablas Markdown (mantenerlas atómicas si son cortas)
         if stripped.startswith('|') and stripped.endswith('|'):
             table_buffer.append(line)
             continue
@@ -178,28 +271,28 @@ def hierarchical_chunk_markdown(
             current_blocks.append('\n'.join(table_buffer))
             table_buffer = []
             
-        # Encabezados
-        if stripped.startswith('# '):
+        # Detección Heurística y Multicriterio de Encabezados (Markdown, Legal y Literario)
+        header_info = detect_heuristic_header(line)
+        if header_info:
+            lvl, h_title, include_in_content = header_info
             flush_section()
-            current_h1 = stripped[2:].strip()
-            current_h2 = ''
-            current_h3 = ''
-            current_h4 = ''
-            continue
-        elif stripped.startswith('## '):
-            flush_section()
-            current_h2 = stripped[3:].strip()
-            current_h3 = ''
-            current_h4 = ''
-            continue
-        elif stripped.startswith('### '):
-            flush_section()
-            current_h3 = stripped[4:].strip()
-            current_h4 = ''
-            continue
-        elif stripped.startswith('#### '):
-            flush_section()
-            current_h4 = stripped[5:].strip()
+            if lvl == 1:
+                current_h1 = h_title
+                current_h2 = ''
+                current_h3 = ''
+                current_h4 = ''
+            elif lvl == 2:
+                current_h2 = h_title
+                current_h3 = ''
+                current_h4 = ''
+            elif lvl == 3:
+                current_h3 = h_title
+                current_h4 = ''
+            elif lvl == 4:
+                current_h4 = h_title
+                
+            if include_in_content:
+                current_blocks.append(stripped)
             continue
             
         # Líneas normales o párrafos envueltos
@@ -226,15 +319,46 @@ def hierarchical_chunk_markdown(
         chunk_sentences = []
         chunk_len = 0
         
-        # Expandir bloques en oraciones o unidades atómicas
+        # Expandir bloques en oraciones o unidades atómicas acotadas a max_chars
         units = []
         for blk in blocks:
-            if blk.startswith('|') or blk.startswith('```'):
+            if blk.startswith('```'):
                 units.append(blk)
+            elif blk.startswith('|'):
+                if len(blk) > max_chars:
+                    table_rows = [r.strip() for r in blk.split('\n') if r.strip()]
+                    row_buf = []
+                    row_len = 0
+                    for r in table_rows:
+                        if row_len + len(r) > max_chars and row_buf:
+                            units.append('\n'.join(row_buf))
+                            row_buf = []
+                            row_len = 0
+                        row_buf.append(r)
+                        row_len += len(r) + 1
+                    if row_buf:
+                        units.append('\n'.join(row_buf))
+                else:
+                    units.append(blk)
             else:
                 sents = split_into_sentences(blk)
                 if sents:
-                    units.extend(sents)
+                    for s in sents:
+                        if len(s) > max_chars:
+                            words = s.split(' ')
+                            w_buf = []
+                            w_len = 0
+                            for w in words:
+                                if w_len + len(w) > max_chars and w_buf:
+                                    units.append(' '.join(w_buf))
+                                    w_buf = []
+                                    w_len = 0
+                                w_buf.append(w)
+                                w_len += len(w) + 1
+                            if w_buf:
+                                units.append(' '.join(w_buf))
+                        else:
+                            units.append(s)
                 else:
                     units.append(blk)
                     
@@ -587,12 +711,11 @@ def sync_knowledge_base(
                 table = db.create_table(TABLE_NAME, data=chunk_records, mode="overwrite")
                 print(f"   💾 Tabla '{TABLE_NAME}' creada e inicializada con nuevo esquema.")
             else:
-                # Si el documento ya existía previamente en LanceDB, eliminar sus versiones anteriores
-                if doc_id in local_doc_dates:
-                    try:
-                        table.delete(f"doc_id = '{doc_id}'")
-                    except Exception:
-                        pass
+                # Siempre purgar versiones anteriores de este documento para evitar duplicados
+                try:
+                    table.delete(f"doc_id = '{doc_id}'")
+                except Exception as del_err:
+                    pass
                 table.add(chunk_records)
                 print(f"   💾 {len(chunk_records)} fragmentos guardados en LanceDB.")
                     
