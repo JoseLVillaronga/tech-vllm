@@ -24,7 +24,7 @@ echo "🔄 [RAG Scheduled Orchestrator] Iniciando ciclo de sincronización..."
 echo "⏰ Fecha / Hora: $(date '+%Y-%m-%d %H:%M:%S')"
 echo "======================================================================"
 
-WAS_LLM_RUNNING=false
+ACTIVE_LLM_SERVICE=""
 
 # Función de limpieza y restauración garantizada
 cleanup() {
@@ -41,14 +41,14 @@ cleanup() {
         chown -R "${TARGET_USER}:${TARGET_GROUP}" "${PROJECT_DIR}/data/lancedb" 2>/dev/null || true
     fi
 
-    if [ "${WAS_LLM_RUNNING}" = true ]; then
-        echo "🚀 [RAG Scheduled Orchestrator] Restaurando servicio principal del LLM (${LLM_SERVICE})..."
-        systemctl start "${LLM_SERVICE}" || echo "⚠️ Advertencia: No se pudo iniciar ${LLM_SERVICE} automáticamente."
+    if [ -n "${ACTIVE_LLM_SERVICE}" ]; then
+        echo "🚀 [RAG Scheduled Orchestrator] Restaurando servicio principal del LLM (${ACTIVE_LLM_SERVICE})..."
+        systemctl start "${ACTIVE_LLM_SERVICE}" || echo "⚠️ Advertencia: No se pudo iniciar ${ACTIVE_LLM_SERVICE} automáticamente."
         
         # Esperar confirmación de arranque
         for i in {1..15}; do
-            if systemctl is-active --quiet "${LLM_SERVICE}"; then
-                echo "✅ [RAG Scheduled Orchestrator] ${LLM_SERVICE} está activo y respondiendo."
+            if systemctl is-active --quiet "${ACTIVE_LLM_SERVICE}"; then
+                echo "✅ [RAG Scheduled Orchestrator] ${ACTIVE_LLM_SERVICE} está activo y respondiendo."
                 break
             fi
             sleep 1
@@ -67,23 +67,28 @@ cleanup() {
 
 trap cleanup EXIT INT TERM
 
-# 1. Comprobar si el LLM está corriendo
-if systemctl is-active --quiet "${LLM_SERVICE}"; then
-    WAS_LLM_RUNNING=true
-    echo "🛑 [RAG Scheduled Orchestrator] Deteniendo ${LLM_SERVICE} para liberar VRAM..."
-    systemctl stop "${LLM_SERVICE}"
+# 1. Comprobar cuál motor LLM está corriendo (vllm.service o vllm-llama.service)
+if systemctl is-active --quiet "vllm.service"; then
+    ACTIVE_LLM_SERVICE="vllm.service"
+elif systemctl is-active --quiet "vllm-llama.service"; then
+    ACTIVE_LLM_SERVICE="vllm-llama.service"
+fi
+
+if [ -n "${ACTIVE_LLM_SERVICE}" ]; then
+    echo "🛑 [RAG Scheduled Orchestrator] Deteniendo ${ACTIVE_LLM_SERVICE} para liberar VRAM..."
+    systemctl stop "${ACTIVE_LLM_SERVICE}"
     
     # Esperar hasta 20 segundos para que libere completamente la memoria GPU
     for i in {1..20}; do
-        if ! systemctl is-active --quiet "${LLM_SERVICE}"; then
-            echo "   ✔ ${LLM_SERVICE} detenido correctamente."
+        if ! systemctl is-active --quiet "${ACTIVE_LLM_SERVICE}"; then
+            echo "   ✔ ${ACTIVE_LLM_SERVICE} detenido correctamente."
             break
         fi
         sleep 1
     done
     sleep 2
 else
-    echo "ℹ️ [RAG Scheduled Orchestrator] ${LLM_SERVICE} no estaba activo. Omitiendo detención."
+    echo "ℹ️ [RAG Scheduled Orchestrator] Ningún motor LLM (vllm o vllm-llama) estaba activo. Omitiendo detención."
 fi
 
 # 2. Verificar consumo de VRAM en GPU 0

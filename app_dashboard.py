@@ -59,6 +59,7 @@ ENV_PATH = os.path.join(os.path.dirname(__file__), ".env")
 # Mapeo de nombres de servicios systemd
 SERVICES = {
     "gemma": "vllm",
+    "llama": "vllm-llama",
     "whisper": "vllm-whisper",
     "fallback_stt": "vllm-fallback-stt",
     "tts": "vllm-tts",
@@ -74,6 +75,7 @@ SERVICES = {
 # Puertos locales de cada servicio
 SERVICE_PORTS = {
     "gemma": 8000,
+    "llama": 8000,
     "whisper": 8001,
     "fallback_stt": 18011,
     "tts": 8002,
@@ -89,6 +91,7 @@ SERVICE_PORTS = {
 # Puertos internos de los motores reales detrás del Gateway
 BACKEND_PORTS = {
     "gemma": int(os.getenv("GEMMA_BACKEND_PORT", "18000")),
+    "llama": int(os.getenv("LLAMA_PORT", os.getenv("GEMMA_BACKEND_PORT", "18100"))),
     "whisper": int(os.getenv("WHISPER_BACKEND_PORT", "18001")),
     "fallback_stt": int(os.getenv("STT_FALLBACK_PORT", "18011")),
     "tts": int(os.getenv("TTS_BACKEND_PORT", "18002")),

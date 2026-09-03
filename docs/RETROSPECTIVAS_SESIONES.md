@@ -28,6 +28,7 @@ Al finalizar cada sesión de trabajo, el agente y el usuario realizan una audito
 
 | Fecha | ID Sesión | Turnos Usuario | Llamadas Agénticas (Tools) | Commits Git | Invariantes Violados | RVI Máx | Blast Radius | Estado Global |
 | :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **2026-09-03 (Mañana - Motor Llama.cpp MoE, Exclusión Mutua & Control GUI)** | `bba5ef3a` | 4 | ~45 | 1 | **0** | 1/10 | Mínimo (Modular) | 🟢 **100% Exitoso** |
 | **2026-09-02 (Noche - Freno de Mano RAG & Secuencia Embudo)** | `bba5ef3a` | 6 | ~30 | 2 | **0** | 1/10 | Mínimo (Quirúrgico) | 🟢 **100% Exitoso** |
 | **2026-09-02 (Tarde - Metadata RAG, Mapa Ontológico & Antisesgo)** | `bba5ef3a` | 10 | ~45 | 1 | **0** | 2/10 | Bajo (Modular) | 🟢 **100% Exitoso** |
 | **2026-09-02 (Madrugada - Fix Permisos LanceDB)** | `bba5ef3a` | 3 | ~15 | 1 | **0** | 1/10 | Mínimo (Quirúrgico) | 🟢 **100% Exitoso** |
@@ -41,6 +42,34 @@ Al finalizar cada sesión de trabajo, el agente y el usuario realizan una audito
 ---
 
 ## 📝 Fichas Detalladas por Sesión
+
+### 🔹 Sesión: 2026-09-03 Mañana (`bba5ef3a-c9c3-41a0-9e67-95058f9b5fb1`) - Motor Llama.cpp Qwen 3.6 MoE, Exclusión Mutua Systemd y Control GUI
+* **Hitos Principales:**
+  1. **Integración de `llama.cpp` (`llama-server`) para Qwen 3.6 35B MoE (A3B Q4_K_M):**
+     - Configuración de parámetros óptimos en `.env`: contexto de 128k, batch de 4096, 256 capas GPU, 18 expertos CPU y modo agéntico con `--reasoning off`.
+     - Rendimiento empírico sostenido de **~670 tokens/s de prefill** y **~50 tokens/s de generación**.
+     - Solución de la advertencia de memoria bloqueada mediante ejecución con `User=root` y `LimitMEMLOCK=infinity` en systemd.
+  2. **Lanzador Dinámico y Portable ([`llama-srv.sh`](../llama-srv.sh)):**
+     - Cumplimiento estricto del 5to Invariante (Anti-hardcoded paths): resolución dinámica del usuario real (`jose`) y su `$HOME` incluso bajo ejecución como `root`.
+     - Reemplazo de proceso mediante `exec` para control nativo de PID por systemd.
+  3. **Exclusión Mutua Bidireccional ([`check_service_conflict.sh`](../check_service_conflict.sh)):**
+     - Guardia modular que valida que el servicio oponente no esté activo y que el puerto 18100 no esté en uso.
+     - Si `vllm-llama` está activo y se intenta iniciar `vllm`, se aborta inmediatamente con código de salida 1 y mensaje en journalctl sin afectar al servicio en ejecución, y viceversa.
+  4. **Instalador de Servicio ([`install_llama_service.sh`](../install_llama_service.sh)) y Actualización de `vllm.service`:**
+     - Creación de `vllm-llama.service` y actualización de `vllm.service` con pre-check de conflicto.
+     - Soporte dual en [`sync_rag_scheduled.sh`](../sync_rag_scheduled.sh) para pausar y restaurar automáticamente el motor LLM activo durante la sincronización RAG nocturna.
+  5. **Panel de Monitoreo y Edición de Variables en Dashboard Web:**
+     - Incorporación de tarjeta de servicio `Llama.cpp LLM (Qwen MoE)` en [`tab_monitor.html`](../templates/tabs/tab_monitor.html) con controles Start/Stop/Restart.
+     - Corrección en [`static/js/dashboard_core.js`](../static/js/dashboard_core.js) para actualización en tiempo real del badge (`ACTIVE`).
+     - Nueva sección dedicada en [`tab_config.html`](../templates/tabs/tab_config.html) para visualizar y modificar las 10 variables de `llama.cpp` con botón de configuración óptima rápida y persistencia en `.env`.
+  6. **Suite de Pruebas Unitarias:**
+     - 21/21 tests ejecutados y pasando al 100% en `tests/test_gateway_core.py` y `tests/test_gateway_tools.py`.
+* **Evaluación MEA v2.1 & Leyes de Ingeniería:**
+  * **Invariantes (Gate 1):** **0 violaciones**. Cero destructividad, transparencia total en pruebas y eliminación de rutas hardcodeadas.
+  * **Ley 1 (Modularización):** Cumplida al 100%. La exclusión mutua se aisló en un script independiente reutilizable por ambos servicios.
+  * **Ley 2 (Causa Raíz):** Cumplida al 100%. El problema de memoria bloqueada se resolvió configurando el servicio systemd con `LimitMEMLOCK=infinity` en lugar de omitir la optimización.
+  * **Ley 3 (Mínimo Blast Radius):** Cumplida al 100%. Las mejoras de UI y scripts no alteraron la estabilidad de los demás servicios.
+  * **RVI Máximo:** `1/10`.
 
 ### 🔹 Sesión: 2026-09-02 Noche (`bba5ef3a-c9c3-41a0-9e67-95058f9b5fb1`) - Freno de Mano RAG, Prevención de Desbordamiento y Embudo Agéntico
 * **Hitos Principales:**

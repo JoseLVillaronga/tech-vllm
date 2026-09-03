@@ -50,8 +50,13 @@ Wants=network-online.target
 Type=simple
 User=${SERVICE_USER}
 WorkingDirectory=${PROJECT_DIR}
+
+# Control de Exclusión Mutua: si vllm-llama.service está activo o el puerto está ocupado, aborta inmediatamente
+ExecStartPre=/bin/bash -c 'if systemctl is-active --quiet vllm-llama.service; then echo "❌ Conflicto: vllm-llama.service está en ejecución. Deténgalo antes de iniciar ${SERVICE_NAME}." >&2; exit 1; fi'
+ExecStartPre=/bin/bash -c 'PORT=\$(grep -E "^GEMMA_BACKEND_PORT=" ${PROJECT_DIR}/.env 2>/dev/null | tail -n 1 | cut -d= -f2 || echo 18100); if ss -tulpn | grep -q ":\${PORT} "; then echo "❌ Conflicto: El puerto \${PORT} ya está en uso. Detenga el proceso que lo ocupa antes de iniciar ${SERVICE_NAME}." >&2; exit 1; fi'
+
 ExecStart=${VENV_PYTHON} ${APP_SCRIPT}
-Restart=always
+Restart=on-failure
 RestartSec=10
 Environment=PATH=${PROJECT_DIR}/venv/bin:/usr/local/cuda/bin:/usr/bin:/bin
 StandardOutput=journal
