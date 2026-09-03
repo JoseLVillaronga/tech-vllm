@@ -711,3 +711,43 @@ Tras la exitosa validación en producción del motor de generación de **PDFs le
 * **Justificación de Negocio:** Automatiza la redacción formal de comunicaciones internas, acuerdos de directorio y minutas de reuniones de equipo con formato corporativo unificado.
 * **Arquitectura de Implementación:**
   * Genera el acta o comunicado estructurado con fecha, asistentes, temas tratados y compromisos asumidos, con opción de entrega directa en texto, exportación automática a PDF o despacho mediante SMTP seguro configurado en las credenciales de la empresa.
+
+---
+
+## 12. Optimización del Motor RAG: Ajuste Fino de Consulta Semántica, Normalización de Word Keys y Granularidad Fina
+
+### 12.1. Contexto del Hallazgo (Evidencia Empírica con DeepSeek-V4 y Gemma 4 12B)
+En las pruebas de campo del 2 de septiembre de 2026, ante la consulta *"definición de contrato"*, tanto el modelo local (Gemma 4 12B) como el modelo de frontera Cloud (DeepSeek-V4) experimentaron una limitación en la recuperación de artículos específicos del derecho positivo vigente (específicamente el **Art. 957 del Código Civil y Comercial de la Nación - CCCN**).
+
+El análisis forense reveló dos causas raíz convergentes:
+1. **Dilución Vectorial por Hiper-Chunks (> 200.000 tokens):**  
+   El CCCN (425.630 tokens) se encontraba provisionalmente indexado en LanceDB en **solo 2 fragmentos masivos**. Un vector de incrustación de 1024 dimensiones (Qwen3) promediado sobre ~212.000 tokens pierde la resolución de artículos individuales, provocando que fragmentos breves y densos del código derogado (Ley 340, con ~300 tokens por chunk) ganen artificialmente en la similitud coseno.
+2. **Normalización y Ponderación de Claves Léxicas en Consultas Complejas:**  
+   Cuando el LLM busca *"artículo 957 definición de contrato Código Civil y Comercial"*, la presencia de stop words y términos dispersos compite con la coincidencia exacta de los identificadores normativos.
+
+---
+
+### 12.2. Plan de Acción Técnico para la Próxima Sesión
+
+#### A. Ajuste Fino y Despulgado del Analizador Léxico de Búsqueda (`rag_engine.py`)
+* **Extracción y Boosting de Identificadores Normativos:**
+  * Implementar detección mediante expresiones regulares de patrones como `Art\.?\s*\d+` o `Artículo\s*\d+` en la cadena de consulta.
+  * Si la consulta contiene un número de artículo, aplicar un factor multiplicador (*boosting*) en la coincidencia léxica / BM25 de LanceDB para que dicho fragmento encabece la lista sin importar la similitud semántica general.
+* **Depuración Avanzada de Word Keys:**
+  * Perfeccionar la normalización con `re.split` iniciada en la sesión del 2026-09-02 para eliminar ruidos y unificar sinónimos frecuentes (ej: `CCCN` $\leftrightarrow$ `Código Civil y Comercial`, `LCT` $\leftrightarrow$ `Ley de Contrato de Trabajo`).
+  * Filtrado inteligente de preposiciones y conectores que diluyen los vectores híbridos.
+
+#### B. Filtro Focalizado Opcional por Documento (`doc_id` / `obra`) en la Búsqueda
+* Permitir que las herramientas del Gateway y Open-WebUI acepten un parámetro opcional:
+  ```python
+  buscar_en_base_de_conocimiento(
+      consulta="definición de contrato artículo 957",
+      doc_id="6a976eb89e1c2342dd2e5b34"  # Restringe la búsqueda exclusivamente a la obra vigente
+  )
+  ```
+* Esto permite al LLM, tras identificar la obra en el índice (Paso 1), acotar su búsqueda al documento específico, impidiendo que fragmentos de normas derogadas o secundarias compitan por los primeros puestos.
+
+#### C. Granularidad Jerárquica y Re-chunking en Teccam PDF
+* En Teccam PDF, asegurar que las obras jurídicas colosales (> 50.000 tokens) se procesen reconociendo encabezados de segundo y tercer nivel (`## Libro`, `### Título`, `#### Capítulo`).
+* Mantener un tamaño objetivo de fragmento entre **400 y 1.200 tokens**, garantizando que cada artículo clave disponga de un vector dedicado de alta nitidez en el espacio latente.
+
