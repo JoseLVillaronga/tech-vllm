@@ -241,11 +241,15 @@ def search_knowledge_base(
     # 3. Construir filtro SQL / pre-filter si aplica
     filter_clauses = []
     if topics_to_filter:
-        clean_temas = [f"'{t.replace('\'', '\'\'')}'" for t in topics_to_filter if t]
-        if len(clean_temas) == 1:
-            filter_clauses.append(f"doc_topic = {clean_temas[0]}")
-        elif len(clean_temas) > 1:
-            filter_clauses.append(f"doc_topic IN ({', '.join(clean_temas)})")
+        topic_conditions = []
+        for t in topics_to_filter:
+            if t and t.strip():
+                clean_t = t.strip().replace("'", "''")
+                topic_conditions.append(f"doc_topic LIKE '%{clean_t}%'")
+        if len(topic_conditions) == 1:
+            filter_clauses.append(topic_conditions[0])
+        elif len(topic_conditions) > 1:
+            filter_clauses.append(f"({' OR '.join(topic_conditions)})")
 
     effective_doc_id = (documento_id or doc_id or "").strip()
     if effective_doc_id:
