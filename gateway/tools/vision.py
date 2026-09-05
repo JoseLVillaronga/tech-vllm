@@ -5,7 +5,7 @@ import base64
 import mimetypes
 import httpx
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from fastapi import Request, Response
 
 from config import env
@@ -14,15 +14,17 @@ from config import env
 get_env_setting = env
 
 DEFAULT_VISION_PROMPT = (
-    "Analiza detalladamente esta imagen. Si contiene texto, documentos, tablas o recibos, "
-    "realiza una transcripción OCR exhaustiva y fiel de todo el texto visible preservando el formato. "
+    "Analiza detalladamente esta imagen. Si contiene texto, documentos, tablas, recibos o remitos, "
+    "realiza una transcripción OCR exhaustiva y fiel de todo el texto y números visibles preservando su orden. "
     "Si es un diagrama, gráfico o esquema, describe detalladamente su contenido, componentes, valores y conclusiones."
 )
 
 
-def _prepare_image_data_uri(image_input: str) -> Optional[str]:
+async def _prepare_image_data_uri_async(image_input: str) -> Optional[str]:
     """
     Convierte una ruta local, URL o base64 en un Data URI válido (data:image/...;base64,...).
+    Si es una URL HTTP/HTTPS (ej: servida por Open-WebUI o externa), la descarga
+    y convierte a base64 para evitar errores de red o resolución en llama-server.
     """
     if not image_input or not isinstance(image_input, str):
         return None
@@ -50,15 +52,23 @@ def _prepare_image_data_uri(image_input: str) -> Optional[str]:
     # Caso 3: Es una cadena base64 cruda
     if len(image_input) > 100 and not image_input.startswith("http://") and not image_input.startswith("https://"):
         try:
-            # Validar si decodifica correctamente
             base64.b64decode(image_input[:100], validate=True)
             return f"data:image/jpeg;base64,{image_input}"
         except Exception:
             pass
 
-    # Caso 4: URL http/https (se pasa directo o se descarga)
+    # Caso 4: URL http/https (descargar y convertir a base64 para seguridad local)
     if image_input.startswith("http://") or image_input.startswith("https://"):
-        return image_input
+        try:
+            async with httpx.AsyncClient(timeout=15.0, verify=False) as client:
+                r = await client.get(image_input)
+                if r.status_code == 200:
+                    mime = r.headers.get("content-type", "image/png")
+                    encoded = base64.b64encode(r.content).decode("utf-8")
+                    return f"data:{mime};base64,{encoded}"
+        except Exception as net_err:
+            print(f"⚠️ Error descargando imagen desde URL {image_input}: {net_err}", file=sys.stderr, flush=True)
+            return image_input
 
     return None
 
@@ -124,6 +134,85 @@ async def analyze_image_with_vision_backend(
             }
 
 
+async def bridge_multimodal_messages(messages: List[Dict[str, Any]]) -> bool:
+    """
+    Puente de Visión Multimodal Transparente (Vision Bridge):
+    Detecta bloques 'image_url' en mensajes dirigidos a modelos de solo texto (como Gemma 4 12B IT).
+    Invoca al microservicio de visión desacoplado en RAM (Qwen2.5-VL en :18200),
+    obtiene la transcripción OCR y análisis visual fiel, y reemplaza los bloques 'image_url'
+    por texto estructurado limpio.
+    
+    Esto evita que llama-server falle con 'image input is not supported - hint: provide mmproj'
+    y provee capacidad multimodal automática a modelos de texto sin tocar la GPU.
+    """
+    if not messages or not isinstance(messages, list):
+        return False
+
+    transformed_any = False
+
+    for msg in messages:
+        if not isinstance(msg, dict):
+            continue
+        content = msg.get("content")
+        if not isinstance(content, list):
+            continue
+
+        has_image = any(isinstance(p, dict) and p.get("type") == "image_url" for p in content)
+        if not has_image:
+            continue
+
+        new_content_parts = []
+        for part in content:
+            if not isinstance(part, dict):
+                continue
+            if part.get("type") == "image_url":
+                raw_url = part.get("image_url", {})
+                img_src = raw_url.get("url") if isinstance(raw_url, dict) else str(raw_url)
+                data_uri = await _prepare_image_data_uri_async(img_src)
+                if data_uri:
+                    print("👁️ Gateway Vision Bridge: Analizando imagen adjunta con Qwen2.5-VL en RAM (:18200)...", file=sys.stderr, flush=True)
+                    res = await analyze_image_with_vision_backend(
+                        data_uri,
+                        prompt=(
+                            "Realiza una transcripción OCR exhaustiva y fiel de todo el texto, números, remitos, tablas "
+                            "y datos visibles en esta imagen. Si hay gráficos, esquemas o fotos, describe sus componentes con detalle."
+                        )
+                    )
+                    if res.get("success"):
+                        ocr_text = res.get("analysis") or res.get("text") or ""
+                        print(f"✅ Gateway Vision Bridge: Extracción completada ({len(ocr_text)} caracteres)", file=sys.stderr, flush=True)
+                        new_content_parts.append({
+                            "type": "text",
+                            "text": (
+                                f"\n\n[CONTENIDO VISUAL Y OCR EXTRAÍDO DE LA IMAGEN ADJUNTA POR MOTOR DE VISIÓN LOCAL QWEN2.5-VL]:\n"
+                                f"{ocr_text}\n"
+                                f"--------------------------------------------------"
+                            )
+                        })
+                        transformed_any = True
+                    else:
+                        new_content_parts.append({
+                            "type": "text",
+                            "text": f"\n\n[AVISO]: No se pudo procesar la imagen adjunta: {res.get('error', 'Error desconocido')}\n"
+                        })
+                else:
+                    new_content_parts.append({
+                        "type": "text",
+                        "text": "\n\n[AVISO]: Formato de imagen adjunta no reconocido o inaccesible.\n"
+                    })
+            else:
+                new_content_parts.append(part)
+
+        # Si todas las partes son texto, unificar en un solo string plano para máxima compatibilidad con llama-server
+        text_blocks = [p.get("text", "") for p in new_content_parts if isinstance(p, dict) and p.get("type") == "text"]
+        if text_blocks:
+            msg["content"] = "\n".join(text_blocks).strip()
+        else:
+            msg["content"] = new_content_parts
+
+    return transformed_any
+
+
 async def handle_vision_analysis(request: Request) -> Response:
     """
     Manejador para el endpoint POST /api/tools/vision (y /v1/tools/vision).
@@ -176,7 +265,7 @@ async def handle_vision_analysis(request: Request) -> Response:
                     if raw_image:
                         break
 
-            image_uri = _prepare_image_data_uri(raw_image)
+            image_uri = await _prepare_image_data_uri_async(raw_image)
 
         if not image_uri:
             return Response(
