@@ -4,6 +4,7 @@ import io
 import json
 import base64
 import mimetypes
+import hashlib
 import httpx
 from pathlib import Path
 from typing import Optional, Dict, Any, List
@@ -13,6 +14,10 @@ from config import env
 
 # Alias unificado hacia config.env
 get_env_setting = env
+
+# Caché en memoria para extracciones OCR / visuales (evita re-procesar en hilos multi-turno)
+_VISION_CACHE: Dict[str, Dict[str, Any]] = {}
+_MAX_VISION_CACHE_SIZE = 256
 
 DEFAULT_VISION_PROMPT = (
     "Analiza detalladamente esta imagen. Si contiene texto, documentos, tablas, recibos o remitos, "
@@ -125,6 +130,7 @@ async def analyze_image_with_vision_backend(
 ) -> Dict[str, Any]:
     """
     Realiza la llamada multimodal a la instancia de visión de llama-server en RAM (:18200).
+    Cuenta con caché en memoria LRU por hash SHA-256 para evitar re-análisis en hilos multi-turno.
     """
     image_uri = optimize_image_resolution_for_vit(image_uri)
     vision_port = int(get_env_setting("VISION_BACKEND_PORT", "18200"))
@@ -133,6 +139,14 @@ async def analyze_image_with_vision_backend(
     backend_url = f"http://127.0.0.1:{vision_port}/v1/chat/completions"
 
     instruction = prompt.strip() if prompt and prompt.strip() else DEFAULT_VISION_PROMPT
+
+    # Verificación en caché SHA-256 para evitar re-análisis en hilos conversacionales continuos
+    cache_key = hashlib.sha256(f"{image_uri}_{instruction}".encode("utf-8")).hexdigest()
+    if cache_key in _VISION_CACHE:
+        cached_res = dict(_VISION_CACHE[cache_key])
+        cached_res["cached"] = True
+        print(f"⚡ Gateway Vision Bridge: Imagen recuperada de caché en memoria (SHA-256: {cache_key[:8]}), omitiendo re-inferencia en CPU", file=sys.stderr, flush=True)
+        return cached_res
 
     payload = {
         "model": vision_alias,
@@ -163,13 +177,22 @@ async def analyze_image_with_vision_backend(
             if choices and isinstance(choices, list):
                 msg = choices[0].get("message", {})
                 content = msg.get("content", "")
-            return {
+
+            result_data = {
                 "success": True,
                 "analysis": content,
                 "text": content,
                 "model": vision_alias,
-                "usage": res_json.get("usage", {})
+                "usage": res_json.get("usage", {}),
+                "cached": False
             }
+
+            # Guardar en caché LRU en memoria
+            if len(_VISION_CACHE) >= _MAX_VISION_CACHE_SIZE:
+                _VISION_CACHE.pop(next(iter(_VISION_CACHE)))
+            _VISION_CACHE[cache_key] = result_data
+
+            return result_data
         else:
             err_msg = f"Vision backend HTTP {resp.status_code}: {resp.text}"
             print(f"⚠️ {err_msg}", file=sys.stderr, flush=True)
@@ -207,12 +230,16 @@ async def bridge_multimodal_messages(messages: List[Dict[str, Any]]) -> bool:
         if not has_image:
             continue
 
+        total_images = sum(1 for p in content if isinstance(p, dict) and p.get("type") == "image_url")
+        image_counter = 0
+
         visual_blocks = []
         user_text_blocks = []
         for part in content:
             if not isinstance(part, dict):
                 continue
             if part.get("type") == "image_url":
+                image_counter += 1
                 raw_url = part.get("image_url", {})
                 img_src = raw_url.get("url") if isinstance(raw_url, dict) else str(raw_url)
                 data_uri = await _prepare_image_data_uri_async(img_src)
@@ -228,9 +255,11 @@ async def bridge_multimodal_messages(messages: List[Dict[str, Any]]) -> bool:
                     if res.get("success"):
                         ocr_text = res.get("analysis") or res.get("text") or ""
                         print(f"✅ Gateway Vision Bridge: Extracción completada ({len(ocr_text)} caracteres)", file=sys.stderr, flush=True)
+                        img_label = f" (Imagen {image_counter} de {total_images})" if total_images > 1 else ""
+                        open_tag = f'<imagen_adjunta indice="{image_counter}" total="{total_images}">' if total_images > 1 else "<imagen_adjunta>"
                         visual_blocks.append(
-                            f"<imagen_adjunta>\n"
-                            f"[AVISO DEL SISTEMA]: El usuario ha adjuntado una imagen a la conversación. El motor de visión local (Qwen2.5-VL en RAM) la ha procesado previamente y ha generado la siguiente transcripción fiel y descripción visual:\n\n"
+                            f"{open_tag}\n"
+                            f"[AVISO DEL SISTEMA]: El usuario ha adjuntado una imagen{img_label} a la conversación. El motor de visión local (Qwen2.5-VL en RAM) la ha procesado previamente y ha generado la siguiente transcripción fiel y descripción visual:\n\n"
                             f"<contenido_visual_extraido>\n"
                             f"{ocr_text}\n"
                             f"</contenido_visual_extraido>\n\n"
