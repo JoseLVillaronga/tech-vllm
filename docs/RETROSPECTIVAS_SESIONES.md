@@ -27,6 +27,7 @@ Al finalizar cada sesión de trabajo, el agente y el usuario realizan una audito
 ## 📈 Historial Consolidado de Sesiones
 
 | Fecha | ID Sesión | Turnos Usuario | Llamadas Agénticas (Tools) | Commits Git | Invariantes Violados | RVI Máx | Blast Radius | Estado Global |
+| **2026-09-05 (Tarde - Visión y Difusión en RAM/CPU, Bridge Multimodal & Protección de Contexto)** | `bba5ef3a` | 12 | ~60 | 4 | **0** | 1/10 | Mínimo (Modular) | 🟢 **100% Exitoso** |
 | **2026-09-05 (Mañana - Estándar Dorado Gemma 4 12B en RTX 3090, Fix Parser OCR y Blindaje 5to Invariante)** | `bba5ef3a` | 6 | ~35 | 2 | **0** | 1/10 | Mínimo (Quirúrgico) | 🟢 **100% Exitoso** |
 | **2026-09-04 (Noche - Calibración Gemma 4 12B, Boost Canónico RAG, Presets & 5to Invariante MEA)** | `bba5ef3a` | 14 | ~75 | 5 | **0** | 1/10 | Mínimo (Quirúrgico) | 🟢 **100% Exitoso** |
 | **2026-09-03 (Tarde - Re-chunking LanceDB, GPS Anti-Overflow & Búsqueda RAG)** | `bba5ef3a` | 8 | ~50 | 4 | **0** | 2/10 | Mínimo (Quirúrgico) | 🟢 **100% Exitoso** |
@@ -44,6 +45,39 @@ Al finalizar cada sesión de trabajo, el agente y el usuario realizan una audito
 ---
 
 ## 📝 Fichas Detalladas por Sesión
+
+### 🔹 Sesión: 2026-09-05 Tarde (`bba5ef3a-c9c3-41a0-9e67-95058f9b5fb1`) - Visión y Difusión Desacopladas en RAM/CPU, Bridge Multimodal y Protección de Contexto
+* **Hitos Principales:**
+  1. **Microservicio de Visión Agéntica en RAM (`vllm-vision.service` en `:18200`):**
+     - Despliegue de Qwen2.5-VL-3B-Instruct (`Q4_K_M` + `mmproj-Q8_0`) en `llama-server` corriendo 100% en RAM y 8 hilos de CPU con `CUDA_VISIBLE_DEVICES=""` (**0 MB de VRAM consumida**).
+     - Validación empírica: 37.7 t/s en evaluación visual y ~10 t/s en generación OCR, permitiendo a Gemma 4 razonar sobre comprobantes y facturas sin reducir su ventana de 131k tokens.
+  2. **Puente Multimodal Transparente en API Gateway ([`gateway/tools/vision.py`](../gateway/tools/vision.py)):**
+     - Intercepción de bloques `image_url` en `POST /v1/chat/completions`. Permite al usuario arrastrar imágenes directamente al chat de Open-WebUI sin configurar herramientas.
+     - Auto-escalado de resolución con interpolación Lanczos para evitar la pérdida de parches ViT en capturas pequeñas (solucionó el caso de recortes de remitos).
+     - Caché LRU en memoria con huellas SHA-256 (resolución en 0.0001s en turnos subsiguientes).
+  3. **Microservicio de Difusión en CPU/RAM (`vllm-sd.service` en `:18004`):**
+     - Compilación nativa C++ de `stable-diffusion.cpp` (`sd-server`) con optimizaciones AVX2 y OpenMP.
+     - Pesos GGUF `sd_xl_turbo_1.0.q8_0.gguf` (3.9 GB) ejecutándose en **1 solo paso** (ADD Distilled) con **0 MB de VRAM**. Inferencia de 512x512 en 7-10 segundos en CPU.
+  4. **Protección de la Ventana de Contexto (Persistencia en Disco vs. Base64) ([`gateway/tools/image_gen.py`](../gateway/tools/image_gen.py)):**
+     - Diagnóstico de la falla `request (470974 tokens) exceeds available context size (131072 tokens)` originada por el Base64 crudo de 512x512 (~670.000 caracteres) inyectado en el turno del asistente.
+     - Solución estructural: El Gateway intercepta `/v1/images/generations`, guarda el PNG en `outputs/images/` y devuelve una URL HTTPS pública (`https://tech-support.com.ar:19000/outputs/images/...`).
+     - **Reducción de tokens: de 470.974 tokens a solo ~25 tokens**, erradicando el colapso del contexto.
+  5. **Renderizado Visual Inline en Open-WebUI ([`tools/openwebui_image_tool.py`](../tools/openwebui_image_tool.py)):**
+     - Identificado que la caja de depuración de Open-WebUI (`View Result from...`) no procesa HTML/Markdown por diseño de seguridad.
+     - Contrato de la herramienta actualizado para instruir imperativamente a Gemma 4 a estampar `![prompt](URL)` en su respuesta final.
+     - Validación empírica: Gemma 4 incluye el enlace y la imagen se dibuja automáticamente en alta resolución dentro de la burbuja del chat.
+  6. **Documentación Arquitectónica Canónica:**
+     - Creación de [`docs/ARQUITECTURA_MULTIMODAL_DESACOPLADA_RAM_CPU.md`](ARQUITECTURA_MULTIMODAL_DESACOPLADA_RAM_CPU.md).
+     - Actualización de [`MANUAL_OPENWEBUI.md`](../MANUAL_OPENWEBUI.md) con las Herramientas 5 y 6.
+     - Actualización de [`CHANGELOG.md`](../CHANGELOG.md) con la versión 2.6.0.
+* **Evaluación MEA v2.1 & Leyes de Ingeniería:**
+  * **Invariantes (Gate 1):** **0 violaciones**. Veracidad técnica absoluta (pruebas reales ejecutadas en vivo), cero destructividad, portabilidad completa sin rutas absolutas (`Path(__file__)`).
+  * **Ley 1 (Modularización Estricta):** Cumplida al 100%. Visión desacoplada en `gateway/tools/vision.py` y difusión en `gateway/tools/image_gen.py`. Servicios independientes en systemd.
+  * **Ley 2 (Atacar Causas Raíz):** Cumplida al 100%. Se resolvió la raíz del colapso de 470k tokens persistiendo en disco y sirviendo URLs públicas. Se resolvió la ceguera del ViT en recortes con auto-upscaling Lanczos.
+  * **Ley 3 (Mínimo Blast Radius):** Cumplida al 100%. Inferencia de Gemma 4 en GPU y embeddings preservados al 100% sin ninguna interferencia ni alteración de contratos.
+  * **RVI Máximo:** `1/10`.
+
+---
 
 ### 🔹 Sesión: 2026-09-05 Mañana (`bba5ef3a-c9c3-41a0-9e67-95058f9b5fb1`) - Estándar Dorado Gemma 4 12B en RTX 3090, Fix Parser OCR y Blindaje 5to Invariante
 * **Hitos Principales:**

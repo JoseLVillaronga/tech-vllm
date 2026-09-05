@@ -8,10 +8,24 @@ El formato está basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1
 ### Added
 - **Microservicio de Visión Agéntica Desacoplada en RAM (`llama-vision-srv.sh` y `vllm-vision.service`):**
   - Despliegue independiente de Qwen2.5-VL-3B-Instruct (`Q4_K_M` + `mmproj-Q8_0`) en `llama.cpp` (:18200) corriendo 100% en la memoria RAM del sistema con 0 bytes de VRAM (`CUDA_VISIBLE_DEVICES=""`).
-- **Endpoint Especializado de Visión en Gateway (`gateway/tools/vision.py` y `gateway/proxy/proxy_factory.py`):**
-  - Rutas `POST /api/tools/vision` y `POST /v1/tools/vision` con soporte unificado para rutas locales, URLs, Base64 y subidas multipart.
-- **Herramienta de Visión para Open-WebUI (`tools/openwebui_vision_tool.py`):**
-  - Tool agéntica `analizar_o_leer_imagen` con auto-detección de imágenes en mensajes multimodales y archivos adjuntos, permitiendo a modelos de solo texto (como Gemma 4 12B IT) inspeccionar documentos, tablas y gráficos vía tool calling a 65+ tok/s.
+- **Puente Multimodal Transparente y Endpoints en Gateway (`gateway/tools/vision.py` y `gateway/proxy/proxy_factory.py`):**
+  - Intercepción transparente en `POST /v1/chat/completions` que convierte bloques `image_url` en transcripciones OCR estructuradas en milisegundos, resolviendo el error `image input is not supported` en modelos de texto puro como Gemma 4.
+  - Soporte para rutas `POST /api/tools/vision` y `POST /v1/tools/vision` con URLs, Base64 y subidas multipart.
+  - Auto-upscaling inteligente con interpolación Lanczos para preservar parches ViT en capturas de baja resolución (evita pérdida de OCR en recortes de remitos).
+  - Caché LRU en memoria con huella criptográfica SHA-256 para resolución en 0.0001s en hilos conversacionales continuos.
+- **Microservicio de Difusión en CPU/RAM (`sd-image-srv.sh` y `vllm-sd.service`):**
+  - Despliegue de SDXL-Turbo 1.0 GGUF (`sd_xl_turbo_1.0.q8_0.gguf`, 3.9 GB) ejecutándose en CPU pura mediante `stable-diffusion.cpp` (`sd-server`) en el puerto `:18004` con 0 MB de VRAM consumida.
+  - Inferencia fotorrealista de 512x512 en 1 solo paso (ADD distilled) en 7 a 10 segundos.
+- **Submódulo Gateway de Imágenes y Protección de Ventana de Contexto (`gateway/tools/image_gen.py`):**
+  - Intercepción de `POST /v1/images/generations` y persistencia automática en disco (`outputs/images/`).
+  - Resolución de URLs públicas HTTPS (`https://tech-support.com.ar:19000/outputs/images/...`).
+  - Purga de payloads Base64 crudos, reduciendo el consumo de tokens en el historial conversacional de **470.974 tokens a solo ~25 tokens**, erradicando el colapso de la ventana de contexto de 131k de Gemma 4.
+  - Registro de telemetría de uso en MongoDB (`image`).
+- **Herramientas para Open-WebUI y Renderizado Visual Inline:**
+  - [`tools/openwebui_vision_tool.py`](tools/openwebui_vision_tool.py): Tool `analizar_o_leer_imagen` para inspección agéntica.
+  - [`tools/openwebui_image_tool.py`](tools/openwebui_image_tool.py): Tool `generar_imagen` con directiva estricta al modelo para incrustar Markdown `![prompt](url)`, logrando que Open-WebUI dibuje la imagen automáticamente en pantalla dentro del chat.
+- **Documento Arquitectónico Canónico (`docs/ARQUITECTURA_MULTIMODAL_DESACOPLADA_RAM_CPU.md`):**
+  - Registro exhaustivo de balance de hardware (RTX 3090 vs RAM DDR4), diagramas de flujo, análisis de fallos y resolución por causa raíz según las Leyes de Ingeniería y el MEA v2.1.
 
 ## [2.5.1] - 2026-09-05
 

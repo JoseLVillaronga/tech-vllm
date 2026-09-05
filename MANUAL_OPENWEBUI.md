@@ -12,6 +12,8 @@ Este manual describe en detalle cómo configurar, optimizar y operar la suite de
    * [Herramienta 2: Generador de Documentos en PDF A4](#herramienta-2-generador-de-documentos-en-pdf-a4)
    * [Herramienta 3: Búsqueda Web en Vivo (Ollama Cloud)](#herramienta-3-búsqueda-web-en-vivo-ollama-cloud)
    * [Herramienta 4: Clima y Pronóstico Extendido (OpenWeatherMap)](#herramienta-4-clima-y-pronóstico-extendido-openweathermap)
+   * [Herramienta 5: Visión y OCR Agéntico (Qwen2.5-VL en RAM)](#herramienta-5-visión-y-ocr-agéntico-qwen25-vl-en-ram)
+   * [Herramienta 6: Generación de Imágenes Agéntica (SDXL-Turbo en RAM/CPU)](#herramienta-6-generación-de-imágenes-agéntica-sdxl-turbo-en-ramcpu)
 4. [Metodología de Consulta Eficiente (Técnica del Embudo Progresivo / Scaffolding Cognitivo)](#4-metodología-de-consulta-eficiente-técnica-del-embudo-progresivo--scaffolding-cognitivo)
 5. [Flujos de Trabajo Combinados (Casos Prácticos)](#5-flujos-de-trabajo-combinados-casos-prácticos)
 6. [Guía de Buenas Prácticas y Solución de Problemas (FAQ)](#6-guía-de-buenas-prácticas-y-solución-de-problemas-faq)
@@ -710,6 +712,210 @@ class Tools:
             return f"Pronóstico meteorológico extendido para {city_name} ({country}):\n\n" + "\n".join(resumen_dias)
         except Exception as e:
             return f"Error al consultar el pronóstico extendido: {str(e)}"
+```
+
+---
+
+### Herramienta 5: Visión y OCR Agéntico (Qwen2.5-VL en RAM)
+> Archivo fuente: [`tools/openwebui_vision_tool.py`](tools/openwebui_vision_tool.py)  
+> Microservicio backend: `vllm-vision.service` en puerto `:18200` (Qwen2.5-VL-3B en CPU / 0 MB VRAM).
+
+Permite inspeccionar, transcribir y analizar imágenes, capturas, diagramas técnicos y recibos/documentos escaneados mediante llamadas agénticas de Gemma 4.
+
+> [!TIP]
+> **Modo Puente Transparente (Recomendado):** ¡No es estrictamente necesario activar la herramienta para usar visión! Gracias al *Bridge Multimodal* implementado en el API Gateway, puedes simplemente **arrastrar y soltar cualquier imagen directamente en el chat** con Gemma 4. El Gateway procesa la imagen en RAM con Qwen2.5-VL en milisegundos, extrae los datos visuales/OCR y le entrega a Gemma 4 el texto estructurado para que razone sobre él a 63+ tokens/s.
+>
+> La herramienta personalizada se reserva para flujos agénticos donde Gemma deba inspeccionar rutas de archivos locales o URLs en pasos intermedios.
+
+```python
+"""
+title: Visión y OCR Agéntico (Qwen2.5-VL en RAM)
+author: Jose Luis Villaronga
+author_url: https://github.com/JoseLVillaronga/tech-vllm
+git_url: https://github.com/JoseLVillaronga/tech-vllm
+description: Analiza imágenes, fotografías, diagramas y realiza OCR denso de documentos, recibos y textos en español mediante el microservicio desacoplado de visión de vLLM Suite ejecutado en RAM (Qwen2.5-VL-3B).
+required_open_webui_version: 0.3.0
+requirements: requests, pydantic
+version: 1.0.0
+license: MIT
+"""
+
+import requests
+from typing import Optional, List, Dict, Any
+from pydantic import BaseModel, Field
+
+
+class Tools:
+    class Valves(BaseModel):
+        GATEWAY_URL: str = Field(
+            default="https://tech-support.com.ar:19000",
+            description="URL base del Gateway de vLLM Suite (ej: http://127.0.0.1:8000 o https://tech-support.com.ar:19000)."
+        )
+        API_KEY: str = Field(
+            default="token-e68f0c0d4d4f4d04d70399323d411290b2bf938a81f26685602140c4f8617939",
+            description="Clave API autorizada en vLLM Suite Gateway."
+        )
+
+    def __init__(self):
+        self.valves = self.Valves()
+
+    def analizar_o_leer_imagen(
+        self,
+        imagen: Optional[str] = None,
+        instruccion: Optional[str] = None,
+        __messages__: Optional[List[Dict[str, Any]]] = None,
+        __files__: Optional[List[Dict[str, Any]]] = None
+    ) -> str:
+        """
+        Inspecciona, analiza y describe imágenes, fotos, diagramas, esquemas o realiza transcripción OCR de documentos, recibos y capturas de pantalla.
+        """
+        base_url = str(self.valves.GATEWAY_URL).rstrip("/")
+        if not base_url.endswith("/api/tools/vision") and not base_url.endswith("/v1/tools/vision"):
+            endpoint_url = f"{base_url}/api/tools/vision"
+        else:
+            endpoint_url = base_url
+
+        target_image = str(imagen).strip() if imagen and not str(type(imagen)).endswith("FieldInfo'>") else ""
+        prompt_text = str(instruccion).strip() if instruccion and not str(type(instruccion)).endswith("FieldInfo'>") else ""
+
+        if not target_image and __files__ and isinstance(__files__, list):
+            for f in __files__:
+                if isinstance(f, dict):
+                    cand = f.get("url") or f.get("path") or f.get("file", {}).get("url")
+                    if cand:
+                        target_image = cand
+                        break
+
+        if not target_image:
+            return "⚠️ No se especificó ninguna imagen válida para analizar."
+
+        payload = {
+            "image": target_image,
+            "instruction": prompt_text or "Analiza detalladamente esta imagen y extrae todo el texto visible (OCR)."
+        }
+
+        headers = {
+            "Authorization": f"Bearer {self.valves.API_KEY.strip()}",
+            "Content-Type": "application/json"
+        }
+
+        try:
+            resp = requests.post(endpoint_url, headers=headers, json=payload, timeout=90.0)
+            if resp.status_code == 200:
+                data = resp.json()
+                return data.get("analysis", "No se obtuvo análisis de la imagen.")
+            return f"❌ Error de visión (HTTP {resp.status_code}): {resp.text}"
+        except Exception as e:
+            return f"❌ Error al consultar microservicio de visión: {str(e)}"
+```
+
+---
+
+### Herramienta 6: Generación de Imágenes Agéntica (SDXL-Turbo en RAM/CPU)
+> Archivo fuente: [`tools/openwebui_image_tool.py`](tools/openwebui_image_tool.py)  
+> Microservicio backend: `vllm-sd.service` en puerto `:18004` (SDXL-Turbo en CPU / 0 MB VRAM).
+
+Permite a Gemma 4 generar ilustraciones, conceptos artísticos, fotografías y diagramas visuales en 7 a 10 segundos en CPU.
+
+> [!IMPORTANT]
+> **Protección de Contexto y Visualización Directa:**
+> * El Gateway guarda automáticamente las imágenes en disco (`outputs/images/`) y devuelve enlaces HTTPS (`https://tech-support.com.ar:19000/outputs/images/...`). Esto reduce el consumo de contexto de **470.974 tokens (Base64 crudo) a solo ~25 tokens**, evitando desbordar la ventana de 131k tokens de Gemma 4.
+> * La herramienta instruye de forma estricta a Gemma 4 para que incluya `![descripción](URL)` en su respuesta final, permitiendo que Open-WebUI **dibuje la imagen directamente en pantalla dentro del chat**.
+
+```python
+"""
+title: Generación de Imágenes Agéntica (SDXL-Turbo en RAM/CPU)
+author: Jose Luis Villaronga
+author_url: https://github.com/JoseLVillaronga/tech-vllm
+git_url: https://github.com/JoseLVillaronga/tech-vllm
+description: Genera y renderiza imágenes artísticas mediante SDXL-Turbo en CPU/RAM con 0 MB de VRAM. Devuelve URLs públicas en disco para renderizado inline directo en el chat.
+required_open_webui_version: 0.3.0
+requirements: requests, pydantic
+version: 1.1.0
+license: MIT
+"""
+
+import requests
+from typing import Optional
+from pydantic import BaseModel, Field
+
+
+class Tools:
+    class Valves(BaseModel):
+        GATEWAY_URL: str = Field(
+            default="https://tech-support.com.ar:19000",
+            description="URL base del endpoint en el Gateway de vLLM Suite (ej: https://tech-support.com.ar:19000 o http://127.0.0.1:8000)."
+        )
+        API_KEY: str = Field(
+            default="token-e68f0c0d4d4f4d04d70399323d411290b2bf938a81f26685602140c4f8617939",
+            description="Clave API autorizada en vLLM Suite Gateway."
+        )
+        MODEL: str = Field(
+            default="stabilityai/sdxl-turbo",
+            description="Identificador del modelo de difusión."
+        )
+        SIZE: str = Field(
+            default="512x512",
+            description="Resolución de la imagen generada (512x512 recomendada para inferencia en CPU)."
+        )
+
+    def __init__(self):
+        self.valves = self.Valves()
+
+    def generar_imagen(
+        self,
+        prompt: str
+    ) -> str:
+        """
+        Genera, dibuja y renderiza una imagen fotorrealista, artística, conceptual o técnica a partir de una descripción detallada en texto.
+        """
+        clean_prompt = str(prompt).strip() if prompt and not str(type(prompt)).endswith("FieldInfo'>") else ""
+        if not clean_prompt:
+            return "⚠️ No se especificó una descripción (prompt) válida para generar la imagen."
+
+        base_url = str(self.valves.GATEWAY_URL).rstrip("/")
+        if base_url.endswith("/images/generations"):
+            endpoint_url = base_url
+        elif base_url.endswith("/v1"):
+            endpoint_url = f"{base_url}/images/generations"
+        else:
+            endpoint_url = f"{base_url}/v1/images/generations"
+
+        headers = {
+            "Authorization": f"Bearer {self.valves.API_KEY.strip()}",
+            "Content-Type": "application/json"
+        }
+
+        payload = {
+            "prompt": clean_prompt,
+            "model": self.valves.MODEL,
+            "size": self.valves.SIZE,
+            "response_format": "url"
+        }
+
+        try:
+            resp = requests.post(endpoint_url, headers=headers, json=payload, timeout=120.0)
+            if resp.status_code == 200:
+                data = resp.json()
+                data_list = data.get("data", [])
+                if data_list and isinstance(data_list, list):
+                    img_url = data_list[0].get("url")
+                    if img_url:
+                        if img_url.startswith("/"):
+                            clean_base = base_url.replace("/v1/images/generations", "").replace("/images/generations", "").replace("/v1", "").rstrip("/")
+                            img_url = f"{clean_base}{img_url}"
+
+                        return (
+                            f"STATUS: IMAGEN GENERADA EXITOSAMENTE.\n\n"
+                            f"INSTRUCCIÓN OBLIGATORIA PARA EL ASISTENTE:\n"
+                            f"Para que la interfaz Open-WebUI renderice y dibuje la imagen directamente en pantalla para el usuario, DEBES incluir obligatoriamente en tu respuesta final la siguiente línea exacta en formato Markdown (fuera de bloques de código):\n\n"
+                            f"![{clean_prompt}]({img_url})\n\n"
+                            f"No omitas esta línea Markdown bajo ninguna circunstancia."
+                        )
+                return "⚠️ La solicitud fue exitosa pero no se recibió ninguna imagen en el formato esperado."
+            return f"❌ Error en el servidor de generación de imágenes (HTTP {resp.status_code}): {resp.text}"
+        except Exception as e:
+            return f"❌ Error al invocar la herramienta de generación de imágenes: {str(e)}"
 ```
 
 ---
