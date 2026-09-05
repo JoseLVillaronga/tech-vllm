@@ -139,7 +139,7 @@ async def sync_alignment_settings_loop():
         await asyncio.sleep(10)
 
 
-def get_invariants_system_prompt(settings: Dict[str, Any], has_pdf_tool: bool = False, has_doc_tool: bool = False) -> str:
+def get_invariants_system_prompt(settings: Dict[str, Any], has_pdf_tool: bool = False, has_doc_tool: bool = False, has_vision_attachment: bool = False) -> str:
     """Construye el bloque de invariantes éticos y operativos."""
     blocks = []
     
@@ -160,6 +160,14 @@ def get_invariants_system_prompt(settings: Dict[str, Any], has_pdf_tool: bool = 
             "\n📚 [PROTOCOLO DE LECTURA Y NAVEGACIÓN DOCUMENTAL]:\n"
             "- Cuando se consulte por un documento formal de la biblioteca, utiliza `leer_documento_completo` para obtener el contenido íntegro y verificado.\n"
             "- Para obras y códigos extensos (> 30.000 tokens), puedes explorar su mapa estructural con `obtener_estructura_documento(doc_id=...)` o solicitar una sección específica con `leer_documento_completo(doc_id=..., seccion=\"<nombre_sección>\")`."
+        )
+
+    if has_vision_attachment:
+        blocks.append(
+            "\n👁️ [PROTOCOLO DE VISIÓN Y DOCUMENTOS GRÁFICOS (<imagen_adjunta>)]:\n"
+            "- Cuando un mensaje contenga la etiqueta `<imagen_adjunta>`, significa que el usuario ha adjuntado una imagen real (foto, remito, factura, documento escaneado o captura) procesada previamente por el motor de visión local (Qwen2.5-VL en RAM).\n"
+            "- El contenido dentro de `<contenido_visual_extraido>` constituye la transcripción visual exacta y completa.\n"
+            "- Debes responder a las preguntas del usuario basándote directamente en dicha información visual, como si la estuvieras viendo con tus propios ojos. NUNCA manifiestes que no puedes ver imágenes ni le pidas al usuario que la vuelva a adjuntar."
         )
 
     custom_prompt = settings.get("custom_system_prompt", "").strip()
@@ -195,6 +203,7 @@ async def enrich_chat_payload(
 
     has_pdf_tool = "generate_pdf_document" in tool_names or "generate_pdf" in tool_names
     has_doc_tool = "leer_documento_completo" in tool_names or "read_document" in tool_names
+    has_vision_attachment = any("<imagen_adjunta>" in str(m.get("content", "")) for m in messages)
 
     # 1. Construir bloques del sistema (Fecha/Hora siempre presente si inject_temporal=True)
     system_parts = []
@@ -203,7 +212,7 @@ async def enrich_chat_payload(
 
     # Bloque de invariantes éticos, protocolos y guías (omitido si include_alignment=False)
     if include_alignment:
-        invariants_block = get_invariants_system_prompt(settings, has_pdf_tool=has_pdf_tool, has_doc_tool=has_doc_tool)
+        invariants_block = get_invariants_system_prompt(settings, has_pdf_tool=has_pdf_tool, has_doc_tool=has_doc_tool, has_vision_attachment=has_vision_attachment)
         if invariants_block:
             system_parts.append(invariants_block)
 

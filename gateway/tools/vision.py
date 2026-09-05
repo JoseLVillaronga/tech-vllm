@@ -94,8 +94,8 @@ async def analyze_image_with_vision_backend(
             {
                 "role": "user",
                 "content": [
-                    {"type": "text", "text": instruction},
-                    {"type": "image_url", "image_url": {"url": image_uri}}
+                    {"type": "image_url", "image_url": {"url": image_uri}},
+                    {"type": "text", "text": instruction}
                 ]
             }
         ],
@@ -161,7 +161,8 @@ async def bridge_multimodal_messages(messages: List[Dict[str, Any]]) -> bool:
         if not has_image:
             continue
 
-        new_content_parts = []
+        visual_blocks = []
+        user_text_blocks = []
         for part in content:
             if not isinstance(part, dict):
                 continue
@@ -174,41 +175,40 @@ async def bridge_multimodal_messages(messages: List[Dict[str, Any]]) -> bool:
                     res = await analyze_image_with_vision_backend(
                         data_uri,
                         prompt=(
-                            "Realiza una transcripción OCR exhaustiva y fiel de todo el texto, números, remitos, tablas "
-                            "y datos visibles en esta imagen. Si hay gráficos, esquemas o fotos, describe sus componentes con detalle."
+                            "Realiza una transcripción OCR exhaustiva y fiel de todo el texto, títulos, números de remitos, facturas, tablas, sellos "
+                            "y datos visibles en esta imagen sin omitir nada. Si hay gráficos, diagramas o fotos, describe sus componentes con detalle."
                         )
                     )
                     if res.get("success"):
                         ocr_text = res.get("analysis") or res.get("text") or ""
                         print(f"✅ Gateway Vision Bridge: Extracción completada ({len(ocr_text)} caracteres)", file=sys.stderr, flush=True)
-                        new_content_parts.append({
-                            "type": "text",
-                            "text": (
-                                f"\n\n[CONTENIDO VISUAL Y OCR EXTRAÍDO DE LA IMAGEN ADJUNTA POR MOTOR DE VISIÓN LOCAL QWEN2.5-VL]:\n"
-                                f"{ocr_text}\n"
-                                f"--------------------------------------------------"
-                            )
-                        })
+                        visual_blocks.append(
+                            f"<imagen_adjunta>\n"
+                            f"[AVISO DEL SISTEMA]: El usuario ha adjuntado una imagen a la conversación. El motor de visión local (Qwen2.5-VL en RAM) la ha procesado previamente y ha generado la siguiente transcripción fiel y descripción visual:\n\n"
+                            f"<contenido_visual_extraido>\n"
+                            f"{ocr_text}\n"
+                            f"</contenido_visual_extraido>\n\n"
+                            f"INSTRUCCIÓN PARA EL MODELO: Responde directamente a la solicitud del usuario utilizando la información anterior como la visualización fidedigna de la imagen adjunta. NUNCA digas que no recibiste la imagen.\n"
+                            f"</imagen_adjunta>"
+                        )
                         transformed_any = True
                     else:
-                        new_content_parts.append({
-                            "type": "text",
-                            "text": f"\n\n[AVISO]: No se pudo procesar la imagen adjunta: {res.get('error', 'Error desconocido')}\n"
-                        })
+                        visual_blocks.append(f"<imagen_adjunta>\n[AVISO DEL SISTEMA]: No se pudo procesar la imagen adjunta: {res.get('error', 'Error desconocido')}\n</imagen_adjunta>")
                 else:
-                    new_content_parts.append({
-                        "type": "text",
-                        "text": "\n\n[AVISO]: Formato de imagen adjunta no reconocido o inaccesible.\n"
-                    })
-            else:
-                new_content_parts.append(part)
+                    visual_blocks.append("<imagen_adjunta>\n[AVISO DEL SISTEMA]: Formato de imagen adjunta no reconocido o inaccesible.\n</imagen_adjunta>")
+            elif part.get("type") == "text":
+                txt = part.get("text", "").strip()
+                if txt:
+                    user_text_blocks.append(txt)
 
-        # Si todas las partes son texto, unificar en un solo string plano para máxima compatibilidad con llama-server
-        text_blocks = [p.get("text", "") for p in new_content_parts if isinstance(p, dict) and p.get("type") == "text"]
-        if text_blocks:
-            msg["content"] = "\n".join(text_blocks).strip()
-        else:
-            msg["content"] = new_content_parts
+        # Reensamblar el mensaje: primero los bloques de imagen con tags, luego el texto del usuario
+        final_parts = []
+        if visual_blocks:
+            final_parts.extend(visual_blocks)
+        if user_text_blocks:
+            final_parts.extend(user_text_blocks)
+
+        msg["content"] = "\n\n".join(final_parts).strip()
 
     return transformed_any
 
