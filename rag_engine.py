@@ -264,9 +264,13 @@ def search_knowledge_base(
         
     filter_expr = " AND ".join(filter_clauses) if filter_clauses else None
 
-    # Detectar si la consulta busca un artículo normativo específico para boosting
-    art_match = re.search(r"(?:art[ií]culo|art\.)\s*(\d+)", query_str, re.IGNORECASE)
-    target_art_num = art_match.group(1) if art_match else None
+    # Detectar si la consulta busca un artículo normativo específico para boosting (soporta sufijos bis/ter)
+    art_match = re.search(
+        r"(?:art[ií]culo|art\.)\s*(\d+[°º]?(?:\s*(?:bis|ter|qu[aá]ter|quinquies|sexies|septies|octies|nonies|decies))?)",
+        query_str,
+        re.IGNORECASE
+    )
+    target_art_num = art_match.group(1).strip() if art_match else None
 
     all_candidates = {}
     
@@ -334,7 +338,15 @@ def search_knowledge_base(
         if target_art_num:
             sec_p = item.get("section_path", "") or ""
             cnt = item.get("content", "") or ""
-            art_regex = rf"(?:art[ií]culo|art\.)\s*{target_art_num}\b"
+            clean_target = re.escape(target_art_num)
+            has_suffix = bool(re.search(r"\b(?:bis|ter|qu[aá]ter|quinquies|sexies|septies|octies|nonies|decies)\b", target_art_num, re.IGNORECASE))
+            if not has_suffix:
+                # Si busca '14', no debe matchear '14 bis'
+                art_regex = rf"(?:art[ií]culo|art\.)\s*{clean_target}(?![°º]?\s*(?:bis|ter|qu[aá]ter|quinquies|sexies|septies|octies|nonies|decies))\b"
+            else:
+                # Si busca '14 bis', matchea '14 bis'
+                art_regex = rf"(?:art[ií]culo|art\.)\s*{clean_target}\b"
+
             if re.search(art_regex, sec_p, re.IGNORECASE):
                 final_sim += 0.35 # Fuerte impulso si la sección es el artículo
             elif re.search(art_regex, cnt[:150], re.IGNORECASE):

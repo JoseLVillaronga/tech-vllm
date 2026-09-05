@@ -121,7 +121,8 @@ def unpack_pseudo_tables(text: str) -> str:
     header_pattern = re.compile(
         r"(?:^|\s+)(#{1,6}\s+|LIBRO\s+(?:PRIMERO|SEGUNDO|TERCERO|CUARTO|QUINTO|SEXTO|[IVXLCDM\d]+)|"
         r"T[IÍ]TULO\s+(?:PRELIMINAR|[IVXLCDM\d]+)|CAP[IÍ]TULO\s+\d+|SECCI[OÓ]N\s+\d+|"
-        r"ART[IÍ]CULO\s+\d+[°º]?|Art\.\s*\d+[°º]?)",
+        r"ART[IÍ]CULO\s+\d+[°º]?(?:\s*(?:bis|ter|qu[aá]ter|quinquies|sexies|septies|octies|nonies|decies))?|"
+        r"Art\.\s*\d+[°º]?(?:\s*(?:bis|ter|qu[aá]ter|quinquies|sexies|septies|octies|nonies|decies))?)",
         re.IGNORECASE
     )
     
@@ -193,10 +194,17 @@ def detect_heuristic_header(line: str) -> Optional[Tuple[int, str, bool]]:
         if len(clean) < 120:
             return (3, clean[:90].strip(), False)
             
-    # Nivel 4: Artículos Normativos
-    if re.match(r"^(?:ART[IÍ]CULO|Art\.)\s*\d+[°º]?\b", clean, re.IGNORECASE):
-        m = re.match(r"^((?:ART[IÍ]CULO|Art\.)\s*\d+[°º]?(?:\s*[\.\-:]\s*[^.\n]{1,60})?)", clean, re.IGNORECASE)
-        art_title = m.group(1).strip() if m else clean[:60].strip()
+    # Nivel 4: Artículos Normativos (Soporta números, ordinales y sufijos bis/ter/quater con o sin espacio OCR)
+    m = re.match(
+        r"^((?:ART[IÍ]CULO|Art\.)\s*\d+[°º]?(?:\s*(?:bis|ter|qu[aá]ter|quinquies|sexies|septies|octies|nonies|decies))?)"
+        r"(?:\s*[\.\-:]\s*([^.\n]{1,60})|(?=[A-ZÁÉÍÓÚa-záéíóú])|[\.\-:\s]|$)",
+        clean,
+        re.IGNORECASE
+    )
+    if m:
+        base_art = m.group(1).strip()
+        subtitle = m.group(2).strip() if m.group(2) else ""
+        art_title = f"{base_art} - {subtitle}" if subtitle else base_art
         return (4, art_title, True)
         
     return None
@@ -216,6 +224,13 @@ def hierarchical_chunk_markdown(
     """
     # Desempaquetar previamente pseudo-tablas gigantes
     text = unpack_pseudo_tables(text)
+    # Normalizar artículos pegados al texto sin espacio por artefactos OCR (ej: 'Artículo 14Todos' -> 'Artículo 14 Todos')
+    text = re.sub(
+        r"\b((?:ART[IÍ]CULO|Art\.)\s*\d+[°º]?(?:\s*(?:bis|ter|qu[aá]ter|quinquies|sexies|septies|octies|nonies|decies))?)([A-ZÁÉÍÓÚa-záéíóú])",
+        r"\1 \2",
+        text,
+        flags=re.IGNORECASE
+    )
     lines = text.split('\n')
     sections = [] # Lista de tuplas: (section_path, list_of_blocks)
     
