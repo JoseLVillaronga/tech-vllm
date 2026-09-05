@@ -20,7 +20,7 @@ class Tools:
     class Valves(BaseModel):
         GATEWAY_URL: str = Field(
             default="http://127.0.0.1:8000",
-            description="URL base del Gateway de la suite vLLM (ej: http://127.0.0.1:8000 o https://tech-support.com.ar:19000)."
+            description="URL base del Gateway de la suite vLLM (ej: http://127.0.0.1:8000 o https://tu-dominio.com:19000)."
         )
         API_KEY: str = Field(
             default="TU_CLAVE_API_VLLM_AQUI",

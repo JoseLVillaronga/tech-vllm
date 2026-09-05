@@ -74,7 +74,7 @@ BATCH_SIZE="${VISION_BATCH_SIZE:-2048}"
 UBATCH_SIZE="${VISION_UBATCH_SIZE:-512}"
 GPU_LAYERS="${VISION_GPU_LAYERS:-0}"
 THREADS="${VISION_THREADS:-8}"
-AUTH_KEY="${API_KEY:-token-e68f0c0d4d4f4d04d70399323d411290b2bf938a81f26685602140c4f8617939}"
+AUTH_KEY="${API_KEY:-}"
 
 echo "============================================================"
 echo "👁️ Iniciando Microservicio de Visión en RAM (CPU)"

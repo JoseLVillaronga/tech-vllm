@@ -672,7 +672,7 @@ flowchart TD
 ```
 
 * **Ver temporizadores activos:** `sudo systemctl list-timers | grep vllm-rag-sync`
-* **Ejecutar sincronización manual por terminal:** `/home/jose/vllm/venv/bin/python app_rag_sync.py`
+* **Ejecutar sincronización manual por terminal:** `./venv/bin/python app_rag_sync.py`
 * **Ver historial de ejecuciones:** Disponible en el Dashboard (`:8004`) o vía MongoDB en `vllm.rag_sync_logs`.
 
 ### 4. Modelos Virtuales con RAG Integrado: `local/gemma-4-rag` y `cloud-rag` (Cero Configuración)
@@ -779,7 +779,7 @@ class Tools:
     class Valves(BaseModel):
         GATEWAY_URL: str = Field(
             default="http://127.0.0.1:8000",
-            description="URL base del Gateway de la suite vLLM (ej: http://127.0.0.1:8000 o https://tech-support.com.ar:19000)."
+            description="URL base del Gateway de la suite vLLM (ej: http://127.0.0.1:8000 o https://tu-dominio.com:19000)."
         )
         API_KEY: str = Field(
             default="TU_CLAVE_API_VLLM_AQUI",
@@ -1079,7 +1079,7 @@ Para auditar, supervisar y restablecer la operatividad de todo el ecosistema RAG
 ======================================================================
 
 [1/5] Verificando Base Vectorial LanceDB en disco...
-  ✔ Directorio LanceDB operativo: /home/jose/vllm/data/lancedb (1 tabla/s encontradas)
+  ✔ Directorio LanceDB operativo: data/lancedb (1 tabla/s encontradas)
 
 [2/5] Verificando Microservicio de Embeddings (Puerto :18005)...
   ✔ Servicio vllm-embeddings respondiendo en puerto :18005 (HTTP 200)
@@ -1534,10 +1534,10 @@ Para que Aider se conecte automáticamente al Gateway local y localice el ejecut
 ```bash
 # Apuntar Aider al Gateway local
 export OPENAI_API_BASE="http://localhost:8000/v1"
-export OPENAI_API_KEY="vllm_key_6a8415b561c810996239ea3ed66ff41fcbe4452c" # Clave maestra de la suite
+export OPENAI_API_KEY="TU_CLAVE_API_VLLM_AQUI" # Clave maestra o autorizada de la suite
 
 # Agregar ejecutables locales al PATH (para ubicar uv y Aider)
-export PATH="/home/jose/.local/bin:$PATH"
+export PATH="$HOME/.local/bin:$PATH"
 ```
 
 Carga la nueva configuración en tu terminal actual:
@@ -1942,7 +1942,7 @@ La suite integra un sistema desacoplado de búsqueda web en internet utilizando 
 * **Variables de Configuración en `.env`:**
   ```env
   # Integración de Búsqueda Web con Ollama Cloud
-  OLLAMA_API_KEY=b47fbc1199b2455ca...
+  OLLAMA_API_KEY=tu_clave_ollama_aqui
   OLLAMA_SEARCH_ENABLED=true
   OLLAMA_SEARCH_MAX_RESULTS=3
   ```
@@ -2423,7 +2423,7 @@ class Tools:
 ---
 
 #### B. Política de Almacenamiento y Limpieza Automática (TTL 24 Horas):
-* **Directorio de Almacenamiento:** Los archivos PDF se generan y almacenan en el servidor local dentro de `/home/jose/vllm/outputs/pdfs/`.
+* **Directorio de Almacenamiento:** Los archivos PDF se generan y almacenan en el servidor local dentro de `outputs/pdfs/`.
 * **Retención de 24 Horas:** La suite ejecuta un recolector automático (`cleanup_old_pdfs`) que purga de forma transparente cualquier PDF con más de 24 horas de antigüedad, evitando la acumulación innecesaria en el disco.
 
 #### C. Configuración de Credenciales en Open-WebUI (*Valves*):
@@ -2444,7 +2444,7 @@ Copia y pega este script en **Espacio de Trabajo ➔ Herramientas ➔ + (Crear H
 """
 title: Búsqueda Web en Internet
 author: Jose Luis Villaronga
-author_url: https://tech-support.com.ar
+author_url: https://github.com/JoseLVillaronga/tech-vllm
 version: 1.1.0
 license: MIT
 description: Realiza búsquedas en tiempo real en la web e internet a través del Gateway de vLLM Suite para obtener información actualizada, noticias, cotizaciones o documentación externa.
@@ -2591,7 +2591,7 @@ Si se desea que el LLM o clientes externos procesen archivos por ruta del servid
 """
 title: Lector y Analizador de Documentos (Docling + vLLM Gateway)
 author: Jose Luis Villaronga
-author_url: https://tech-support.com.ar
+author_url: https://github.com/JoseLVillaronga/tech-vllm
 version: 1.0.0
 license: MIT
 description: Extrae y analiza en tiempo real el contenido completo de archivos y documentos adjuntos en el chat (PDF, DOCX, etc.) convirtiéndolos a Markdown estructurado con tablas mediante Docling Server.

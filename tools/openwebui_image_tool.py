@@ -18,11 +18,11 @@ from pydantic import BaseModel, Field
 class Tools:
     class Valves(BaseModel):
         GATEWAY_URL: str = Field(
-            default="https://tech-support.com.ar:19000",
-            description="URL base del endpoint en el Gateway de vLLM Suite (ej: https://tech-support.com.ar:19000 o http://127.0.0.1:8000)."
+            default="http://127.0.0.1:8000",
+            description="URL base del endpoint en el Gateway de vLLM Suite (ej: http://127.0.0.1:8000 o https://tu-dominio.com:19000)."
         )
         API_KEY: str = Field(
-            default="token-e68f0c0d4d4f4d04d70399323d411290b2bf938a81f26685602140c4f8617939",
+            default="TU_API_KEY_AQUI",
             description="Clave API autorizada en vLLM Suite Gateway."
         )
         MODEL: str = Field(

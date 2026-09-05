@@ -51,18 +51,18 @@ La suite expone sus servicios a través del **Gateway de Seguridad**, que gestio
 Ve al menú **Panel de Administración** ➔ **Ajustes** ➔ **Conexiones**:
 
 1. **Conexión de Modelos de Chat e Inferencia:**
-   * **URL Base:** `https://tech-support.com.ar:19000/v1` (o `http://127.0.0.1:8000/v1` en red local)
+   * **URL Base:** `http://127.0.0.1:8000/v1` (o `https://tu-dominio.com:19000/v1` si publicas en internet)
    * **Clave API:** `vllm_key_...` (Clave autorizada con servicio `gemma`)
 2. **Conexión de Embeddings Documentales:**
    * Ve a **Ajustes ➔ Documentos ➔ Motor de Incrustación (Embedding)**
    * **Motor:** `OpenAI`
-   * **URL Base:** `https://tech-support.com.ar:19005/v1` (o `http://127.0.0.1:8005/v1`)
+   * **URL Base:** `http://127.0.0.1:8005/v1` (o `https://tu-dominio.com:19005/v1`)
    * **Modelo:** `Qwen/Qwen3-Embedding-0.6B`
    * **Clave API:** `vllm_key_...` (Clave autorizada con servicio `embeddings`)
 3. **Conexión de Extracción de Documentos (Docling):**
    * Ve a **Ajustes ➔ Documentos ➔ Motor de Análisis de Documentos**
    * **Tipo:** `Docling`
-   * **URL del Servidor:** `https://tech-support.com.ar:19020` (o `http://127.0.0.1:8020`)
+   * **URL del Servidor:** `http://127.0.0.1:8020` (o `https://tu-dominio.com:19020`)
    * **Clave API:** `vllm_key_...` (Open-WebUI la envía mediante la cabecera `X-Api-Key`)
 
 > [!IMPORTANT]
@@ -163,11 +163,11 @@ from pydantic import BaseModel, Field
 class Tools:
     class Valves(BaseModel):
         GATEWAY_URL: str = Field(
-            default="https://tech-support.com.ar:19000",
-            description="URL base del Gateway de la suite vLLM (ej: http://127.0.0.1:8000 o https://tech-support.com.ar:19000)."
+            default="http://127.0.0.1:8000",
+            description="URL base del Gateway de la suite vLLM (ej: http://127.0.0.1:8000 o https://tu-dominio.com:19000)."
         )
         API_KEY: str = Field(
-            default="vllm_key_e60d46d030d5e0c36122a064e23723a572ad9a9d",
+            default="TU_CLAVE_API_VLLM_AQUI",
             description="Clave API autorizada para consultar el servicio RAG."
         )
         DEFAULT_TOP_K: int = Field(
@@ -338,8 +338,8 @@ from pydantic import BaseModel, Field
 class Tools:
     class Valves(BaseModel):
         GATEWAY_URL: str = Field(
-            default="https://tech-support.com.ar:19000",
-            description="URL base del Gateway de vLLM Suite (ej: http://127.0.0.1:8000 o https://tech-support.com.ar:19000)."
+            default="http://127.0.0.1:8000",
+            description="URL base del Gateway de vLLM Suite (ej: http://127.0.0.1:8000 o https://tu-dominio.com:19000)."
         )
         API_KEY: str = Field(
             default="TU_API_KEY_AQUI",
@@ -446,8 +446,8 @@ from pydantic import BaseModel, Field
 class Tools:
     class Valves(BaseModel):
         GATEWAY_URL: str = Field(
-            default="https://tech-support.com.ar:19000",
-            description="URL base del Gateway de vLLM Suite (ej: http://127.0.0.1:8000 o https://tech-support.com.ar:19000)."
+            default="http://127.0.0.1:8000",
+            description="URL base del Gateway de vLLM Suite (ej: http://127.0.0.1:8000 o https://tu-dominio.com:19000)."
         )
         API_KEY: str = Field(
             default="TU_API_KEY_AQUI",
@@ -748,11 +748,11 @@ from pydantic import BaseModel, Field
 class Tools:
     class Valves(BaseModel):
         GATEWAY_URL: str = Field(
-            default="https://tech-support.com.ar:19000",
-            description="URL base del Gateway de vLLM Suite (ej: http://127.0.0.1:8000 o https://tech-support.com.ar:19000)."
+            default="http://127.0.0.1:8000",
+            description="URL base del Gateway de vLLM Suite (ej: http://127.0.0.1:8000 o https://tu-dominio.com:19000)."
         )
         API_KEY: str = Field(
-            default="token-e68f0c0d4d4f4d04d70399323d411290b2bf938a81f26685602140c4f8617939",
+            default="TU_API_KEY_AQUI",
             description="Clave API autorizada en vLLM Suite Gateway."
         )
 
@@ -819,7 +819,7 @@ Permite a Gemma 4 generar ilustraciones, conceptos artísticos, fotografías y d
 
 > [!IMPORTANT]
 > **Protección de Contexto y Visualización Directa:**
-> * El Gateway guarda automáticamente las imágenes en disco (`outputs/images/`) y devuelve enlaces HTTPS (`https://tech-support.com.ar:19000/outputs/images/...`). Esto reduce el consumo de contexto de **470.974 tokens (Base64 crudo) a solo ~25 tokens**, evitando desbordar la ventana de 131k tokens de Gemma 4.
+> * El Gateway guarda automáticamente las imágenes en disco (`outputs/images/`) y devuelve enlaces HTTPS (`https://tu-dominio.com:19000/outputs/images/...` o `http://127.0.0.1:8000/outputs/images/...`). Esto reduce el consumo de contexto de **470.974 tokens (Base64 crudo) a solo ~25 tokens**, evitando desbordar la ventana de 131k tokens de Gemma 4.
 > * La herramienta instruye de forma estricta a Gemma 4 para que incluya `![descripción](URL)` en su respuesta final, permitiendo que Open-WebUI **dibuje la imagen directamente en pantalla dentro del chat**.
 
 ```python
@@ -843,11 +843,11 @@ from pydantic import BaseModel, Field
 class Tools:
     class Valves(BaseModel):
         GATEWAY_URL: str = Field(
-            default="https://tech-support.com.ar:19000",
-            description="URL base del endpoint en el Gateway de vLLM Suite (ej: https://tech-support.com.ar:19000 o http://127.0.0.1:8000)."
+            default="http://127.0.0.1:8000",
+            description="URL base del endpoint en el Gateway de vLLM Suite (ej: http://127.0.0.1:8000 o https://tu-dominio.com:19000)."
         )
         API_KEY: str = Field(
-            default="token-e68f0c0d4d4f4d04d70399323d411290b2bf938a81f26685602140c4f8617939",
+            default="TU_API_KEY_AQUI",
             description="Clave API autorizada en vLLM Suite Gateway."
         )
         MODEL: str = Field(

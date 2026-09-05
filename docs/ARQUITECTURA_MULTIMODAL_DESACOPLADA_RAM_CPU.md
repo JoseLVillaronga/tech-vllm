@@ -118,7 +118,7 @@ Al probar la generación agéntica inicial en Open-WebUI, el sistema arrojó:
 2. Recibe el Base64 generado internamente por `sd-server`.
 3. Lo decodifica en milisegundos y lo **persiste en disco** como archivo PNG en `outputs/images/img_<timestamp>_<uuid>.png`.
 4. Resuelve dinámicamente la URL pública respetando proxies inversos:
-   `https://tech-support.com.ar:19000/outputs/images/img_<timestamp>_<uuid>.png`.
+   `https://tu-dominio.com:19000/outputs/images/img_<timestamp>_<uuid>.png` (o `http://127.0.0.1:8000/...`).
 5. Purga la cadena Base64 gigantesca de la respuesta HTTP cuando el cliente no solicitó explícitamente `b64_json`.
 6. **Ahorro de Contexto:** El consumo de tokens en el historial conversacional se reduce de **470.974 tokens a solo ~25 tokens** (`![prompt](url)`).
 
@@ -144,11 +144,11 @@ Al probar la generación agéntica inicial en Open-WebUI, el sistema arrojó:
 * **Resultado:** Gemma 4 redacta su respuesta incorporando el bloque Markdown, y Open-WebUI **dibuja la imagen a resolución completa directamente dentro de la burbuja del chat**, sin necesidad de abrir menús desplegables ni copiar enlaces manualmente.
 
 ### 4.2. Integración Nativa Alternativa (Sin Herramientas)
-Adicionalmente, el Gateway mantiene activo el proxy en el puerto `8006` (`http://192.168.1.47:8006/v1` y `https://tech-support.com.ar:19000/v1`), compatible con el motor nativo de imágenes de Open-WebUI:
+Adicionalmente, el Gateway mantiene activo el proxy en el puerto `8006` (`http://127.0.0.1:8006/v1` o `https://tu-dominio.com:19000/v1`), compatible con el motor nativo de imágenes de Open-WebUI:
 * **Ajustes de Administración ➔ Imágenes:**
   * **Habilitar Generación de Imágenes:** Sí
   * **Motor:** `openai`
-  * **URL Base de API OpenAI:** `http://192.168.1.47:8006/v1` (o `https://tech-support.com.ar:19000/v1`)
+  * **URL Base de API OpenAI:** `http://127.0.0.1:8006/v1` (o `https://tu-dominio.com:19000/v1`)
   * **Modelo:** `stabilityai/sdxl-turbo`
 * Permite generar imágenes haciendo clic en el icono de cámara de cualquier mensaje o mediante el interruptor nativo de la barra de entrada, con visor modal y botón de descarga.
 

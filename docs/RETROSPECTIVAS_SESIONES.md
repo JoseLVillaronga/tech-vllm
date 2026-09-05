@@ -60,7 +60,7 @@ Al finalizar cada sesión de trabajo, el agente y el usuario realizan una audito
      - Pesos GGUF `sd_xl_turbo_1.0.q8_0.gguf` (3.9 GB) ejecutándose en **1 solo paso** (ADD Distilled) con **0 MB de VRAM**. Inferencia de 512x512 en 7-10 segundos en CPU.
   4. **Protección de la Ventana de Contexto (Persistencia en Disco vs. Base64) ([`gateway/tools/image_gen.py`](../gateway/tools/image_gen.py)):**
      - Diagnóstico de la falla `request (470974 tokens) exceeds available context size (131072 tokens)` originada por el Base64 crudo de 512x512 (~670.000 caracteres) inyectado en el turno del asistente.
-     - Solución estructural: El Gateway intercepta `/v1/images/generations`, guarda el PNG en `outputs/images/` y devuelve una URL HTTPS pública (`https://tech-support.com.ar:19000/outputs/images/...`).
+     - Solución estructural: El Gateway intercepta `/v1/images/generations`, guarda el PNG en `outputs/images/` y devuelve una URL HTTPS pública (`https://tu-dominio.com:19000/outputs/images/...`).
      - **Reducción de tokens: de 470.974 tokens a solo ~25 tokens**, erradicando el colapso del contexto.
   5. **Renderizado Visual Inline en Open-WebUI ([`tools/openwebui_image_tool.py`](../tools/openwebui_image_tool.py)):**
      - Identificado que la caja de depuración de Open-WebUI (`View Result from...`) no procesa HTML/Markdown por diseño de seguridad.

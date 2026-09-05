@@ -21,7 +21,7 @@ OUTPUT_DIR = Path(__file__).resolve().parent.parent.parent / "outputs" / "images
 
 def _resolve_public_base_url(request: Request) -> str:
     """
-    Resuelve la URL base pública adecuada (ej: https://tech-support.com.ar:19000 o http://127.0.0.1:8000).
+    Resuelve la URL base pública adecuada (ej: http://127.0.0.1:8000 o https://tu-dominio.com:19000).
     Respeta cabeceras de proxy inverso (X-Forwarded-Proto, X-Forwarded-Host).
     """
     forwarded_proto = request.headers.get("x-forwarded-proto")

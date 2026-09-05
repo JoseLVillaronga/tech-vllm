@@ -135,7 +135,7 @@ async def analyze_image_with_vision_backend(
     image_uri = optimize_image_resolution_for_vit(image_uri)
     vision_port = int(get_env_setting("VISION_BACKEND_PORT", "18200"))
     vision_alias = get_env_setting("VISION_ALIAS", "Qwen2.5-VL-3B-Instruct")
-    auth_key = get_env_setting("API_KEY", "token-e68f0c0d4d4f4d04d70399323d411290b2bf938a81f26685602140c4f8617939")
+    auth_key = get_env_setting("API_KEY", "")
     backend_url = f"http://127.0.0.1:{vision_port}/v1/chat/completions"
 
     instruction = prompt.strip() if prompt and prompt.strip() else DEFAULT_VISION_PROMPT

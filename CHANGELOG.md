@@ -18,7 +18,7 @@ El formato está basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1
   - Inferencia fotorrealista de 512x512 en 1 solo paso (ADD distilled) en 7 a 10 segundos.
 - **Submódulo Gateway de Imágenes y Protección de Ventana de Contexto (`gateway/tools/image_gen.py`):**
   - Intercepción de `POST /v1/images/generations` y persistencia automática en disco (`outputs/images/`).
-  - Resolución de URLs públicas HTTPS (`https://tech-support.com.ar:19000/outputs/images/...`).
+  - Resolución de URLs públicas HTTPS (`https://tu-dominio.com:19000/outputs/images/...`).
   - Purga de payloads Base64 crudos, reduciendo el consumo de tokens en el historial conversacional de **470.974 tokens a solo ~25 tokens**, erradicando el colapso de la ventana de contexto de 131k de Gemma 4.
   - Registro de telemetría de uso en MongoDB (`image`).
 - **Herramientas para Open-WebUI y Renderizado Visual Inline:**
