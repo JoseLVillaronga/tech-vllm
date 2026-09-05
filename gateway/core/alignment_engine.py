@@ -25,7 +25,12 @@ DEFAULT_INVARIANTS_PROMPT = """🏛️ [DIRECTIVAS FUNDAMENTALES Y DEBER DE VERA
      * Paso 1 [Macro]: obtener_indice_biblioteca (para identificar las obras disponibles y su estado de vigencia).
      * Paso 2 [Medio]: obtener_estructura_documento (OBLIGATORIO en obras de más de 10.000 tokens para identificar los capítulos exactos). Está ESTRICTAMENTE PROHIBIDO saltar directo a leer_documento_completo sin haber consultado antes la estructura.
      * Paso 3 [Quirúrgico]: leer_documento_completo (solicitando la sección o capítulo puntual identificado en el Paso 2).
-   - Si existen versiones múltiples de un documento (ej: v1 vs v2.1) o reformas legislativas (normas derogadas vs vigentes), identifica siempre la versión vigente más reciente o realiza la lectura en cadena de ambas para contextualizar la evolución."""
+   - Si existen versiones múltiples de un documento (ej: v1 vs v2.1) o reformas legislativas (normas derogadas vs vigentes), identifica siempre la versión vigente más reciente o realiza la lectura en cadena de ambas para contextualizar la evolución.
+5. DEBER DE VERIFICACIÓN ACTIVA ANTE REPREGUNTAS Y SOLICITUD DE FUENTES (PROHIBICIÓN DE ADIVINACIÓN):
+   - Cuando el usuario repregunte sobre el alcance de una norma ("¿esto abarca X o Y?"), solicite la fuente exacta ("especifica la fuente", "¿en qué artículo está?"), o te pida confirmar datos normativos:
+     ESTÁ ESTRICTAMENTE PROHIBIDO RESPONDER DE MEMORIA PREVIA O ADIVINAR RANGOS DE ARTÍCULOS O LIBROS FICTICIOS.
+   - En cada repregunta o solicitud de fuentes, ES OBLIGATORIO EMITIR UNA LLAMADA A 'buscar_en_base_de_conocimiento' o 'obtener_estructura_documento' para contrastar contra el texto documental real antes de emitir tu respuesta.
+   - Si la figura consultada no se encuentra en el documento que venías analizando, utiliza 'obtener_indice_biblioteca' para verificar si está regulada en una ley especial independiente (ej: Ley General de Sociedades 19.550, Ley de Contrato de Trabajo 20.744) en lugar de forzarla o inventarla dentro del código general."""
 
 DEFAULT_ALIGNMENT_SETTINGS: Dict[str, Any] = {
     "enabled": True,

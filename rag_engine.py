@@ -339,6 +339,13 @@ def search_knowledge_base(
                 final_sim += 0.35 # Fuerte impulso si la sección es el artículo
             elif re.search(art_regex, cnt[:150], re.IGNORECASE):
                 final_sim += 0.25 # Impulso si el contenido comienza con el artículo
+
+        # Boost para disposiciones generales cuando se busca definición o concepto general
+        is_definitional = bool(re.search(r"\b(?:definici[oó]n|concepto|qu[eé]\s+es|noci[oó]n)\b", query_str, re.IGNORECASE))
+        if is_definitional:
+            sec_p = item.get("section_path", "") or ""
+            if re.search(r"\b(?:disposiciones\s+generales|disposici[oó]n\s+general|parte\s+general|t[ií]tulo\s+preliminar)\b", sec_p, re.IGNORECASE):
+                final_sim += 0.06
             
         if final_sim >= min_score or len(results) < top_k:
             results.append({

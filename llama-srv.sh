@@ -65,6 +65,16 @@ THREADS="${LLAMA_THREADS:-8}"
 LOAD_MODE="${LLAMA_LOAD_MODE:-mlock}"
 AUTH_KEY="${API_KEY:-token-e68f0c0d4d4f4d04d70399323d411290b2bf938a81f26685602140c4f8617939}"
 
+# 5.1 Parámetro Opcional Multimodal Projector (Visión)
+MMPROJ_PATH="${LLAMA_MMPROJ_PATH:-}"
+MMPROJ_ARGS=()
+if [ -n "${MMPROJ_PATH}" ] && [ -f "${MMPROJ_PATH}" ]; then
+    MMPROJ_DESC="${MMPROJ_PATH}"
+    MMPROJ_ARGS=(--mmproj "${MMPROJ_PATH}")
+else
+    MMPROJ_DESC="Desactivado (Solo Texto)"
+fi
+
 echo "============================================================"
 echo "🦙 Iniciando llama-server para vLLM Suite"
 echo "============================================================"
@@ -72,6 +82,7 @@ echo "👤 Usuario Ejecutor: $(whoami) (Directorio Base: ${USER_HOME})"
 echo "📍 Binario:          ${LLAMA_BIN}"
 echo "📦 Modelo:           ${MODEL_PATH}"
 echo "🏷️ Alias:            ${ALIAS}"
+echo "👁️ Proyector Visión:  ${MMPROJ_DESC}"
 echo "🔌 Puerto Backend:   ${PORT}"
 echo "🧠 Contexto Máximo:  ${CTX_SIZE} tokens"
 echo "⚡ Batch Lógico:     ${BATCH_SIZE}"
@@ -86,6 +97,7 @@ echo "============================================================"
 exec "${LLAMA_BIN}" \
   --model "${MODEL_PATH}" \
   --alias "${ALIAS}" \
+  "${MMPROJ_ARGS[@]}" \
   --ctx-size "${CTX_SIZE}" \
   --batch-size "${BATCH_SIZE}" \
   --ubatch-size "${UBATCH_SIZE}" \

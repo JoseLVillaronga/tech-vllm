@@ -165,7 +165,8 @@ def detect_heuristic_header(line: str) -> Optional[Tuple[int, str, bool]]:
         return None
         
     clean = re.sub(r"^\*{1,3}|\*{1,3}$", "", stripped).strip()
-    clean = re.sub(r"\[([^\]]+)\]\([^\)]+\)", r"\1", clean).strip()
+    clean = re.sub(r"\[.*?\]\(.*?\)", "", clean).strip()
+    clean = re.sub(r"\[.*?\]", "", clean).strip()
     
     # Encabezados Markdown Estándar (# ... ####)
     if stripped.startswith("# "):

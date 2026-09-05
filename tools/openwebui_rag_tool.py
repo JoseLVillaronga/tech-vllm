@@ -27,7 +27,7 @@ class Tools:
             description="Clave API autorizada para consultar el servicio RAG."
         )
         DEFAULT_TOP_K: int = Field(
-            default=4,
+            default=5,
             description="Cantidad máxima de fragmentos relevantes a recuperar por búsqueda puntual."
         )
 
@@ -42,9 +42,9 @@ class Tools:
     ) -> str:
         """
         Consulta fragmentos relevantes en la base de datos documental y jurídica de Teccam en LanceDB.
-        HERRAMIENTA PRINCIPAL OBLIGATORIA: Utilízala siempre como primera opción para responder preguntas sobre leyes, artículos (ej: 'artículo 957'), definiciones, conceptos, procedimientos o jurisprudencia.
-        NO requieres llamar a 'obtener_estructura_documento' para responder una pregunta puntual; esta herramienta localiza y recupera directamente los artículos pertinentes.
-        :param consulta: Pregunta o términos de búsqueda específicos para consultar en los libros y procedimientos (ej: 'definición de contrato artículo 957', 'régimen de vacaciones LCT').
+        HERRAMIENTA PRINCIPAL RECOMENDADA: Utilízala como primer paso para responder preguntas sobre leyes, artículos (ej: 'artículo 957'), definiciones, conceptos, procedimientos o jurisprudencia.
+        Si la consulta es sobre la definición o régimen rector general de una institución (ej: 'contrato') y los resultados obtenidos corresponden a modalidades particulares o derivadas (ej: subcontratos, contratos asociativos), utiliza complementariamente 'obtener_estructura_documento' para ubicar el capítulo de Disposiciones Generales.
+        :param consulta: Pregunta o términos de búsqueda específicos para consultar en los libros y procedimientos (ej: 'definición de contrato', 'artículo 957', 'régimen de vacaciones LCT').
         :param dominios: Opcional: Tema o temas a filtrar separados por comas. Dejar vacío para buscar en toda la base.
         :param doc_id: Opcional: ID de la obra (ej: '6a976eb89e1c2342dd2e5b34' para CCCN) obtenido de 'obtener_indice_biblioteca' para acotar la búsqueda exclusivamente a ese documento.
         """
@@ -102,7 +102,9 @@ class Tools:
             return (
                 f"[DOCUMENTOS ENCONTRADOS EN LANCEDB ({results_count} fragmentos recuperados en {data.get('latency_ms', 0)} ms)]:\n\n"
                 f"{context}\n\n"
-                f"Por favor responde fundamentando con estos fragmentos y cita las fuentes/artículos relevantes."
+                f"Si estos fragmentos contienen la definición o norma rectora general que buscas, responde fundamentando con ellos y cita las fuentes/artículos. "
+                f"Si por el contrario los fragmentos corresponden a modalidades derivadas o contratos particulares y requieres la definición rectora de fondo, "
+                f"consulta el índice con 'obtener_estructura_documento(doc_id=\"...\", filtro=\"disposiciones generales\")'."
             )
         except Exception as e:
             return f"Error de conexión con el Gateway RAG ({url}): {str(e)}"
@@ -169,10 +171,9 @@ class Tools:
     ) -> str:
         """
         Obtiene el 'GPS Documental' (Mapa y Árbol de Estructura de Secciones) de una obra, libro o código extenso (ej: Código Civil, Constitución Nacional, manuales técnicos).
-        Úsalo para conocer los capítulos, títulos o partes principales de una obra antes de llamar a 'leer_documento_completo'.
-        IMPORTANTE: Para responder preguntas puntuales (ej: 'definición de contrato', 'artículo 957'), NO uses esta herramienta; utiliza directamente 'buscar_en_base_de_conocimiento(consulta="...", doc_id="...")'.
+        Úsalo para conocer los capítulos, títulos o partes principales de una obra, o cuando la búsqueda inicial devuelva subtipos específicos y necesites ubicar el capítulo rector (ej: 'Disposiciones generales', 'Parte general').
         :param doc_id: ID único del documento (ej: '6a976eb89e1c2342dd2e5b34' para CCCN) o título de la obra.
-        :param filtro: Opcional: Palabra clave para filtrar capítulos o títulos específicos (ej: 'contrato', 'fideicomiso', 'familia', 'sociedades').
+        :param filtro: Opcional: Palabra clave para filtrar capítulos o títulos específicos (ej: 'contrato', 'disposiciones generales', 'fideicomiso', 'familia', 'sociedades').
         """
         base_url = str(self.valves.GATEWAY_URL).rstrip("/")
         if not base_url.endswith("/api/tools/rag-structure") and not base_url.endswith("/v1/rag/structure"):
