@@ -1,5 +1,6 @@
 import os
 import sys
+import io
 import json
 import base64
 import mimetypes
@@ -73,6 +74,50 @@ async def _prepare_image_data_uri_async(image_input: str) -> Optional[str]:
     return None
 
 
+def optimize_image_resolution_for_vit(data_uri: str, min_dimension: int = 512) -> str:
+    """
+    Normaliza y reescala automáticamente imágenes de baja resolución o recortes pequeños
+    para el Vision Transformer (ViT) de Qwen2.5-VL.
+    Si min(ancho, alto) < 512, reescala preservando el aspect ratio con filtro Lanczos.
+    Esto previene que el ViT genere un número insuficiente de tokens espaciales (<100)
+    y falle al transcribir textos y números finos.
+    """
+    if not data_uri or not isinstance(data_uri, str) or not data_uri.startswith("data:image/"):
+        return data_uri
+
+    try:
+        from PIL import Image
+
+        parts = data_uri.split(";base64,", 1)
+        if len(parts) != 2:
+            return data_uri
+
+        header, b64_payload = parts
+        raw_bytes = base64.b64decode(b64_payload)
+        img = Image.open(io.BytesIO(raw_bytes))
+        w, h = img.size
+
+        if min(w, h) < min_dimension:
+            scale = min_dimension / min(w, h)
+            new_w = max(int(w * scale), 1)
+            new_h = max(int(h * scale), 1)
+
+            if img.mode not in ("RGB", "L"):
+                img = img.convert("RGB")
+
+            resized = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
+            buf = io.BytesIO()
+            resized.save(buf, format="PNG")
+            new_b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
+            print(f"🔍 Gateway Vision Bridge: Imagen reescalada de {w}x{h} a {new_w}x{new_h} (optimización ViT tokens)", file=sys.stderr, flush=True)
+            return f"data:image/png;base64,{new_b64}"
+
+    except Exception as err:
+        print(f"⚠️ Gateway Vision Bridge: Error al verificar/reescalar resolución de imagen: {err}", file=sys.stderr, flush=True)
+
+    return data_uri
+
+
 async def analyze_image_with_vision_backend(
     image_uri: str,
     prompt: Optional[str] = None,
@@ -81,6 +126,7 @@ async def analyze_image_with_vision_backend(
     """
     Realiza la llamada multimodal a la instancia de visión de llama-server en RAM (:18200).
     """
+    image_uri = optimize_image_resolution_for_vit(image_uri)
     vision_port = int(get_env_setting("VISION_BACKEND_PORT", "18200"))
     vision_alias = get_env_setting("VISION_ALIAS", "Qwen2.5-VL-3B-Instruct")
     auth_key = get_env_setting("API_KEY", "token-e68f0c0d4d4f4d04d70399323d411290b2bf938a81f26685602140c4f8617939")
