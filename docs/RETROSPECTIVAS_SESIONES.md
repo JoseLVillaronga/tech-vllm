@@ -27,6 +27,7 @@ Al finalizar cada sesión de trabajo, el agente y el usuario realizan una audito
 ## 📈 Historial Consolidado de Sesiones
 
 | Fecha | ID Sesión | Turnos Usuario | Llamadas Agénticas (Tools) | Commits Git | Invariantes Violados | RVI Máx | Blast Radius | Estado Global |
+| **2026-09-05 (Mañana - Estándar Dorado Gemma 4 12B en RTX 3090, Fix Parser OCR y Blindaje 5to Invariante)** | `bba5ef3a` | 6 | ~35 | 2 | **0** | 1/10 | Mínimo (Quirúrgico) | 🟢 **100% Exitoso** |
 | **2026-09-04 (Noche - Calibración Gemma 4 12B, Boost Canónico RAG, Presets & 5to Invariante MEA)** | `bba5ef3a` | 14 | ~75 | 5 | **0** | 1/10 | Mínimo (Quirúrgico) | 🟢 **100% Exitoso** |
 | **2026-09-03 (Tarde - Re-chunking LanceDB, GPS Anti-Overflow & Búsqueda RAG)** | `bba5ef3a` | 8 | ~50 | 4 | **0** | 2/10 | Mínimo (Quirúrgico) | 🟢 **100% Exitoso** |
 | **2026-09-03 (Mañana - Motor Llama.cpp MoE, Exclusión Mutua & Control GUI)** | `bba5ef3a` | 4 | ~45 | 1 | **0** | 1/10 | Mínimo (Modular) | 🟢 **100% Exitoso** |
@@ -44,45 +45,69 @@ Al finalizar cada sesión de trabajo, el agente y el usuario realizan una audito
 
 ## 📝 Fichas Detalladas por Sesión
 
+### 🔹 Sesión: 2026-09-05 Mañana (`bba5ef3a-c9c3-41a0-9e67-95058f9b5fb1`) - Estándar Dorado Gemma 4 12B en RTX 3090, Fix Parser OCR y Blindaje 5to Invariante
+* **Hitos Principales:**
+  1. **Diagnóstico Forense de OCR Soldado y Falsos Límites de Palabra (`\b`):**
+     - Identificado que en textos legales con OCR (como la Constitución Nacional), artículos como `Artículo 14Todos...` o `Artículo 10En...` rompían la expresión regular de encabezados por falta de límite de palabra (`\b` no existe entre un dígito y una letra).
+     - Esto causaba que el Artículo 14 fuera engullido dentro del Artículo 9, y que el Artículo 14 bis fuera erróneamente rotulado como Artículo 14.
+  2. **Resolución Estructural en el Chunker ([`app_rag_sync.py`](../app_rag_sync.py) - Commit `7e3388d`):**
+     - Normalización léxica previa que desarticula números pegados a palabras (`Artículo 14Todos` $\rightarrow$ `Artículo 14 Todos`).
+     - Detección de encabezados Nivel 4 robustecida sin dependencia de `\b`, con soporte formal para sufijos normativos (`bis`, `ter`, `quater`, etc.) y subtítulos.
+     - Re-indexación de la Constitución en **168 fragmentos** con secciones independientes y limpias (`Artículo 10`, `Artículo 14`, `Artículo 14 bis`, `Artículo 15`).
+  3. **Boosting Léxico Discriminado en LanceDB ([`rag_engine.py`](../rag_engine.py) - Commit `7e3388d`):**
+     - Diferenciación estricta entre artículos base y derivados: una búsqueda de `"Artículo 14"` no impulsa erróneamente `"Artículo 14 bis"`, y viceversa.
+     - Pruebas directas: Artículos 10, 14, 14 bis, 15 y Preámbulo recuperados en el **Puesto #1 con 119% de score y latencias de 70 a 90 ms**.
+  4. **Blindaje Ético Anti-Simulación ([`gateway/core/alignment_engine.py`](../gateway/core/alignment_engine.py) y [`static/js/dashboard_alignment.js`](../static/js/dashboard_alignment.js)):**
+     - 5to Invariante extendido a toda solicitud directa de normas (prohibición de responder de memoria).
+     - Prohibición expresa de "simulación mental en texto" (`[En proceso de recuperación...]`).
+     - Validación en Open-WebUI: **7 de 7 consultas (100%)** ejecutaron llamadas técnicas a herramientas sin alucinación alguna.
+  5. **Declaración del Estándar Dorado de Producción ([`PERFIL_PRODUCCION_GEMMA4_12B_RAG_OFICINA.md`](PERFIL_PRODUCCION_GEMMA4_12B_RAG_OFICINA.md)):**
+     - Formalizado el documento de referencia de hardware (RTX 3090 24GB + 64GB RAM) que consagra a **Gemma 4 12B IT denso bajo `llama.cpp`** (`131k ctx`, `batch 4096`, `ubatch 1024`, `mlock`, `reasoning off`) como la mejor opción de producción para oficinas con RAG intensivo (~2.300 t/s prefill, ~63 t/s generación, 17.7 GB VRAM estables con 6.3 GB de margen).
+* **Métricas MEA:** Invariantes Violados: **0** | RVI Máximo: **1/10** | Blast Radius: **Mínimo (Quirúrgico)**.
+
+---
+
 ### 🔹 Sesión: 2026-09-04 Noche (`bba5ef3a-c9c3-41a0-9e67-95058f9b5fb1`) - Calibración Gemma 4 12B, Boost Canónico RAG, Presets & 5to Invariante MEA
 * **Hitos Principales:**
   1. **Diagnóstico Forense de Visión en Gemma 4 bajo `llama.cpp`:**
      - Identificado que en `llama.cpp` la visión requiere proyector multimodal (`--mmproj`). Se integró y probó `mmproj-gemma-4-12B-it-f16.gguf` (116 MB).
      - Identificado que la arquitectura de visión unificada `gemma4uv` es experimental upstream en `llama.cpp` (PRs #24077/#24082) y sufre de desalineación en atención no causal, recomendándose su uso para visión en `vLLM` nativo.
      - Calibrado Gemma 4 12B IT para texto puro y RAG de alta velocidad: VRAM estabilizada en 17.7 GB con 131k de contexto, 60 t/s de generación sostenida y 2.300 t/s de prefill en RTX 3090.
-  2. **Descontaminación de Citas en Encabezados Jerárquicos ([`app_rag_sync.py`](file:///home/jose/vllm/app_rag_sync.py)):**
+  2. **Descontaminación de Citas en Encabezados Jerárquicos ([`app_rag_sync.py`](../app_rag_sync.py)):**
      - Eliminación previa de enlaces `[...](...)` y corchetes doctrinarios antes de evaluar longitud de títulos en `detect_heuristic_header`.
      - Re-indexación de CCCN en 3.291 chunks, recuperando el título padre `TITULO II Contratos en general` en la ruta jerárquica del Artículo 957.
-  3. **Re-ranking Canónico para Figuras Rectoras ([`rag_engine.py`](file:///home/jose/vllm/rag_engine.py)):**
+  3. **Re-ranking Canónico para Figuras Rectoras ([`rag_engine.py`](../rag_engine.py)):**
      - Implementado boosting definitorio (+0.06 de similitud) para fragmentos de *Disposiciones Generales*, *Parte General* o *Título Preliminar* ante consultas definitorias (*"definición"*, *"concepto"*, *"qué es"*).
      - Elevado el Artículo 957 (Definición de Contrato) del puesto #10 al **Puesto #1 absoluto (88.41% de coincidencia)**, resolviendo en una sola llamada de 95 ms.
-  4. **Implementación del 5to Invariante Operativo MEA ([`gateway/core/alignment_engine.py`](file:///home/jose/vllm/gateway/core/alignment_engine.py)):**
+  4. **Implementación del 5to Invariante Operativo MEA ([`gateway/core/alignment_engine.py`](../gateway/core/alignment_engine.py)):**
      - Neutralizado el sesgo de inercia y defensividad complaciente (*sycophancy*) ante repreguntas.
      - Mandato estricto: ante solicitudes de fuentes, artículos o alcance normativo (*"¿esto abarca X?", "especifica la fuente"*), queda terminantemente prohibido responder de memoria; es obligatorio emitir llamada a la herramienta de búsqueda documental.
      - Verificado en campo: Gemma 4 frenó la adivinación y consultó la **Ley General de Sociedades 19.550**, citando con 100% de exactitud los Arts. 56, 57, 147 y la inoponibilidad jurídica.
-  5. **Sincronización Canónica en Dashboard GUI ([`static/js/dashboard_alignment.js`](file:///home/jose/vllm/static/js/dashboard_alignment.js)):**
+  5. **Sincronización Canónica en Dashboard GUI ([`static/js/dashboard_alignment.js`](../static/js/dashboard_alignment.js)):**
      - Sincronizada la constante `CANONICAL_INVARIANTS_PROMPT` con los 5 invariantes operativos completos para que el botón *"Restaurar Invariantes Canónicos"* sea 100% resiliente.
-  6. **Mapeo de Variables `LLAMA_*` y Botón de Preset Rápido ([`templates/tabs/tab_config.html`](file:///home/jose/vllm/templates/tabs/tab_config.html) y [`static/js/dashboard_core.js`](file:///home/jose/vllm/static/js/dashboard_core.js)):**
+  6. **Mapeo de Variables `LLAMA_*` y Botón de Preset Rápido ([`templates/tabs/tab_config.html`](../templates/tabs/tab_config.html) y [`static/js/dashboard_core.js`](../static/js/dashboard_core.js)):**
      - Inventario exhaustivo de 14 variables de entorno documentadas.
      - Botón `⚡ Gemma 4 12B (Denso / VRAM Baja)` en el Dashboard para alternar de inmediato entre Qwen 35B MoE y Gemma 4 12B Denso.
      - Incorporado campo editable `LLAMA_DIR` respetando el 4to Invariante de portabilidad.
-  7. **Análisis de Concurrencia de Oficina (5 Personas) y Riesgo de Fragmentación ([`docs/INTEGRACION_LLAMACPP_Y_QWEN_MOE.md`](file:///home/jose/vllm/docs/INTEGRACION_LLAMACPP_Y_QWEN_MOE.md)):**
+  7. **Análisis de Concurrencia de Oficina (5 Personas) y Riesgo de Fragmentación ([`INTEGRACION_LLAMACPP_Y_QWEN_MOE.md`](INTEGRACION_LLAMACPP_Y_QWEN_MOE.md)):**
      - Evaluación técnica de `--parallel 1` (cola FIFO) vs `--parallel N` (slots rígidos).
      - Determinación canónica por Ley 2 (causa raíz / prevención de fallos en cadena): mantener `--parallel 1` para preservar el 100% de los 131k tokens íntegros para cualquier consulta RAG pesada sin riesgo de truncamiento.
   8. **Validación de Sensibilidad Ética:**
      - Verificada respuesta empática, rigurosa y orientadora ante consultas sobre delitos contra la integridad sexual (Código Penal Art. 119), orientando hacia asistencia letrada y psicológica profesional.
 * **Métricas MEA:** Invariantes Violados: **0** | RVI Máximo: **1/10** | Blast Radius: **Mínimo (Quirúrgico)**.
 
+---
+
 ### 🔹 Sesión: 2026-09-03 Tarde (`bba5ef3a-c9c3-41a0-9e67-95058f9b5fb1`) - Re-chunking Jerárquico en LanceDB, GPS Anti-Desbordamiento y Búsqueda RAG Quirúrgica
 * **Hitos Principales:**
-  1. **Aceleración de Ingesta (Prefill) con `--ubatch-size 1024` ([Commit `d78a01d`](file:///home/jose/vllm/llama-srv.sh)):**
+  1. **Aceleración de Ingesta (Prefill) con `--ubatch-size 1024` ([Commit `d78a01d`](../llama-srv.sh)):**
      - Configuración de `LLAMA_UBATCH_SIZE=1024` en `.env` y `llama-srv.sh` para acelerar el procesamiento de contexto masivo en RTX 3090.
      - Medición en caliente: VRAM subió de 18.6 GB a 19.17 GB (solo ~570 MB temporales), dejando ~5.0 GB libres y alcanzando 54.7 t/s.
      - Controles reactivos integrados en Dashboard (`tab_config.html` y `dashboard_core.js`).
   2. **Diagnóstico Forense de LanceDB y Causas Raíz Estructurales:**
      - Identificado colapso en CCCN (1 hiper-chunk de 425k tokens en 1 sección) debido a pseudo-tablas continuas de OCR con 2.3M caracteres.
      - Identificada miopía de encabezados en obras sin `# ` como *El Príncipe* (1 sección para 26 capítulos) y *DNU 70/2023*.
-  3. **Reestructuración del Chunking Jerárquico ([`app_rag_sync.py`](file:///home/jose/vllm/app_rag_sync.py) - [Commit `f859572`](file:///home/jose/vllm/app_rag_sync.py)):**
+  3. **Reestructuración del Chunking Jerárquico ([`app_rag_sync.py`](../app_rag_sync.py) - [Commit `f859572`](../app_rag_sync.py)):**
      - Función `unpack_pseudo_tables`: desarticula pseudo-tablas masivas de OCR (>1.500 chars) restituyendo saltos de línea estructurales.
      - Función `detect_heuristic_header`: detección multinivel de títulos (Libros, Títulos, Capítulos, Artículos y negritas).
      - Subdivisión acotada (*Bounded Chunks*): garantiza que ningún fragmento supere `max_chars` (1.100 caracteres ~ 220 tokens).
@@ -91,11 +116,11 @@ Al finalizar cada sesión de trabajo, el agente y el usuario realizan una audito
      - Re-indexación El Príncipe: pasó de 1 sección a **27 secciones (26 capítulos)**.
      - Re-indexación DNU 70/2023: pasó de 2 secciones a **419 secciones**.
      - Cero regresión en Ley 20.744 (148 chunks, 63 secciones intactas).
-  4. **Protección Anti-Desbordamiento en GPS Documental ([`rag_engine.py`](file:///home/jose/vllm/rag_engine.py) - [Commit `3d19042`](file:///home/jose/vllm/rag_engine.py)):**
+  4. **Protección Anti-Desbordamiento en GPS Documental ([`rag_engine.py`](../rag_engine.py) - [Commit `3d19042`](../rag_engine.py)):**
      - Límite de seguridad `MAX_GPS_ROWS = 50` con advertencia de granularidad, reduciendo el payload de 667 KB a 11.9 KB (-98.3% tokens).
      - Soporte para parámetro `filtro` opcional en `get_document_structure(doc_id, filtro=...)` para acotamiento temático.
-     - Afinación de docstrings en [`tools/openwebui_rag_tool.py`](file:///home/jose/vllm/tools/openwebui_rag_tool.py) y endpoints del Gateway.
-  5. **Búsqueda Flexible por Tema ([`rag_engine.py`](file:///home/jose/vllm/rag_engine.py) - [Commit `e0ecbd8`](file:///home/jose/vllm/rag_engine.py)):**
+     - Afinación de docstrings en [`tools/openwebui_rag_tool.py`](../tools/openwebui_rag_tool.py) y endpoints del Gateway.
+  5. **Búsqueda Flexible por Tema ([`rag_engine.py`](../rag_engine.py) - [Commit `e0ecbd8`](../rag_engine.py)):**
      - Cláusula `doc_topic LIKE '%...%'` en LanceDB para que consultas con `dominios="Derecho"` coincidan directamente con `"Derecho Argentino"`.
   6. **Validación Empírica en Open-WebUI:**
      - Consulta: *"Busca en la documentacion definicion de contrato"*.

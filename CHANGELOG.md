@@ -3,6 +3,21 @@
 Todos los cambios notables en este proyecto serán documentados en este archivo.
 El formato está basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/).
 
+## [2.5.1] - 2026-09-05
+
+### Added
+- **Perfil de Producción Canónico para Oficina con RAG Intensivo (`docs/PERFIL_PRODUCCION_GEMMA4_12B_RAG_OFICINA.md`):**
+  - Consagrado el estándar dorado para hardware RTX 3090 (24 GB VRAM) + 64 GB RAM utilizando Gemma 4 12B IT Denso bajo `llama.cpp` (`131k ctx`, `batch 4096`, `ubatch 1024`, `mlock`, `reasoning off`). Rinde 2.300-2.450 t/s de prefill y ~63 t/s de generación con 17.7 GB de VRAM estables.
+- **Normalización de OCR Soldado en Ingesta (`app_rag_sync.py`):**
+  - Desarticulación léxica de números de artículos pegados a la primera palabra (`Artículo 14Todos` $\rightarrow$ `Artículo 14 Todos`).
+- **Soporte de Sufijos Normativos en Parser Jerárquico (`app_rag_sync.py` y `rag_engine.py`):**
+  - Detección precisa de sufijos legales (`bis`, `ter`, `quater`, etc.) en encabezados y boosting discriminado en LanceDB para evitar solapamientos indebidos.
+- **Blindaje Anti-Simulación en 5to Invariante MEA (`gateway/core/alignment_engine.py`):**
+  - Prohibición estricta de simulación en texto (`[En proceso de recuperación...]`) y obligatoriedad de tool-call en cualquier solicitud de normas.
+
+### Fixed
+- Error de omisión y desplazamiento de artículos en la Constitución Nacional donde el Artículo 14 quedaba absorbido en el Artículo 9 por falta de límite de palabra (`\b`). Reindexado a 168 fragmentos limpios.
+
 ## [2.5.0] - 2026-09-04
 
 ### Added
