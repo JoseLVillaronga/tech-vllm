@@ -27,7 +27,7 @@ Al finalizar cada sesión de trabajo, el agente y el usuario realizan una audito
 ## 📈 Historial Consolidado de Sesiones
 
 | Fecha | ID Sesión | Turnos Usuario | Llamadas Agénticas (Tools) | Commits Git | Invariantes Violados | RVI Máx | Blast Radius | Estado Global |
-| **2026-09-04 (Noche - Calibración Gemma 4 12B, Boost Canónico RAG & 5to Invariante MEA)** | `bba5ef3a` | 7 | ~40 | 2 | **0** | 1/10 | Mínimo (Quirúrgico) | 🟢 **100% Exitoso** |
+| **2026-09-04 (Noche - Calibración Gemma 4 12B, Boost Canónico RAG, Presets & 5to Invariante MEA)** | `bba5ef3a` | 14 | ~75 | 5 | **0** | 1/10 | Mínimo (Quirúrgico) | 🟢 **100% Exitoso** |
 | **2026-09-03 (Tarde - Re-chunking LanceDB, GPS Anti-Overflow & Búsqueda RAG)** | `bba5ef3a` | 8 | ~50 | 4 | **0** | 2/10 | Mínimo (Quirúrgico) | 🟢 **100% Exitoso** |
 | **2026-09-03 (Mañana - Motor Llama.cpp MoE, Exclusión Mutua & Control GUI)** | `bba5ef3a` | 4 | ~45 | 1 | **0** | 1/10 | Mínimo (Modular) | 🟢 **100% Exitoso** |
 | **2026-09-02 (Noche - Freno de Mano RAG & Secuencia Embudo)** | `bba5ef3a` | 6 | ~30 | 2 | **0** | 1/10 | Mínimo (Quirúrgico) | 🟢 **100% Exitoso** |
@@ -44,7 +44,7 @@ Al finalizar cada sesión de trabajo, el agente y el usuario realizan una audito
 
 ## 📝 Fichas Detalladas por Sesión
 
-### 🔹 Sesión: 2026-09-04 Noche (`bba5ef3a-c9c3-41a0-9e67-95058f9b5fb1`) - Calibración Gemma 4 12B, Boost Canónico RAG y 5to Invariante MEA
+### 🔹 Sesión: 2026-09-04 Noche (`bba5ef3a-c9c3-41a0-9e67-95058f9b5fb1`) - Calibración Gemma 4 12B, Boost Canónico RAG, Presets & 5to Invariante MEA
 * **Hitos Principales:**
   1. **Diagnóstico Forense de Visión en Gemma 4 bajo `llama.cpp`:**
      - Identificado que en `llama.cpp` la visión requiere proyector multimodal (`--mmproj`). Se integró y probó `mmproj-gemma-4-12B-it-f16.gguf` (116 MB).
@@ -60,7 +60,16 @@ Al finalizar cada sesión de trabajo, el agente y el usuario realizan una audito
      - Neutralizado el sesgo de inercia y defensividad complaciente (*sycophancy*) ante repreguntas.
      - Mandato estricto: ante solicitudes de fuentes, artículos o alcance normativo (*"¿esto abarca X?", "especifica la fuente"*), queda terminantemente prohibido responder de memoria; es obligatorio emitir llamada a la herramienta de búsqueda documental.
      - Verificado en campo: Gemma 4 frenó la adivinación y consultó la **Ley General de Sociedades 19.550**, citando con 100% de exactitud los Arts. 56, 57, 147 y la inoponibilidad jurídica.
-  5. **Validación de Sensibilidad Ética:**
+  5. **Sincronización Canónica en Dashboard GUI ([`static/js/dashboard_alignment.js`](file:///home/jose/vllm/static/js/dashboard_alignment.js)):**
+     - Sincronizada la constante `CANONICAL_INVARIANTS_PROMPT` con los 5 invariantes operativos completos para que el botón *"Restaurar Invariantes Canónicos"* sea 100% resiliente.
+  6. **Mapeo de Variables `LLAMA_*` y Botón de Preset Rápido ([`templates/tabs/tab_config.html`](file:///home/jose/vllm/templates/tabs/tab_config.html) y [`static/js/dashboard_core.js`](file:///home/jose/vllm/static/js/dashboard_core.js)):**
+     - Inventario exhaustivo de 14 variables de entorno documentadas.
+     - Botón `⚡ Gemma 4 12B (Denso / VRAM Baja)` en el Dashboard para alternar de inmediato entre Qwen 35B MoE y Gemma 4 12B Denso.
+     - Incorporado campo editable `LLAMA_DIR` respetando el 4to Invariante de portabilidad.
+  7. **Análisis de Concurrencia de Oficina (5 Personas) y Riesgo de Fragmentación ([`docs/INTEGRACION_LLAMACPP_Y_QWEN_MOE.md`](file:///home/jose/vllm/docs/INTEGRACION_LLAMACPP_Y_QWEN_MOE.md)):**
+     - Evaluación técnica de `--parallel 1` (cola FIFO) vs `--parallel N` (slots rígidos).
+     - Determinación canónica por Ley 2 (causa raíz / prevención de fallos en cadena): mantener `--parallel 1` para preservar el 100% de los 131k tokens íntegros para cualquier consulta RAG pesada sin riesgo de truncamiento.
+  8. **Validación de Sensibilidad Ética:**
      - Verificada respuesta empática, rigurosa y orientadora ante consultas sobre delitos contra la integridad sexual (Código Penal Art. 119), orientando hacia asistencia letrada y psicológica profesional.
 * **Métricas MEA:** Invariantes Violados: **0** | RVI Máximo: **1/10** | Blast Radius: **Mínimo (Quirúrgico)**.
 

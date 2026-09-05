@@ -13,6 +13,13 @@ El formato está basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1
   - Elevó al Artículo 957 (Definición de Contrato) del Puesto #10 al Puesto #1 indiscutido (88.41% de similitud) en la primera llamada de búsqueda semántica.
 - **Soporte de Proyector Multimodal Opt-in en `llama-srv.sh`:**
   - Lógica configurable para proyectores multimodales `--mmproj` respetando `LLAMA_MMPROJ_PATH`. Por defecto deshabilitado para garantizar inferencia de texto pura sin interferencias de tensores visuales en modelos densos.
+- **Botón de Configuración Rápida para Gemma 4 12B en Dashboard Web (`tab_config.html` y `dashboard_core.js`):**
+  - Botón de 1 clic `⚡ Gemma 4 12B (Denso / VRAM Baja)` que carga automáticamente los parámetros óptimos medidos en campo (`131k ctx`, `batch 4096`, `ubatch 1024`, `gpu 999`, `moe 0`, `reasoning off`, `mlock`, `threads 8`).
+  - Incorporado campo editable `LLAMA_DIR` en la interfaz para máxima portabilidad (respetando el 4to Invariante MEA).
+- **Sincronización Canónica de Invariantes MEA en la GUI (`dashboard_alignment.js`):**
+  - Sincronizada la constante `CANONICAL_INVARIANTS_PROMPT` con los 5 invariantes operativos completos, garantizando que el botón *"Restaurar Invariantes Canónicos"* restablezca el 5to invariante (Grounding y Humildad Epistémica) de forma resiliente.
+- **Análisis de Concurrencia Multi-Usuario en Oficina (`docs/INTEGRACION_LLAMACPP_Y_QWEN_MOE.md`):**
+  - Documentada la comparativa de riesgo entre *Multi-Slot Estático (`--parallel N`)* vs *Cola Serializada Dinámica (FIFO por defecto, `--parallel 1`)*, ratificando la cola FIFO como diseño canónico para preservar el 100% de los 131.072 tokens por consulta sin riesgo de truncamiento ni colapso de contexto.
 
 ### Fixed
 - **Descontaminación de Citas en Encabezados Jerárquicos (`app_rag_sync.py`):**
