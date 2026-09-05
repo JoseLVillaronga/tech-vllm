@@ -82,6 +82,16 @@ Este subsistema de inferencia de alto rendimiento utiliza el binario de servidor
   ```
   Esto permite que el script funcione de forma 100% portable y agnóstica en cualquier máquina o usuario donde se clone el repositorio.
 
+### E. Concurrencia Multi-Usuario y Peligro de Fragmentación de Contexto (Slots vs. Cola FIFO)
+* **Escenario de Oficina (ej. 5 usuarios concurrentes):**  
+  En `llama-server`, la concurrencia multi-usuario puede gestionarse mediante dos estrategias arquitectónicas:
+  1. **Multi-Slot Estático (`--parallel N` / `-np N`):** Divide el buffer total de contexto asignado en VRAM (`LLAMA_CTX_SIZE`) en $N$ ranuras (slots) rígidas e independientes (ej. con 131.072 tokens y `-np 4`, cada usuario queda rígidamente limitado a un techo de ~32.768 tokens).
+  2. **Cola Serializada Dinámica (FIFO por defecto, `--parallel 1`):** Cada consulta entrante dispone de forma dinámica del **100% de la ventana de contexto completa** (131.072 tokens). Si dos usuarios envían en la misma fracción de segundo, el segundo espera en la cola HTTP los ~2 a 3 segundos que tarda en responder el primero.
+* **Evaluación de Riesgo Técnico (Ley 2 - Prevención de Fallos en Cadena):**  
+  Dividir el contexto en ranuras estáticas introduce un **riesgo arquitectónico grave en entornos de RAG intensivo**: si dos o más usuarios ejecutan al mismo tiempo consultas pesadas sobre cuerpos normativos (como el Código Civil y Comercial, leyes societarias o expedientes complejos), el techo de 32K tokens por slot puede provocar truncamiento de fragmentos críticos o errores en cadena por desbordamiento de contexto.
+* **Decisión de Diseño Canónica:**  
+  Se mantiene **`--parallel 1` como configuración predeterminada de producción**. Para una oficina de 5 personas humanas, una espera de 2 a 3 segundos en picos estadísticos de colisión es imperceptible frente al tiempo de lectura y análisis humano, garantizando que el 100% del contexto (131.072 tokens) permanezca siempre disponible sin riesgo de colapso para cualquier consulta profunda.
+
 ---
 
 ## 📊 4. Métricas de Rendimiento en Producción (RTX 3090)
