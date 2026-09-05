@@ -2,7 +2,7 @@
 Módulo core de seguridad, red y autenticación del Gateway.
 """
 from gateway.core.ip_resolver import resolve_client_ip, TRUSTED_PROXIES
-from gateway.core.fail2ban import register_failed_attempt
+from gateway.core.fail2ban import register_failed_attempt, should_exclude_loopback
 from gateway.core.ip_rules import sync_ip_rules_loop, is_ip_allowed, check_ip_access
 from gateway.core.auth import get_db, get_key_doc, validate_token_doc, extract_token, MASTER_KEY
 from gateway.core.alignment_engine import (
@@ -17,6 +17,7 @@ __all__ = [
     "resolve_client_ip",
     "TRUSTED_PROXIES",
     "register_failed_attempt",
+    "should_exclude_loopback",
     "sync_ip_rules_loop",
     "is_ip_allowed",
     "check_ip_access",

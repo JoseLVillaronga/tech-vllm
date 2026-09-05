@@ -2,6 +2,7 @@ import os
 import time
 import sys
 import asyncio
+import ipaddress
 from datetime import datetime, timedelta
 from config import get_mongo_uri, MONGO_DB
 from pymongo import MongoClient
@@ -34,6 +35,14 @@ def get_fail2ban_config() -> tuple[int, int, int]:
     return max_failures, window_seconds, ban_hours
 
 
+def should_exclude_loopback() -> bool:
+    """
+    Indica si las direcciones loopback (127.0.0.0/8, ::1) están exentas de auto-baneo por Fail2ban.
+    Por defecto es True para prevenir auto-bloqueos accidentales (Self-DoS).
+    """
+    return os.getenv("FAIL2BAN_EXCLUDE_LOOPBACK", "true").strip().lower() in ["true", "1", "yes"]
+
+
 def get_db():
     client = MongoClient(get_mongo_uri(), serverSelectionTimeoutMS=1000)
     return client[MONGO_DB]
@@ -44,6 +53,13 @@ async def register_failed_attempt(client_ip: str):
     Registra un intento de acceso no autorizado y aplica baneo automático
     en MongoDB si se acumulan max_failures en la ventana de window_seconds.
     """
+    if should_exclude_loopback():
+        try:
+            if ipaddress.ip_address(client_ip).is_loopback:
+                return
+        except ValueError:
+            pass
+
     max_failures, window_seconds, ban_hours = get_fail2ban_config()
     now = time.time()
     async with failed_attempts_lock:

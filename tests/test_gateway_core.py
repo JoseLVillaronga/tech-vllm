@@ -194,6 +194,33 @@ class TestGatewayCore(unittest.TestCase):
         # Limpiar
         f2b.failed_attempts.pop(client_ip, None)
 
+    def test_fail2ban_loopback_exclusion(self):
+        import os
+        import asyncio
+        import gateway.core.fail2ban as f2b
+
+        # 1. Por defecto o con FAIL2BAN_EXCLUDE_LOOPBACK="true", loopback no se registra
+        os.environ["FAIL2BAN_EXCLUDE_LOOPBACK"] = "true"
+        self.assertTrue(f2b.should_exclude_loopback())
+
+        loopback_ip = "127.0.0.1"
+        f2b.failed_attempts.pop(loopback_ip, None)
+
+        asyncio.run(f2b.register_failed_attempt(loopback_ip))
+        self.assertNotIn(loopback_ip, f2b.failed_attempts)
+
+        # 2. Con FAIL2BAN_EXCLUDE_LOOPBACK="false" (modo estricto), loopback sí se registra
+        os.environ["FAIL2BAN_EXCLUDE_LOOPBACK"] = "false"
+        self.assertFalse(f2b.should_exclude_loopback())
+
+        asyncio.run(f2b.register_failed_attempt(loopback_ip))
+        self.assertIn(loopback_ip, f2b.failed_attempts)
+        self.assertEqual(len(f2b.failed_attempts[loopback_ip]), 1)
+
+        # Limpiar
+        f2b.failed_attempts.pop(loopback_ip, None)
+        os.environ["FAIL2BAN_EXCLUDE_LOOPBACK"] = "true"
+
 
 if __name__ == "__main__":
     unittest.main()
