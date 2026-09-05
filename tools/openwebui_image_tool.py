@@ -1,12 +1,12 @@
 """
 title: Generación de Imágenes Agéntica (SDXL-Turbo en RAM/CPU)
-author: Jose Luis Villaronga
+author: Jose Luis Villaronga (motor stable-diffusion.cpp por leejet & GGML)
 author_url: https://github.com/JoseLVillaronga/tech-vllm
-git_url: https://github.com/JoseLVillaronga/tech-vllm
-description: Genera y renderiza imágenes artísticas, técnicas o fotorrealistas mediante el microservicio desacoplado de difusión en CPU (SDXL-Turbo / stable-diffusion.cpp en RAM) de vLLM Suite con 0 MB de VRAM.
+git_url: https://github.com/leejet/stable-diffusion.cpp
+description: Genera y renderiza imágenes artísticas mediante SDXL-Turbo en CPU/RAM (vía stable-diffusion.cpp de leejet) con 0 MB de VRAM. Devuelve URLs públicas en disco para renderizado inline directo en el chat.
 required_open_webui_version: 0.3.0
 requirements: requests, pydantic
-version: 1.0.0
+version: 1.1.0
 license: MIT
 """
 

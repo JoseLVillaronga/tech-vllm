@@ -180,3 +180,12 @@ Adicionalmente, el Gateway mantiene activo el proxy en el puerto `8006` (`http:/
    * Intervenciones directas y quirúrgicas en los endpoints de proxy existentes en `proxy_factory.py`, preservando la compatibilidad retroactiva de todos los clientes API y de Open-WebUI.
 4. **Invariante 4 MEA (Prohibición de Rutas Absolutas):**
    * Todas las rutas de almacenamiento, modelos y scripts se resuelven dinámicamente mediante `Path(__file__).resolve().parent` y variables de entorno normalizadas (`$LLAMA_DIR`, `$OUTPUT_DIR`).
+
+---
+
+## 🎖️ 7. Reconocimientos y Créditos Open Source
+
+* **[`stable-diffusion.cpp`](https://github.com/leejet/stable-diffusion.cpp):** Creado y liderado por **[leejet](https://github.com/leejet)** y su activa comunidad de contribuidores. Su implementación pionera de modelos de difusión en C++ puro basada en **GGML** hace posible que este ecosistema corra inferencia fotorrealista de SDXL-Turbo en CPU en menos de 10 segundos sin tocar la VRAM.
+* **[`llama.cpp`](https://github.com/ggml-org/llama.cpp):** Creado por **[Georgi Gerganov](https://github.com/ggerganov)** y `ggml-org`, motor que proporciona la base tensorial y el servidor de visión `llama-server`.
+* **[`Stability AI`](https://stability.ai/):** Creadores de los pesos fundacionales de **SDXL-Turbo 1.0**.
+

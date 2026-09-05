@@ -2787,6 +2787,19 @@ gateway/
 
 ---
 
+## 🎖️ Reconocimientos y Créditos Open Source
+
+Este proyecto se apoya con profundo agradecimiento en los avances y aportes fundamentales de la comunidad de código abierto:
+
+* **[`stable-diffusion.cpp`](https://github.com/leejet/stable-diffusion.cpp)**: Desarrollado y mantenido por **[leejet](https://github.com/leejet)** y colaboradores, basado en la biblioteca tensorial **GGML**. Gracias a su extraordinaria implementación en C++ con AVX2 y cuantizaciones GGUF, nuestra suite puede generar imágenes fotorrealistas con **SDXL-Turbo** en 7 a 10 segundos ejecutándose 100% en CPU y RAM con **0 MB de consumo de VRAM**.
+* **[`llama.cpp`](https://github.com/ggml-org/llama.cpp)**: Desarrollado por **[Georgi Gerganov](https://github.com/ggerganov)** y la comunidad de `ggml-org`. Motor de inferencia en C++ que impulsa a **Gemma 4 12B IT** en la GPU RTX 3090 y a **Qwen2.5-VL** en la memoria RAM del sistema.
+* **[`Open-WebUI`](https://github.com/open-webui/open-webui)**: Desarrollado por **Timothy J. Baek** y la comunidad open-source, proporcionando la interfaz de usuario interactiva para modelos, herramientas (*Tool Calling*) y multimodalidad.
+* **[`Stability AI`](https://stability.ai/)**: Por el desarrollo y publicación del modelo de difusión destilada ultrarrápida **SDXL-Turbo 1.0**.
+* **[`vLLM Project`](https://github.com/vllm-project/vllm)**: Motor de inferencia de alto rendimiento con PagedAttention que dio origen a la arquitectura base de la suite.
+
+---
+
 ## 📄 Licencia
 
 Este proyecto está distribuido bajo la [Licencia MIT](LICENSE).
+

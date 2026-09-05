@@ -813,7 +813,7 @@ class Tools:
 
 ### Herramienta 6: Generación de Imágenes Agéntica (SDXL-Turbo en RAM/CPU)
 > Archivo fuente: [`tools/openwebui_image_tool.py`](tools/openwebui_image_tool.py)  
-> Microservicio backend: `vllm-sd.service` en puerto `:18004` (SDXL-Turbo en CPU / 0 MB VRAM).
+> Microservicio backend: `vllm-sd.service` en puerto `:18004` (SDXL-Turbo en CPU / 0 MB VRAM, motor [`stable-diffusion.cpp`](https://github.com/leejet/stable-diffusion.cpp) de **leejet** & GGML).
 
 Permite a Gemma 4 generar ilustraciones, conceptos artísticos, fotografías y diagramas visuales en 7 a 10 segundos en CPU.
 
@@ -825,10 +825,10 @@ Permite a Gemma 4 generar ilustraciones, conceptos artísticos, fotografías y d
 ```python
 """
 title: Generación de Imágenes Agéntica (SDXL-Turbo en RAM/CPU)
-author: Jose Luis Villaronga
+author: Jose Luis Villaronga (motor stable-diffusion.cpp por leejet & GGML)
 author_url: https://github.com/JoseLVillaronga/tech-vllm
-git_url: https://github.com/JoseLVillaronga/tech-vllm
-description: Genera y renderiza imágenes artísticas mediante SDXL-Turbo en CPU/RAM con 0 MB de VRAM. Devuelve URLs públicas en disco para renderizado inline directo en el chat.
+git_url: https://github.com/leejet/stable-diffusion.cpp
+description: Genera y renderiza imágenes artísticas mediante SDXL-Turbo en CPU/RAM (vía stable-diffusion.cpp de leejet) con 0 MB de VRAM. Devuelve URLs públicas en disco para renderizado inline directo en el chat.
 required_open_webui_version: 0.3.0
 requirements: requests, pydantic
 version: 1.1.0
