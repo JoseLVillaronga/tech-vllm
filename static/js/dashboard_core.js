@@ -299,12 +299,14 @@
             }
         }
 
-        // Configuración rápida de parámetros de Llama.cpp (Qwen MoE)
+        // Configuración rápida de parámetros de Llama.cpp (Qwen MoE / Gemma 4 Denso)
         function selectQuickLlamaModel(alias, ctx, batch, ubatch, gpuLayers, moeCpu, reasoning, loadMode, threads) {
             const form = document.getElementById('config-form');
             if (!form) return;
+            const cleanAlias = alias.replace(/\.gguf$/, '');
+            if (form.elements['LLAMA_DIR'] && !form.elements['LLAMA_DIR'].value) form.elements['LLAMA_DIR'].value = '$HOME/llama.cpp';
             if (form.elements['LLAMA_ALIAS']) form.elements['LLAMA_ALIAS'].value = alias;
-            if (form.elements['LLAMA_MODEL']) form.elements['LLAMA_MODEL'].value = `$LLAMA_DIR/models/${alias}.gguf`;
+            if (form.elements['LLAMA_MODEL']) form.elements['LLAMA_MODEL'].value = `$LLAMA_DIR/models/${cleanAlias}.gguf`;
             if (form.elements['LLAMA_PORT']) form.elements['LLAMA_PORT'].value = 18100;
             if (form.elements['LLAMA_CTX_SIZE']) form.elements['LLAMA_CTX_SIZE'].value = ctx;
             if (form.elements['LLAMA_BATCH_SIZE']) form.elements['LLAMA_BATCH_SIZE'].value = batch;
