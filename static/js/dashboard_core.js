@@ -145,6 +145,7 @@
                 updateServiceBadge('status-fallback_tts', data.services?.fallback_tts?.status || 'inactive');
                 updateServiceBadge('status-diarization', data.services?.diarization?.status || 'inactive');
                 updateServiceBadge('status-embeddings', data.services?.embeddings?.status || 'inactive');
+                updateServiceBadge('status-image_cuda', data.services?.image_cuda?.status || 'inactive');
                 updateServiceBadge('status-image', data.services?.image?.status || 'inactive');
                 updateServiceBadge('status-vision', data.services?.vision?.status || 'inactive');
                 updateServiceBadge('status-rag_sync', data.services?.rag_sync?.status || 'inactive');
