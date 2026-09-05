@@ -48,8 +48,11 @@ class Tools:
         INSTRUCCIÓN DE CALIDAD PARA EL MODELO:
         Formula o traduce la descripción (prompt) al idioma INGLÉS con detalles descriptivos de iluminación, composición y estilo (por ejemplo: 'A futuristic electric car in a rainy cyberpunk city at night, neon lights reflections, cinematic lighting, 8k, photorealistic') para obtener la más alta fidelidad en el modelo de difusión.
 
+        REGLA CRÍTICA DE VISUALIZACIÓN:
+        Al recibir el resultado exitoso con la URL de la imagen, DEBES incluir obligatoriamente en tu respuesta final de texto al usuario la sintaxis Markdown `![descripción](URL)` para que Open-WebUI dibuje la imagen directamente en pantalla.
+
         :param prompt: Descripción visual detallada en inglés de la imagen a generar.
-        :return: Bloque Markdown con la imagen embebida en Base64 lista para ser renderizada en el chat de Open-WebUI.
+        :return: Notificación de generación exitosa con la URL e instrucciones para que el modelo la inserte en su respuesta.
         """
         clean_prompt = str(prompt).strip() if prompt and not str(type(prompt)).endswith("FieldInfo'>") else ""
         if not clean_prompt:
@@ -92,18 +95,21 @@ class Tools:
                             img_url = f"{clean_base}{img_url}"
 
                         return (
+                            f"STATUS: IMAGEN GENERADA EXITOSAMENTE.\n\n"
+                            f"INSTRUCCIÓN OBLIGATORIA PARA EL ASISTENTE:\n"
+                            f"Para que la interfaz Open-WebUI renderice y dibuje la imagen directamente en pantalla para el usuario, DEBES incluir obligatoriamente en tu respuesta final la siguiente línea exacta en formato Markdown (fuera de bloques de código):\n\n"
                             f"![{clean_prompt}]({img_url})\n\n"
-                            f"🎨 **Imagen generada exitosamente con SDXL-Turbo (CPU/RAM)**\n"
-                            f"*Prompt:* `{clean_prompt}`"
+                            f"No omitas esta línea Markdown bajo ninguna circunstancia."
                         )
 
                     # Caso 2 (Fallback): Imagen en base64 si el backend no proporcionó URL
                     b64_data = first_obj.get("b64_json")
                     if b64_data:
                         return (
-                            f"![{clean_prompt}](data:image/png;base64,{b64_data})\n\n"
-                            f"🎨 **Imagen generada exitosamente con SDXL-Turbo (CPU/RAM)**\n"
-                            f"*Prompt:* `{clean_prompt}`"
+                            f"STATUS: IMAGEN GENERADA EXITOSAMENTE (BASE64).\n\n"
+                            f"INSTRUCCIÓN OBLIGATORIA PARA EL ASISTENTE:\n"
+                            f"Para que la interfaz Open-WebUI renderice y dibuje la imagen directamente en pantalla para el usuario, DEBES incluir obligatoriamente en tu respuesta final la siguiente línea exacta en formato Markdown:\n\n"
+                            f"![{clean_prompt}](data:image/png;base64,{b64_data})\n"
                         )
 
                 return "⚠️ La solicitud fue exitosa pero no se recibió ninguna imagen en el formato esperado."
