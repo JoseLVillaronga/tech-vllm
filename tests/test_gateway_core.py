@@ -61,6 +61,21 @@ class TestGatewayCore(unittest.TestCase):
         self.assertTrue(validate_token_doc(doc, "docling"))
         self.assertFalse(validate_token_doc(doc, "whisper"))
 
+    def test_get_key_doc_master_key_restricted_by_default(self):
+        import os
+        from gateway.core.auth import get_key_doc, MASTER_KEY
+        os.environ["ALLOW_MASTER_KEY_ON_GATEWAY"] = "false"
+        self.assertIsNone(get_key_doc(MASTER_KEY))
+
+    def test_get_key_doc_master_key_allowed_when_enabled(self):
+        import os
+        from gateway.core.auth import get_key_doc, MASTER_KEY
+        os.environ["ALLOW_MASTER_KEY_ON_GATEWAY"] = "true"
+        doc = get_key_doc(MASTER_KEY)
+        self.assertIsNotNone(doc)
+        self.assertEqual(doc.get("name"), "Master Key")
+        os.environ["ALLOW_MASTER_KEY_ON_GATEWAY"] = "false"
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -24,7 +24,8 @@ async def handle_models_list(token: str, key_doc: dict, current_target_port: int
     Manejador para GET /v1/models unificando modelos locales y externos según permisos.
     """
     try:
-        is_master = (token == MASTER_KEY)
+        allow_master = os.getenv("ALLOW_MASTER_KEY_ON_GATEWAY", "false").lower() in ["true", "1", "yes"]
+        is_master = (token == MASTER_KEY and allow_master)
         allowed_services = key_doc.get("services", []) if key_doc else []
         key_allowed_providers = key_doc.get("allowed_providers", []) if key_doc else []
 
@@ -176,7 +177,8 @@ async def resolve_cloud_model(req_model: str, token: str, key_doc: dict) -> tupl
     Determina si la petición corresponde a un modelo en la nube o local,
     y retorna (is_cloud_request, actual_model, cloud_provider, apply_rag_injection, base_vllm_model).
     """
-    is_master = (token == MASTER_KEY)
+    allow_master = os.getenv("ALLOW_MASTER_KEY_ON_GATEWAY", "false").lower() in ["true", "1", "yes"]
+    is_master = (token == MASTER_KEY and allow_master)
     allowed_services = key_doc.get("services", []) if key_doc else []
     key_allowed_providers = key_doc.get("allowed_providers", []) if key_doc else []
 

@@ -118,6 +118,15 @@ def create_proxy_app(service_name: str, target_port: int, fallback_port: Optiona
                 detail="API Key faltante. Debe proporcionarse en la cabecera 'Authorization: Bearer <key>' o 'X-Api-Key: <key>'."
             )
 
+        # Validar intento de uso de Master Key en endpoints del Gateway
+        allow_master = os.getenv("ALLOW_MASTER_KEY_ON_GATEWAY", "false").lower() in ["true", "1", "yes"]
+        if token == MASTER_KEY and not allow_master:
+            asyncio.create_task(asyncio.to_thread(save_blocked_request_log, client_ip, current_service, path, "master_key_forbidden"))
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Acceso denegado: La Clave Maestra está reservada exclusivamente para comunicaciones internas de microservicios. Utiliza una API Key autorizada generada desde el Dashboard."
+            )
+
         # 4. Validar token y permisos de servicio
         key_doc = get_key_doc(token)
         if not validate_token_doc(key_doc, current_service):

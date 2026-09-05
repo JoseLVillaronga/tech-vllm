@@ -13,10 +13,11 @@ from config import API_KEY as MASTER_KEY
 class TestDiarizationService(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        os.environ["ALLOW_MASTER_KEY_ON_GATEWAY"] = "true"
         cls.gateway_url = "http://127.0.0.1:8003"
         cls.backend_url = "http://127.0.0.1:18003"
         cls.master_key = MASTER_KEY
-        cls.test_wav = "/home/jose/vllm/tests/sample_speech_test.wav"
+        cls.test_wav = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sample_speech_test.wav")
 
         os.makedirs(os.path.dirname(cls.test_wav), exist_ok=True)
         # Generar un archivo WAV sintético de prueba

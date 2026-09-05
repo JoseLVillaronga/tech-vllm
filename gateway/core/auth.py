@@ -1,3 +1,4 @@
+import os
 import sys
 from datetime import datetime, timezone
 from fastapi import Request
@@ -55,13 +56,16 @@ def get_key_doc(token: str):
     Recupera el documento de la clave API desde MongoDB y procesa
     los reinicios periódicos de cuota (Diario / Mensual).
     """
+    allow_master = os.getenv("ALLOW_MASTER_KEY_ON_GATEWAY", "false").lower() in ["true", "1", "yes"]
     if token == MASTER_KEY:
-        return {
-            "name": "Master Key",
-            "services": ["gemma", "gemma_raw", "whisper", "tts", "diarization", "embeddings", "image", "docling"],
-            "allowed_providers": ["*"],
-            "is_active": True
-        }
+        if allow_master:
+            return {
+                "name": "Master Key",
+                "services": ["gemma", "gemma_raw", "whisper", "tts", "diarization", "embeddings", "image", "docling"],
+                "allowed_providers": ["*"],
+                "is_active": True
+            }
+        return None
     try:
         db = get_db()
         key_doc = db.api_keys.find_one({"key": token, "is_active": True})
