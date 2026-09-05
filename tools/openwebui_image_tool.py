@@ -18,8 +18,8 @@ from pydantic import BaseModel, Field
 class Tools:
     class Valves(BaseModel):
         GATEWAY_URL: str = Field(
-            default="http://127.0.0.1:8000/v1",
-            description="URL base del endpoint OpenAI en el Gateway de vLLM Suite (ej: http://127.0.0.1:8000/v1 o https://tech-support.com.ar:19000/v1)."
+            default="https://tech-support.com.ar:19000",
+            description="URL base del endpoint en el Gateway de vLLM Suite (ej: https://tech-support.com.ar:19000 o http://127.0.0.1:8000)."
         )
         API_KEY: str = Field(
             default="token-e68f0c0d4d4f4d04d70399323d411290b2bf938a81f26685602140c4f8617939",
@@ -72,7 +72,7 @@ class Tools:
             "prompt": clean_prompt,
             "model": self.valves.MODEL,
             "size": self.valves.SIZE,
-            "response_format": "b64_json"
+            "response_format": "url"
         }
 
         try:
@@ -83,19 +83,25 @@ class Tools:
                 data_list = data.get("data", [])
                 if data_list and isinstance(data_list, list):
                     first_obj = data_list[0]
-                    # Caso 1: Imagen en base64
+
+                    # Caso 1 (Prioritario): Retornar URL pública para no colapsar la ventana de contexto del LLM
+                    img_url = first_obj.get("url")
+                    if img_url:
+                        if img_url.startswith("/"):
+                            clean_base = base_url.replace("/v1/images/generations", "").replace("/images/generations", "").replace("/v1", "").rstrip("/")
+                            img_url = f"{clean_base}{img_url}"
+
+                        return (
+                            f"![{clean_prompt}]({img_url})\n\n"
+                            f"🎨 **Imagen generada exitosamente con SDXL-Turbo (CPU/RAM)**\n"
+                            f"*Prompt:* `{clean_prompt}`"
+                        )
+
+                    # Caso 2 (Fallback): Imagen en base64 si el backend no proporcionó URL
                     b64_data = first_obj.get("b64_json")
                     if b64_data:
                         return (
                             f"![{clean_prompt}](data:image/png;base64,{b64_data})\n\n"
-                            f"🎨 **Imagen generada exitosamente con SDXL-Turbo (CPU/RAM)**\n"
-                            f"*Prompt:* `{clean_prompt}`"
-                        )
-                    # Caso 2: URL devuelta
-                    img_url = first_obj.get("url")
-                    if img_url:
-                        return (
-                            f"![{clean_prompt}]({img_url})\n\n"
                             f"🎨 **Imagen generada exitosamente con SDXL-Turbo (CPU/RAM)**\n"
                             f"*Prompt:* `{clean_prompt}`"
                         )

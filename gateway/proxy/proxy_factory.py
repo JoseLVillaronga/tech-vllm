@@ -24,6 +24,7 @@ from gateway.tools.web_search import handle_web_search, perform_ollama_web_searc
 from gateway.tools.pdf_generator import handle_pdf_generation, handle_pdf_download
 from gateway.tools.doc_reader import handle_doc_reader
 from gateway.tools.vision import handle_vision_analysis, bridge_multimodal_messages
+from gateway.tools.image_gen import handle_image_generation_request
 from gateway.tools.rag_endpoints import handle_rag_search, handle_rag_document, handle_rag_structure, handle_rag_library_index
 from gateway.cloud.cloud_router import handle_models_list, resolve_cloud_model
 from gateway.core.alignment_engine import enrich_chat_payload
@@ -191,8 +192,8 @@ def create_proxy_app(service_name: str, target_port: int, fallback_port: Optiona
             current_service = "embeddings"
             model_name = "Qwen/Qwen3-Embedding-0.6B"
 
-        # Interceptar /v1/images/generations en gemma proxy (puerto 8000)
-        if current_service == "gemma" and path.strip("/") in ["v1/images/generations", "images/generations"] and request.method == "POST":
+        # Interceptar /v1/images/generations en gemma proxy (puerto 8000) o image proxy (puerto 8006)
+        if (current_service in ["gemma", "image"]) and path.strip("/") in ["v1/images/generations", "images/generations"] and request.method == "POST":
             is_master = (token == MASTER_KEY)
             allowed_services = key_doc.get("services", []) if key_doc else []
             if not is_master and ("image" not in allowed_services):
@@ -202,9 +203,16 @@ def create_proxy_app(service_name: str, target_port: int, fallback_port: Optiona
                     detail="Tu clave API no tiene permisos autorizados para el servicio de Generación de Imágenes."
                 )
             image_backend_port = int(os.getenv("IMAGE_BACKEND_PORT", "18004"))
-            current_target_port = image_backend_port
-            current_service = "image"
             model_name = os.getenv("IMAGE_MODEL", "stabilityai/sdxl-turbo")
+            return await handle_image_generation_request(
+                request=request,
+                body=body,
+                backend_port=image_backend_port,
+                model_name=model_name,
+                client_ip=client_ip,
+                token=token,
+                background_tasks=background_tasks
+            )
 
         # Interceptar búsqueda RAG directa en LanceDB
         if path.strip("/") in ["v1/rag/search", "rag/search", "api/tools/rag-search"] and request.method == "POST":
