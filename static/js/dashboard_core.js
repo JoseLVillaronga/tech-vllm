@@ -146,6 +146,7 @@
                 updateServiceBadge('status-diarization', data.services?.diarization?.status || 'inactive');
                 updateServiceBadge('status-embeddings', data.services?.embeddings?.status || 'inactive');
                 updateServiceBadge('status-image', data.services?.image?.status || 'inactive');
+                updateServiceBadge('status-vision', data.services?.vision?.status || 'inactive');
                 updateServiceBadge('status-rag_sync', data.services?.rag_sync?.status || 'inactive');
                 updateServiceBadge('status-docling', data.services?.docling?.status || 'inactive');
                 updateServiceBadge('status-gateway', data.services?.gateway?.status || 'inactive');

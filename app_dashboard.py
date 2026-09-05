@@ -66,7 +66,8 @@ SERVICES = {
     "fallback_tts": "vllm-fallback-tts",
     "diarization": "vllm-diarization",
     "embeddings": "vllm-embeddings",
-    "image": "vllm-image",
+    "image": "vllm-sd",
+    "vision": "vllm-vision",
     "rag_sync": "vllm-rag-sync.timer",
     "gateway": "vllm-gateway",
     "docling": "docling"
@@ -83,6 +84,7 @@ SERVICE_PORTS = {
     "diarization": 8003,
     "embeddings": 8005,
     "image": 8006,
+    "vision": 18200,
     "rag_sync": "00:00:00",
     "gateway": "8000-8020",
     "docling": "5020 / 8020"
@@ -98,6 +100,7 @@ BACKEND_PORTS = {
     "fallback_tts": int(os.getenv("TTS_FALLBACK_PORT", "18012")),
     "diarization": int(os.getenv("DIARIZATION_BACKEND_PORT", "18003")),
     "image": int(os.getenv("IMAGE_BACKEND_PORT", "18004")),
+    "vision": int(os.getenv("VISION_BACKEND_PORT", "18200")),
     "embeddings": int(os.getenv("EMBEDDINGS_BACKEND_PORT", "18005")),
     "docling": int(os.getenv("DOCLING_BACKEND_PORT", "5020"))
 }
