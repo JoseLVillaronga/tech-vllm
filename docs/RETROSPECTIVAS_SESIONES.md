@@ -27,6 +27,7 @@ Al finalizar cada sesión de trabajo, el agente y el usuario realizan una audito
 ## 📈 Historial Consolidado de Sesiones
 
 | Fecha | ID Sesión | Turnos Usuario | Llamadas Agénticas (Tools) | Commits Git | Invariantes Violados | RVI Máx | Blast Radius | Estado Global |
+| **2026-09-05 (Noche - Blindaje Perimetral Zero Trust, Fail2ban Dinámico, Silent Drop y Monitor Multimodal)** | `ca5c7e22` | 15 | ~65 | 7 | **0** | 1/10 | Mínimo (Modular) | 🟢 **100% Exitoso** |
 | **2026-09-05 (Tarde - Visión y Difusión en RAM/CPU, Bridge Multimodal & Protección de Contexto)** | `bba5ef3a` | 12 | ~60 | 4 | **0** | 1/10 | Mínimo (Modular) | 🟢 **100% Exitoso** |
 | **2026-09-05 (Mañana - Estándar Dorado Gemma 4 12B en RTX 3090, Fix Parser OCR y Blindaje 5to Invariante)** | `bba5ef3a` | 6 | ~35 | 2 | **0** | 1/10 | Mínimo (Quirúrgico) | 🟢 **100% Exitoso** |
 | **2026-09-04 (Noche - Calibración Gemma 4 12B, Boost Canónico RAG, Presets & 5to Invariante MEA)** | `bba5ef3a` | 14 | ~75 | 5 | **0** | 1/10 | Mínimo (Quirúrgico) | 🟢 **100% Exitoso** |
@@ -45,6 +46,46 @@ Al finalizar cada sesión de trabajo, el agente y el usuario realizan una audito
 ---
 
 ## 📝 Fichas Detalladas por Sesión
+
+### 🔹 Sesión: 2026-09-05 Noche (`ca5c7e22-5f02-4c3e-8b9d-87b5c9479cce`) - Blindaje Perimetral Zero Trust, Fail2ban Dinámico, Silent Drop y Monitor Multimodal
+* **Hitos Principales:**
+  1. **6to Invariante Operativo MEA y Sanitización Completa ([`AGENTS.md`](../AGENTS.md), [`GEMINI.md`](../GEMINI.md) - Commit `e5f766d`):**
+     - Formalización del *Invariante de Seguridad y Protección de Secretos (Anti-Hardcoded Credentials & Sensitive URLs)*: prohibición estricta de hardcodear claves, tokens, URLs de infraestructura pública o rutas absolutas locales en código o documentación `*.md`.
+     - Auditoría y saneamiento integral de 16 archivos del repositorio eliminando tokens activos, rutas `/home/jose` y dominios sensibles.
+  2. **Desacoplamiento Estricto de Planos (Control vs. Datos) y Zero Trust Gateway ([`gateway/proxy/proxy_factory.py`](../gateway/proxy/proxy_factory.py), [`gateway/core/auth.py`](../gateway/core/auth.py) - Commit `4fcd4d7`):**
+     - La `MASTER_KEY` (`API_KEY` de `.env`) quedó restringida al Plano de Control interno (comunicación Gateway $\leftrightarrow$ microservicios locales).
+     - Los puertos públicos del Gateway (`:8000`-`:8020`) rechazan de plano la `MASTER_KEY` con `HTTP 403 Forbidden` (`"Acceso denegado: La Clave Maestra está reservada exclusivamente para comunicaciones internas de microservicios. Utiliza una API Key autorizada generada desde el Dashboard."`), forzando el uso de claves autorizadas de MongoDB (`db.api_keys`).
+     - Controlado por la variable de entorno `ALLOW_MASTER_KEY_ON_GATEWAY=false`.
+  3. **Fail2ban Dinámico y Parametrizable por Entorno ([`gateway/core/fail2ban.py`](../gateway/core/fail2ban.py) - Commit `627cd1e`):**
+     - Reemplazo de umbrales cableados en código por la función `get_fail2ban_config()`:
+       - `FAIL2BAN_MAX_FAILURES` (default: `3`): umbral de intentos fallidos.
+       - `FAIL2BAN_WINDOW_SECONDS` (default: `300`): ventana temporal de cómputo en segundos.
+       - `FAIL2BAN_BAN_HOURS` (default: `48`): tiempo de expiración del bloqueo automático en MongoDB (`db.ip_rules`).
+  4. **Mitigación de DoS Defensivo & Silent Drop para IPs en Lista Negra ([`gateway/core/ip_rules.py`](../gateway/core/ip_rules.py), [`gateway/proxy/proxy_factory.py`](../gateway/proxy/proxy_factory.py) - Commit `627cd1e`):**
+     - Diagnóstico de la vulnerabilidad de amplificación de DoS: responder repetidamente con `HTTP 403` JSON y despachar hilos a MongoDB en cada petición desde IPs bloqueadas colapsa los recursos del Gateway ante ráfagas de ataque.
+     - Implementado contador en memoria y transición de dos fases gobernada por `BLACKLIST_MAX_NOTICES` (default `3`):
+       - Primeros 3 intentos: respuesta formal `HTTP 403 Forbidden` y auditoría en `blocked_requests`.
+       - Intento 4 en adelante: **Silent Drop instantáneo** devolviendo cuerpo binario vacío `b""`, cabecera `Connection: close` y **cero interacción con MongoDB/CPU**.
+     - Auto-purga en memoria: en cada ciclo de sincronización de 10s (`sync_ip_rules_loop`), los contadores de IPs cuyo baneo expiró en MongoDB son liberados automáticamente, evitando fugas de memoria.
+  5. **Activación de Fail2ban ante Intentos con Clave Maestra (Commit `0bae968`):**
+     - Toda petición externa que intente presentar la Clave Maestra en el Gateway suma fallos a Fail2ban (`await register_failed_attempt(client_ip)`), aplicando auto-ban en MongoDB al acumularse 3 intentos.
+  6. **Prevención de Self-DoS y Exclusión de Loopback (Commit `9d5ccd6`):**
+     - Observado en pruebas reales que el baneo de `127.0.0.1` bloqueaba las comunicaciones internas de microservicios en localhost (como Whisper).
+     - Incorporada la directiva `FAIL2BAN_EXCLUDE_LOOPBACK=true` (opcional por `.env`): exime a `127.0.0.0/8` y `::1` de acumular auto-baneos accidentales sin comprometer el rechazo del acceso con `HTTP 403`.
+  7. **Monitorización Multimodal Coexistente en Dashboard ([`app_dashboard.py`](../app_dashboard.py), [`tab_monitor.html`](../templates/tabs/tab_monitor.html) - Commits `2a0af07` y `f6cc023`):**
+     - Reorganizado el panel "Monitor e Hilos" para reflejar la dualidad de motores:
+       - **Generador de Imágenes GPU (CUDA)** (`vllm-image`): PyTorch/Diffusers en `:18004` (inactivo por perfil RAG intensivo, disponible bajo demanda).
+       - **Generador de Imágenes CPU (RAM)** (`vllm-sd`): `stable-diffusion.cpp` en `:18004` (activo con 0 MB de VRAM).
+       - **Visión Llama (Qwen2.5-VL)** (`vllm-vision`): `llama-server` en `:18200` (activo con 0 MB de VRAM).
+* **Evaluación MEA v2.1 & Leyes de Ingeniería:**
+  * **Invariantes (Gate 1):** **0 violaciones**. Cumplimiento riguroso de no-destructividad, veracidad verificada en vivo con `curl`, cero rutas absolutas y protección absoluta de secretos.
+  * **Ley 1 (Modularización Estricta):** Cumplida al 100%. Fail2ban, reglas de IP y Dashboard desacoplados en submódulos especializados.
+  * **Ley 2 (Atacar Causas Raíz):** Cumplida al 100%. Se atacó la causa raíz del DoS por logging excesivo mediante Silent Drop y el Self-DoS mediante exclusión de loopback.
+  * **Ley 3 (Mínimo Blast Radius):** Cumplida al 100%. Intervenciones quirúrgicas en cada submódulo sin alterar el tráfico de producción ni romper contratos de microservicios existentes.
+  * **RVI Máximo:** `1/10`.
+  * **Suite de Pruebas:** 28 tests unitarios y end-to-end ejecutados y aprobados (100% OK).
+
+---
 
 ### 🔹 Sesión: 2026-09-05 Tarde (`bba5ef3a-c9c3-41a0-9e67-95058f9b5fb1`) - Visión y Difusión Desacopladas en RAM/CPU, Bridge Multimodal y Protección de Contexto
 * **Hitos Principales:**

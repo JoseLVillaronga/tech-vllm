@@ -3,6 +3,26 @@
 Todos los cambios notables en este proyecto serán documentados en este archivo.
 El formato está basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/).
 
+## [2.7.0] - 2026-09-05
+
+### Added
+- **Fail2ban Dinámico Configurable por Entorno (`gateway/core/fail2ban.py`):**
+  - Parametrización mediante `FAIL2BAN_MAX_FAILURES` (default 3), `FAIL2BAN_WINDOW_SECONDS` (default 300s) y `FAIL2BAN_BAN_HOURS` (default 48h), con fallbacks automáticos de seguridad.
+- **Mitigación de DoS Defensivo & Silent Drop para Lista Negra (`gateway/core/ip_rules.py` y `gateway/proxy/proxy_factory.py`):**
+  - Mecanismo en dos fases gobernado por `BLACKLIST_MAX_NOTICES`: emite aviso formal 403 y registro en MongoDB para los primeros intentos; a partir de ahí descarta en seco con cuerpo vacío `b""`, cabecera `Connection: close` y **cero interacción con base de datos o CPU**.
+  - Auto-limpieza en memoria: purga periódica en `sync_ip_rules_loop` de IPs cuyos baneos expiran en MongoDB.
+- **Protección Anti Self-DoS para Loopback (`FAIL2BAN_EXCLUDE_LOOPBACK`):**
+  - Exención configurable para direcciones loopback (`127.0.0.0/8`, `::1`), evitando que pruebas o desajustes locales bloqueen otros microservicios del servidor.
+- **Monitoreo Coexistente de Imágenes y Visión en Dashboard (`app_dashboard.py`, `tab_monitor.html`, `sidebar.html`):**
+  - Soporte paralelo en "Monitor e Hilos" para **Generador de Imágenes GPU (CUDA)** (`vllm-image`), **Generador de Imágenes CPU (RAM)** (`vllm-sd`) y **Visión Llama (Qwen2.5-VL)** (`vllm-vision`).
+  - Puerto `:18200` incorporado en el listado de puertos de la barra lateral.
+
+### Security
+- **6to Invariante Operativo MEA (Protección de Secretos y URLs Públicas):**
+  - Prohibición formal de hardcodear claves, tokens, URLs públicas y rutas absolutas en código y documentación `*.md`. Sanitización completa de 16 archivos.
+- **Zero Trust Gateway y Aislamiento de Clave Maestra:**
+  - Desacoplamiento de Planos: la `MASTER_KEY` queda reservada exclusivamente al Plano de Control interno; los puertos del Gateway la rechazan con `HTTP 403` y penalización acumulativa en Fail2ban.
+
 ## [2.6.0] - 2026-09-05
 
 ### Added

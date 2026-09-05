@@ -1578,26 +1578,32 @@ Los motores de inferencia reales (Gemma, Whisper, F5-TTS y PyAnnote) están enla
 
 ---
 
-### 🔑 1. Sistema de Claves API (Autenticación)
+### 🔑 1. Sistema de Claves API (Autenticación Zero Trust)
 
 El acceso a las APIs requiere obligatoriamente una firma Bearer:
 
-1. **Clave Maestra (`API_KEY` en `.env`):** Otorga privilegios de administrador y acceso total e irrestricto a los 4 servicios. Es la que utiliza la propia interfaz del Dashboard y Open-WebUI por defecto.
+1. **Clave Maestra (`API_KEY` en `.env`):**
+    * Reservada estrictamente para el **Plano de Control interno** (comunicación directa entre el Gateway y los microservicios locales).
+    * Por diseño de seguridad *Zero Trust*, los puertos perimetrales del Gateway (`:8000`-`:8020`) la **rechazan de plano con `HTTP 403 Forbidden`** y computan la petición como intento fallido en Fail2ban (`ALLOW_MASTER_KEY_ON_GATEWAY=false`), garantizando que la filtración accidental de la clave del servidor no comprometa los servicios.
 2. **Claves API Secundarias (Persistidas en MongoDB):**
     * Administradas en caliente desde la pestaña **"Seguridad"** del Dashboard Web.
-    * Permiten acceso granular por servicios individuales (ej: habilitar solo STT para un bot de transcripción).
+    * Permiten acceso granular por servicios individuales (ej: habilitar solo STT para un bot de transcripción o LLM para Open-WebUI).
     * Cuentan con **fecha de expiración opcional** (la clave se suspende automáticamente al expirar) y pueden ser activadas/desactivadas manualmente con un clic.
 
 ---
 
-### 🌐 2. Control de Acceso por IP (Whitelist / Blacklist CIDR)
+### 🌐 2. Control de Acceso por IP y Mitigación DoS (Silent Drop)
 
-El Gateway valida la IP de origen del cliente contra reglas persistidas en MongoDB:
+El Gateway valida la IP de origen del cliente contra reglas en memoria RAM sincronizadas cada 10s desde MongoDB:
 
 * **Soporte CIDR Completo:** Permite ingresar direcciones IP individuales (ej. `192.168.1.50`) u obtener compatibilidad con rangos y subredes completas utilizando notación CIDR estándar (ej. `192.168.0.0/16`).
 * **Políticas de Lista:**
   * *Lista Blanca (Whitelist):* Si tiene elementos, se comporta como "restrictivo por defecto" (solo entran las IPs que pertenezcan a la lista blanca).
-  * *Lista Negra (Blacklist):* Si tiene elementos, deniega de inmediato con `403 Forbidden` a cualquier IP que coincida.
+  * *Lista Negra (Blacklist):* Si tiene elementos, deniega el acceso a cualquier IP que coincida.
+* **Mitigación DoS Defensivo (Silent Drop):**
+  * Para evitar que un atacante consuma recursos del servidor (hilos asíncronos y escrituras en MongoDB) enviando miles de peticiones desde una IP baneada, el Gateway implementa una transición en dos fases (`BLACKLIST_MAX_NOTICES=3` por defecto):
+    1. **Primeros 3 avisos:** Respuesta formal `HTTP 403 Forbidden` en formato JSON y registro en la telemetría de peticiones bloqueadas.
+    2. **Avisos posteriores:** **Silent Drop instantáneo** (`content=b""`, `Connection: close`) con cero procesamiento de CPU y cero llamadas a base de datos.
 * **Compatibilidad con Proxy Reverso (Caddy, Nginx):** El Gateway analiza automáticamente las cabeceras estándar `X-Real-IP` y `X-Forwarded-For` (extrayendo el primer cliente). Esto garantiza que la IP validada en los filtros y registrada en la telemetría sea siempre la IP pública del usuario original y no la IP local del host o del proxy reverso.
 * **Ejemplo de Configuración de Caddy (Proxy Reverso):**
   Para exponer las APIs públicas de la suite (`8000`-`8003`) a internet de forma segura bajo puertos SSL dedicados, puedes usar la siguiente plantilla de configuración de Caddy (`Caddyfile`). Nota cómo se configuran las cabeceras `X-Real-IP` para que el Gateway pueda extraer la IP pública real del cliente de forma correcta:
@@ -1643,14 +1649,18 @@ El Gateway valida la IP de origen del cliente contra reglas persistidas en Mongo
 
 ---
 
-### 🚨 3. Sistema de Prevención de Intrusos (Fail2ban Nativo)
+### 🚨 3. Sistema de Prevención de Intrusos (Fail2ban Nativo y Configurable)
 
 Para mitigar escaneos de puertos y ataques de fuerza bruta al publicar la suite a Internet:
 
-* **Detección en RAM:** El Gateway rastrea los intentos fallidos de autenticación (tokens faltantes o inválidos) en caliente usando un diccionario de memoria RAM protegido contra concurrencia.
-* **Regla de los 3 Fallos:** Si una IP de cliente genera **3 intentos fallidos en un lapso de 5 minutos (300 segundos)**, el sistema la considera hostil.
-* **Baneo Automático por 48 horas:**
-  * La IP es bloqueada automáticamente mediante la inserción de una regla de lista negra (`blacklist`) en MongoDB con una vigencia de 48 horas (`expires_at`).
+* **Detección en RAM:** El Gateway rastrea los intentos fallidos de autenticación (tokens inválidos, ausentes o intento de uso de clave maestra en puertos públicos) en caliente usando un diccionario de memoria RAM protegido contra concurrencia.
+* **Parámetros Dinámicos (Configurables vía `.env`):**
+  * `FAIL2BAN_MAX_FAILURES` (default: `3`): Umbral de intentos fallidos antes de aplicar baneo.
+  * `FAIL2BAN_WINDOW_SECONDS` (default: `300`): Ventana de tiempo (5 minutos) en la que se acumulan los fallos.
+  * `FAIL2BAN_BAN_HOURS` (default: `48`): Duración del baneo automático en horas.
+  * `FAIL2BAN_EXCLUDE_LOOPBACK` (default: `false`): Si se establece en `true`, excluye las direcciones de bucle invertido (`127.0.0.0/8`, `::1`) del cómputo de autoban para prevenir auto-bloqueos en pruebas locales o microservicios internos.
+* **Baneo Automático Persistido en MongoDB:**
+  * Al superar el umbral de fallos, la IP es bloqueada automáticamente mediante la inserción de una regla de lista negra (`blacklist`) en MongoDB con una vigencia de `FAIL2BAN_BAN_HOURS` (`expires_at`).
   * El bloqueo se propaga al caché de todos los puertos públicos del Gateway en segundos.
 * **Autolimpieza Eficiente:** MongoDB limpia y remueve de forma automática las IPs baneadas expiradas utilizando un índice TTL dinámico en la colección `ip_rules` (`expireAfterSeconds=0` sobre el campo `expires_at`). Las reglas de IP estáticas (permanentes) carecen de este campo y nunca expiran.
 
