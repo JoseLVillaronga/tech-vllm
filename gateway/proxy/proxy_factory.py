@@ -129,6 +129,7 @@ def create_proxy_app(service_name: str, target_port: int, fallback_port: Optiona
         # Validar intento de uso de Master Key en endpoints del Gateway
         allow_master = os.getenv("ALLOW_MASTER_KEY_ON_GATEWAY", "false").lower() in ["true", "1", "yes"]
         if token == MASTER_KEY and not allow_master:
+            await register_failed_attempt(client_ip)
             asyncio.create_task(asyncio.to_thread(save_blocked_request_log, client_ip, current_service, path, "master_key_forbidden"))
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,

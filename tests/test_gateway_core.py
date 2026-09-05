@@ -169,6 +169,31 @@ class TestGatewayCore(unittest.TestCase):
         ip_rules.cached_blacklist = []
         ip_rules.clear_blacklist_notice_counts()
 
+    def test_gateway_proxy_master_key_triggers_fail2ban(self):
+        import os
+        from fastapi.testclient import TestClient
+        from gateway.proxy.proxy_factory import create_proxy_app
+        from gateway.core.auth import MASTER_KEY
+        import gateway.core.fail2ban as f2b
+
+        os.environ["ALLOW_MASTER_KEY_ON_GATEWAY"] = "false"
+        client_ip = "192.0.2.77"
+        f2b.failed_attempts.pop(client_ip, None)
+
+        app = create_proxy_app(service_name="test_srv", target_port=19999, include_alignment=False)
+        client = TestClient(app, client=(client_ip, 50000))
+
+        response = client.get("/v1/models", headers={"Authorization": f"Bearer {MASTER_KEY}"})
+        self.assertEqual(response.status_code, 403)
+        self.assertIn("La Clave Maestra está reservada exclusivamente", response.text)
+
+        # Verificar que la IP quedó registrada en el historial de fallos de fail2ban
+        self.assertIn(client_ip, f2b.failed_attempts)
+        self.assertEqual(len(f2b.failed_attempts[client_ip]), 1)
+
+        # Limpiar
+        f2b.failed_attempts.pop(client_ip, None)
+
 
 if __name__ == "__main__":
     unittest.main()
