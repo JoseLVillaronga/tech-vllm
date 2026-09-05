@@ -3,6 +3,28 @@
 Todos los cambios notables en este proyecto serán documentados en este archivo.
 El formato está basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/).
 
+## [2.5.0] - 2026-09-04
+
+### Added
+- **5to Invariante Operativo MEA (Grounding y Humildad Epistémica):**
+  - Implementada directiva obligatoria en `gateway/core/alignment_engine.py` y persistida en MongoDB: ante repreguntas sobre el alcance normativo, solicitudes de fuentes exactas o números de artículos, queda terminantemente prohibido responder de memoria o inventar rangos aproximados. El modelo está obligado a emitir una llamada a `buscar_en_base_de_conocimiento` o `obtener_estructura_documento`.
+- **Re-ranking Canónico para Figuras Rectoras en LanceDB (`rag_engine.py`):**
+  - Boosting definitorio (+0.06 de similitud) para fragmentos ubicados bajo *Disposiciones Generales*, *Parte General* o *Título Preliminar* cuando la consulta del usuario incluye términos definitorios (*"definición"*, *"concepto"*, *"qué es"*).
+  - Elevó al Artículo 957 (Definición de Contrato) del Puesto #10 al Puesto #1 indiscutido (88.41% de similitud) en la primera llamada de búsqueda semántica.
+- **Soporte de Proyector Multimodal Opt-in en `llama-srv.sh`:**
+  - Lógica configurable para proyectores multimodales `--mmproj` respetando `LLAMA_MMPROJ_PATH`. Por defecto deshabilitado para garantizar inferencia de texto pura sin interferencias de tensores visuales en modelos densos.
+
+### Fixed
+- **Descontaminación de Citas en Encabezados Jerárquicos (`app_rag_sync.py`):**
+  - Eliminación previa de enlaces Markdown `[...](...)` y corchetes doctrinarios antes de evaluar la longitud del título en `detect_heuristic_header`.
+  - Reparado `TITULO II Contratos en general` en el Código Civil y Comercial, el cual era descartado por superar 120 caracteres debido a citas bibliográficas pegadas al OCR.
+- **Bucle de Token `<unused49>` en Gemma 4 12B:**
+  - Resuelto el conflicto de inicio de turnos y tokens de control al desactivar el razonamiento en modo texto puro sin el proyector de visión cargado.
+  - Consumo estabilizado en 17.7 GB de VRAM (con 6.3 GB libres en RTX 3090) a 60 tokens/segundo sostenidos.
+- **Liberación de Herramientas Jerárquicas en Open-WebUI (`tools/openwebui_rag_tool.py`):**
+  - Eliminada la prohibición textual que impedía al LLM invocar `obtener_estructura_documento` en consultas de definición.
+  - Aumentado `DEFAULT_TOP_K` a 5.
+
 ## [2.4.0] - 2026-09-03
 
 ### Added

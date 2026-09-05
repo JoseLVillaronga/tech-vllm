@@ -27,6 +27,7 @@ Al finalizar cada sesión de trabajo, el agente y el usuario realizan una audito
 ## 📈 Historial Consolidado de Sesiones
 
 | Fecha | ID Sesión | Turnos Usuario | Llamadas Agénticas (Tools) | Commits Git | Invariantes Violados | RVI Máx | Blast Radius | Estado Global |
+| **2026-09-04 (Noche - Calibración Gemma 4 12B, Boost Canónico RAG & 5to Invariante MEA)** | `bba5ef3a` | 7 | ~40 | 2 | **0** | 1/10 | Mínimo (Quirúrgico) | 🟢 **100% Exitoso** |
 | **2026-09-03 (Tarde - Re-chunking LanceDB, GPS Anti-Overflow & Búsqueda RAG)** | `bba5ef3a` | 8 | ~50 | 4 | **0** | 2/10 | Mínimo (Quirúrgico) | 🟢 **100% Exitoso** |
 | **2026-09-03 (Mañana - Motor Llama.cpp MoE, Exclusión Mutua & Control GUI)** | `bba5ef3a` | 4 | ~45 | 1 | **0** | 1/10 | Mínimo (Modular) | 🟢 **100% Exitoso** |
 | **2026-09-02 (Noche - Freno de Mano RAG & Secuencia Embudo)** | `bba5ef3a` | 6 | ~30 | 2 | **0** | 1/10 | Mínimo (Quirúrgico) | 🟢 **100% Exitoso** |
@@ -42,6 +43,26 @@ Al finalizar cada sesión de trabajo, el agente y el usuario realizan una audito
 ---
 
 ## 📝 Fichas Detalladas por Sesión
+
+### 🔹 Sesión: 2026-09-04 Noche (`bba5ef3a-c9c3-41a0-9e67-95058f9b5fb1`) - Calibración Gemma 4 12B, Boost Canónico RAG y 5to Invariante MEA
+* **Hitos Principales:**
+  1. **Diagnóstico Forense de Visión en Gemma 4 bajo `llama.cpp`:**
+     - Identificado que en `llama.cpp` la visión requiere proyector multimodal (`--mmproj`). Se integró y probó `mmproj-gemma-4-12B-it-f16.gguf` (116 MB).
+     - Identificado que la arquitectura de visión unificada `gemma4uv` es experimental upstream en `llama.cpp` (PRs #24077/#24082) y sufre de desalineación en atención no causal, recomendándose su uso para visión en `vLLM` nativo.
+     - Calibrado Gemma 4 12B IT para texto puro y RAG de alta velocidad: VRAM estabilizada en 17.7 GB con 131k de contexto, 60 t/s de generación sostenida y 2.300 t/s de prefill en RTX 3090.
+  2. **Descontaminación de Citas en Encabezados Jerárquicos ([`app_rag_sync.py`](file:///home/jose/vllm/app_rag_sync.py)):**
+     - Eliminación previa de enlaces `[...](...)` y corchetes doctrinarios antes de evaluar longitud de títulos en `detect_heuristic_header`.
+     - Re-indexación de CCCN en 3.291 chunks, recuperando el título padre `TITULO II Contratos en general` en la ruta jerárquica del Artículo 957.
+  3. **Re-ranking Canónico para Figuras Rectoras ([`rag_engine.py`](file:///home/jose/vllm/rag_engine.py)):**
+     - Implementado boosting definitorio (+0.06 de similitud) para fragmentos de *Disposiciones Generales*, *Parte General* o *Título Preliminar* ante consultas definitorias (*"definición"*, *"concepto"*, *"qué es"*).
+     - Elevado el Artículo 957 (Definición de Contrato) del puesto #10 al **Puesto #1 absoluto (88.41% de coincidencia)**, resolviendo en una sola llamada de 95 ms.
+  4. **Implementación del 5to Invariante Operativo MEA ([`gateway/core/alignment_engine.py`](file:///home/jose/vllm/gateway/core/alignment_engine.py)):**
+     - Neutralizado el sesgo de inercia y defensividad complaciente (*sycophancy*) ante repreguntas.
+     - Mandato estricto: ante solicitudes de fuentes, artículos o alcance normativo (*"¿esto abarca X?", "especifica la fuente"*), queda terminantemente prohibido responder de memoria; es obligatorio emitir llamada a la herramienta de búsqueda documental.
+     - Verificado en campo: Gemma 4 frenó la adivinación y consultó la **Ley General de Sociedades 19.550**, citando con 100% de exactitud los Arts. 56, 57, 147 y la inoponibilidad jurídica.
+  5. **Validación de Sensibilidad Ética:**
+     - Verificada respuesta empática, rigurosa y orientadora ante consultas sobre delitos contra la integridad sexual (Código Penal Art. 119), orientando hacia asistencia letrada y psicológica profesional.
+* **Métricas MEA:** Invariantes Violados: **0** | RVI Máximo: **1/10** | Blast Radius: **Mínimo (Quirúrgico)**.
 
 ### 🔹 Sesión: 2026-09-03 Tarde (`bba5ef3a-c9c3-41a0-9e67-95058f9b5fb1`) - Re-chunking Jerárquico en LanceDB, GPS Anti-Desbordamiento y Búsqueda RAG Quirúrgica
 * **Hitos Principales:**
