@@ -3,6 +3,16 @@
 Todos los cambios notables en este proyecto serán documentados en este archivo.
 El formato está basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/).
 
+## [2.6.0] - 2026-09-05
+
+### Added
+- **Microservicio de Visión Agéntica Desacoplada en RAM (`llama-vision-srv.sh` y `vllm-vision.service`):**
+  - Despliegue independiente de Qwen2.5-VL-3B-Instruct (`Q4_K_M` + `mmproj-Q8_0`) en `llama.cpp` (:18200) corriendo 100% en la memoria RAM del sistema con 0 bytes de VRAM (`CUDA_VISIBLE_DEVICES=""`).
+- **Endpoint Especializado de Visión en Gateway (`gateway/tools/vision.py` y `gateway/proxy/proxy_factory.py`):**
+  - Rutas `POST /api/tools/vision` y `POST /v1/tools/vision` con soporte unificado para rutas locales, URLs, Base64 y subidas multipart.
+- **Herramienta de Visión para Open-WebUI (`tools/openwebui_vision_tool.py`):**
+  - Tool agéntica `analizar_o_leer_imagen` con auto-detección de imágenes en mensajes multimodales y archivos adjuntos, permitiendo a modelos de solo texto (como Gemma 4 12B IT) inspeccionar documentos, tablas y gráficos vía tool calling a 65+ tok/s.
+
 ## [2.5.1] - 2026-09-05
 
 ### Added

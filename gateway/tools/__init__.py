@@ -5,6 +5,7 @@ from gateway.tools.web_search import handle_web_search, perform_ollama_web_searc
 from gateway.tools.pdf_generator import handle_pdf_generation, handle_pdf_download
 from gateway.tools.doc_reader import handle_doc_reader
 from gateway.tools.rag_endpoints import handle_rag_search, handle_rag_document, handle_rag_structure
+from gateway.tools.vision import handle_vision_analysis
 
 __all__ = [
     "handle_web_search",
@@ -14,5 +15,6 @@ __all__ = [
     "handle_doc_reader",
     "handle_rag_search",
     "handle_rag_document",
-    "handle_rag_structure"
+    "handle_rag_structure",
+    "handle_vision_analysis"
 ]

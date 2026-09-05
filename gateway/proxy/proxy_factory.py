@@ -23,6 +23,7 @@ from gateway.telemetry.blocked_logger import save_blocked_request_log
 from gateway.tools.web_search import handle_web_search, perform_ollama_web_search
 from gateway.tools.pdf_generator import handle_pdf_generation, handle_pdf_download
 from gateway.tools.doc_reader import handle_doc_reader
+from gateway.tools.vision import handle_vision_analysis
 from gateway.tools.rag_endpoints import handle_rag_search, handle_rag_document, handle_rag_structure, handle_rag_library_index
 from gateway.cloud.cloud_router import handle_models_list, resolve_cloud_model
 from gateway.core.alignment_engine import enrich_chat_payload
@@ -146,6 +147,9 @@ def create_proxy_app(service_name: str, target_port: int, fallback_port: Optiona
 
         if current_service == "gemma" and path.strip("/") in ["api/tools/read-file", "v1/tools/read_file", "v1/tools/read-file", "api/tools/extract-document", "api/tools/docling"] and request.method == "POST":
             return await handle_doc_reader(request)
+
+        if current_service == "gemma" and path.strip("/") in ["api/tools/vision", "v1/tools/vision", "api/tools/analyze-image", "v1/tools/analyze-image"] and request.method == "POST":
+            return await handle_vision_analysis(request)
 
         if current_service == "gemma" and path.strip("/") == "v1/models" and request.method == "GET":
             return await handle_models_list(token, key_doc, current_target_port)
