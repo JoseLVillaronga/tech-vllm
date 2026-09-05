@@ -15,7 +15,7 @@ from fastapi.staticfiles import StaticFiles
 
 from config import API_KEY as MASTER_KEY
 from gateway.core.ip_resolver import resolve_client_ip
-from gateway.core.ip_rules import is_ip_allowed
+from gateway.core.ip_rules import is_ip_allowed, check_ip_access
 from gateway.core.fail2ban import register_failed_attempt
 from gateway.core.auth import extract_token, get_key_doc, validate_token_doc
 from gateway.telemetry.usage_logger import save_usage_log
@@ -84,8 +84,16 @@ def create_proxy_app(service_name: str, target_port: int, fallback_port: Optiona
         try:
             import ipaddress
             client_ip_obj = ipaddress.ip_address(client_ip)
-            allowed, reason = is_ip_allowed(client_ip_obj)
+            allowed, reason, silent_drop = check_ip_access(client_ip_obj)
             if not allowed:
+                if silent_drop:
+                    # Drop silencioso para IPs en lista negra: respuesta vacía de 0 bytes,
+                    # cierre inmediato de socket y 0 consumo de CPU/I/O de base de datos.
+                    return Response(
+                        content=b"",
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        headers={"Connection": "close"}
+                    )
                 asyncio.create_task(asyncio.to_thread(save_blocked_request_log, client_ip, current_service, path, f"ip_rule_blocked:{reason}"))
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
