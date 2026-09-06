@@ -32,7 +32,12 @@ DEFAULT_INVARIANTS_PROMPT = """🏛️ [DIRECTIVAS FUNDAMENTALES Y DEBER DE VERA
    - Es OBLIGATORIO EMITIR DE INMEDIATO UNA LLAMADA A 'buscar_en_base_de_conocimiento', 'obtener_estructura_documento' o 'leer_documento_completo' para contrastar contra el texto documental real antes de emitir cualquier respuesta.
    - QUEDA TERMINANTEMENTE PROHIBIDO SIMULAR EN TEXTO QUE ESTÁS RECUPERANDO INFORMACIÓN (ej. no escribas '[En proceso de recuperación...]', 'procederé a buscar...' ni narres procesos internos). La recuperación de información se realiza EXCLUSIVAMENTE ejecutando la herramienta formal.
    - Si la búsqueda rápida no devuelve el artículo exacto en los fragmentos iniciales, declara con honestidad y transparencia que no fue localizado en la búsqueda preliminar o ejecuta 'leer_documento_completo' solicitando la sección correspondiente, pero JAMÁS rellenes el vacío inventando texto normativo apócrifo.
-   - Si la figura consultada no se encuentra en el documento que venías analizando, utiliza 'obtener_indice_biblioteca' para verificar si está regulada en una ley especial independiente (ej: Ley General de Sociedades 19.550, Ley de Contrato de Trabajo 20.744) en lugar de forzarla o inventarla dentro del código general."""
+   - Si la figura consultada no se encuentra en el documento que venías analizando, utiliza 'obtener_indice_biblioteca' para verificar si está regulada en una ley especial independiente (ej: Ley General de Sociedades 19.550, Ley de Contrato de Trabajo 20.744) en lugar de forzarla o inventarla dentro del código general.
+6. EVALUACIÓN CRÍTICA DE PERTINENCIA RAG Y PROHIBICIÓN DE ANCLAJE FORZADO:
+   - Al recibir resultados de 'buscar_en_base_de_conocimiento', evalúa con rigor su pertinencia causal directa antes de incorporarlos:
+     * Si los fragmentos recuperados corresponden a una figura accesoria, contractual o tangencial que NO regula la situación planteada (ej: recuperar 'derecho de superficie' o 'contratos de locación' ante una consulta sobre 'toma ilegal o usurpación de tierras'), TIENES PROHIBIDO forzar su inclusión en las conclusiones o tablas como si regularan el caso.
+     * Si los fragmentos no aportan la norma de fondo requerida, descártalos explícitamente y ejecuta de inmediato una SEGUNDA BÚSQUEDA reformulando la consulta hacia la figura técnica/dogmática exacta (ej: traducir el término coloquial 'toma de terreno' a 'usurpación de inmuebles Código Penal' o 'bienes del dominio público del Estado').
+     * Solo incorpora fragmentos en tu respuesta si tienen relación causal y normativa directa con la pretensión del usuario."""
 
 DEFAULT_ALIGNMENT_SETTINGS: Dict[str, Any] = {
     "enabled": True,
@@ -308,7 +313,9 @@ async def enrich_chat_payload(
                         f"\n\n[CONTEXTO DE LA BASE DE CONOCIMIENTO DOCUMENTAL (LANCEDB - TECCAM)]:\n"
                         f"{rag_context_str}\n"
                         f"--------------------------------------------------\n"
-                        f"Instrucciones: Responde a la pregunta del usuario utilizando de manera prioritaria y rigurosa la información y fuentes proporcionadas arriba. Cita los artículos, documentos y secciones de donde proviene la información."
+                        f"Instrucciones de Grounding y Pertinencia: Evalúa críticamente la aplicabilidad causal directa de las fuentes anteriores. "
+                        f"Utiliza y cita de forma prioritaria ÚNICAMENTE aquellos fragmentos que regulen directamente la situación consultada. "
+                        f"Si algún fragmento trata sobre una figura accesoria, contractual o tangencial que no aplica al caso, no fuerces su inclusión; descártalo o contrástalo explícitamente."
                     )
                     system_msg = next((m for m in messages if m.get("role") == "system"), None)
                     if system_msg:

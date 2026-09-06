@@ -102,9 +102,13 @@ class Tools:
             return (
                 f"[DOCUMENTOS ENCONTRADOS EN LANCEDB ({results_count} fragmentos recuperados en {data.get('latency_ms', 0)} ms)]:\n\n"
                 f"{context}\n\n"
-                f"Si estos fragmentos contienen la definición o norma rectora general que buscas, responde fundamentando con ellos y cita las fuentes/artículos. "
-                f"Si por el contrario los fragmentos corresponden a modalidades derivadas o contratos particulares y requieres la definición rectora de fondo, "
-                f"consulta el índice con 'obtener_estructura_documento(doc_id=\"...\", filtro=\"disposiciones generales\")'."
+                f"INSTRUCCIONES CRÍTICAS DE USO PARA EL ASISTENTE:\n"
+                f"1. EVALUACIÓN DE PERTINENCIA: Utiliza y cita ÚNICAMENTE los fragmentos que regulen de forma directa la situación consultada. "
+                f"Si algún fragmento trata sobre una figura distinta, tangencial o contractual (ej: derecho de superficie frente a una toma de hecho), "
+                f"TIENES PROHIBIDO forzar su inclusión en conclusiones o tablas; descártalo explícitamente.\n"
+                f"2. RE-BÚSQUEDA ITERATIVA: Si estos fragmentos no contienen la norma de fondo requerida, ejecuta de inmediato una SEGUNDA BÚSQUEDA reformulando la consulta "
+                f"con términos técnicos específicos (ej: traduciendo términos coloquiales a figuras típicas como 'usurpación de inmuebles', 'bienes del dominio público', etc.) "
+                f"o consulta 'obtener_estructura_documento'."
             )
         except Exception as e:
             return f"Error de conexión con el Gateway RAG ({url}): {str(e)}"
