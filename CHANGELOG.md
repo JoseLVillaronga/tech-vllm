@@ -21,7 +21,13 @@ El formato está basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1
 - **Mitigación de Sesgo de Anclaje RAG y Re-búsqueda Iterativa (`gateway/core/alignment_engine.py`, `tools/openwebui_rag_tool.py`):**
   - Incorporado el Principio 6 en las Directivas Fundamentales MEA: evaluación crítica de pertinencia causal directa y prohibición de anclaje forzado de figuras contractuales o accesorias que no regulan el caso consultado.
   - Reemplazo del mandato coercitivo por el *permiso de descarte*: el modelo queda autorizado a ignorar fragmentos tangenciales e instruido a ejecutar una segunda búsqueda iterativa (*multi-hop*) traduciendo lenguaje coloquial a figuras jurídicas de fondo.
-  - Sincronización en caliente en MongoDB (`db.alignment_settings`) y en la plantilla de herramientas de Open-WebUI.
+- **Mitigación de Inercia Conversacional y Protocolo Coordinado de Grounding en Códigos Extensos (`gateway/core/alignment_engine.py`, `tools/openwebui_rag_tool.py`, `MANUAL_OPENWEBUI.md`):**
+  - Blindaje de turnos de seguimiento y transiciones normativas (*"ahora el vigente"*, *"cómo es hoy?*): prohibición terminante de responder de memoria paramétrica o alucinar números de artículos por inercia de chat.
+  - Formalización de la tríada coordinada en embudo para instituciones de derecho positivo en códigos monumentales (ej: CCCN):
+    1. Orientación temática y obtención de `doc_id` mediante `buscar_en_base_de_conocimiento`.
+    2. Navegación topológica mediante `obtener_estructura_documento` (con filtro) para ubicar el capítulo rector (evitando confusiones inter-ramas como Derecho de Familia vs Contratos).
+    3. Extracción de articulado literal e íntegro mediante `leer_documento_completo` (asegurando términos esenciales como *"patrimoniales"* y efectos rectores como *"efecto vinculante"*).
+  - Sincronización en caliente en MongoDB (`db.alignment_settings`), `dashboard_alignment.js` y en el prompt devuelto por la herramienta Open-WebUI.
 
 ## [2.7.0] - 2026-09-05
 

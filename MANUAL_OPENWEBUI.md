@@ -243,7 +243,9 @@ class Tools:
                 f"TIENES PROHIBIDO forzar su inclusión en conclusiones o tablas; descártalo explícitamente.\n"
                 f"2. RE-BÚSQUEDA ITERATIVA: Si estos fragmentos no contienen la norma de fondo requerida, ejecuta de inmediato una SEGUNDA BÚSQUEDA reformulando la consulta "
                 f"con términos técnicos específicos (ej: traduciendo términos coloquiales a figuras típicas como 'usurpación de inmuebles', 'bienes del dominio público', etc.) "
-                f"o consulta 'obtener_estructura_documento'."
+                f"o consulta 'obtener_estructura_documento'.\n"
+                f"3. TRANSICIONES Y NORMAS VIGENTES: En preguntas de seguimiento o contraste (ej: 'ahora el vigente'), utiliza 'obtener_estructura_documento' (con filtro temático) "
+                f"y 'leer_documento_completo' para ubicar y extraer el articulado positivo con exactitud literal, sin responder de memoria paramétrica."
             )
         except Exception as e:
             return f"Error de conexión con el Gateway RAG ({url}): {str(e)}"
