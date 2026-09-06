@@ -151,7 +151,45 @@ class TestGatewayToolsAndCloud(unittest.IsolatedAsyncioTestCase):
         self.assertGreater(res.get("total_documents", 0), 0)
         self.assertIn("Mapa Ontológico Global", res.get("content", ""))
 
+    def test_optimize_image_resolution_for_vit(self):
+        import io
+        import base64
+        from PIL import Image
+        from gateway.tools.vision import optimize_image_resolution_for_vit
+
+        def make_data_uri(w, h):
+            img = Image.new("RGB", (w, h), color=(200, 200, 200))
+            buf = io.BytesIO()
+            img.save(buf, format="PNG")
+            b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
+            return f"data:image/png;base64,{b64}"
+
+        def get_uri_size(uri):
+            payload = uri.split(";base64,")[1]
+            img = Image.open(io.BytesIO(base64.b64decode(payload)))
+            return img.size
+
+        # 1. Imagen chica (107x193): debe reescalar por dimensión y área
+        small_uri = make_data_uri(107, 193)
+        resized_uri = optimize_image_resolution_for_vit(small_uri, min_dimension=512, min_area=512*512)
+        rw, rh = get_uri_size(resized_uri)
+        self.assertGreaterEqual(min(rw, rh), 512)
+        self.assertGreaterEqual(rw * rh, 512 * 512)
+
+        # 2. Imagen panorámica con área chica (512x200): área 102.400 < 262.144 -> debe reescalar por área
+        pano_uri = make_data_uri(512, 200)
+        resized_pano = optimize_image_resolution_for_vit(pano_uri, min_dimension=512, min_area=512*512)
+        pw, ph = get_uri_size(resized_pano)
+        self.assertGreaterEqual(pw * ph, 512 * 512)
+
+        # 3. Imagen grande (800x800): no debe modificarse
+        big_uri = make_data_uri(800, 800)
+        unchanged_uri = optimize_image_resolution_for_vit(big_uri, min_dimension=512, min_area=512*512)
+        bw, bh = get_uri_size(unchanged_uri)
+        self.assertEqual((bw, bh), (800, 800))
+
 
 if __name__ == "__main__":
     unittest.main()
+
 

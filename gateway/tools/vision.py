@@ -20,9 +20,9 @@ _VISION_CACHE: Dict[str, Dict[str, Any]] = {}
 _MAX_VISION_CACHE_SIZE = 256
 
 DEFAULT_VISION_PROMPT = (
-    "Analiza detalladamente esta imagen. Si contiene texto, documentos, tablas, recibos o remitos, "
-    "realiza una transcripción OCR exhaustiva y fiel de todo el texto y números visibles preservando su orden. "
-    "Si es un diagrama, gráfico o esquema, describe detalladamente su contenido, componentes, valores y conclusiones."
+    "Analiza la imagen y genera tu respuesta siguiendo estrictamente esta estructura:\n"
+    "1. TRANSCRIPCIÓN Y DATOS: Transcribe de forma exhaustiva y exacta todo el texto, tablas y números visibles preservando su orden.\n"
+    "2. DESCRIPCIÓN VISUAL: Describe brevemente los elementos visuales, diagramas, fotos, estructura o figuras presentes."
 )
 
 
@@ -79,13 +79,19 @@ async def _prepare_image_data_uri_async(image_input: str) -> Optional[str]:
     return None
 
 
-def optimize_image_resolution_for_vit(data_uri: str, min_dimension: int = 512) -> str:
+def optimize_image_resolution_for_vit(
+    data_uri: str,
+    min_dimension: int = 512,
+    min_area: int = 512 * 512,
+    max_scale: float = 8.0
+) -> str:
     """
     Normaliza y reescala automáticamente imágenes de baja resolución o recortes pequeños
     para el Vision Transformer (ViT) de Qwen2.5-VL.
-    Si min(ancho, alto) < 512, reescala preservando el aspect ratio con filtro Lanczos.
-    Esto previene que el ViT genere un número insuficiente de tokens espaciales (<100)
-    y falle al transcribir textos y números finos.
+    Evalúa tanto la dimensión mínima (min(ancho, alto) < min_dimension) como el área total
+    (ancho * alto < min_area). Si se cumple alguna, reescala preservando la relación de aspecto
+    con filtro Lanczos. Esto previene que el ViT genere un número insuficiente de tokens
+    espaciales (<100) y falle al transcribir textos y números finos.
     """
     if not data_uri or not isinstance(data_uri, str) or not data_uri.startswith("data:image/"):
         return data_uri
@@ -102,10 +108,21 @@ def optimize_image_resolution_for_vit(data_uri: str, min_dimension: int = 512) -
         img = Image.open(io.BytesIO(raw_bytes))
         w, h = img.size
 
-        if min(w, h) < min_dimension:
-            scale = min_dimension / min(w, h)
-            new_w = max(int(w * scale), 1)
-            new_h = max(int(h * scale), 1)
+        current_area = w * h
+        needs_resize = (min(w, h) < min_dimension) or (current_area < min_area)
+
+        if needs_resize:
+            scale_dim = min_dimension / max(min(w, h), 1)
+            scale_area = (min_area / max(current_area, 1)) ** 0.5
+            scale = min(max(scale_dim, scale_area), max_scale)
+
+            new_w = max(round(w * scale), 1)
+            new_h = max(round(h * scale), 1)
+            if scale < max_scale and min(new_w, new_h) < min_dimension:
+                if new_w <= new_h:
+                    new_w = min_dimension
+                else:
+                    new_h = min_dimension
 
             if img.mode not in ("RGB", "L"):
                 img = img.convert("RGB")
@@ -114,13 +131,14 @@ def optimize_image_resolution_for_vit(data_uri: str, min_dimension: int = 512) -
             buf = io.BytesIO()
             resized.save(buf, format="PNG")
             new_b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
-            print(f"🔍 Gateway Vision Bridge: Imagen reescalada de {w}x{h} a {new_w}x{new_h} (optimización ViT tokens)", file=sys.stderr, flush=True)
+            print(f"🔍 Gateway Vision Bridge: Imagen reescalada de {w}x{h} (área {current_area}px²) a {new_w}x{new_h} (área {new_w*new_h}px²) (optimización ViT tokens)", file=sys.stderr, flush=True)
             return f"data:image/png;base64,{new_b64}"
 
     except Exception as err:
         print(f"⚠️ Gateway Vision Bridge: Error al verificar/reescalar resolución de imagen: {err}", file=sys.stderr, flush=True)
 
     return data_uri
+
 
 
 async def analyze_image_with_vision_backend(
@@ -248,8 +266,9 @@ async def bridge_multimodal_messages(messages: List[Dict[str, Any]]) -> bool:
                     res = await analyze_image_with_vision_backend(
                         data_uri,
                         prompt=(
-                            "Realiza una transcripción OCR exhaustiva y fiel de todo el texto, títulos, números de remitos, facturas, tablas, sellos "
-                            "y datos visibles en esta imagen sin omitir nada. Si hay gráficos, diagramas o fotos, describe sus componentes con detalle."
+                            "Analiza la imagen y genera tu respuesta siguiendo estrictamente esta estructura:\n"
+                            "1. TRANSCRIPCIÓN Y DATOS: Transcribe de forma exhaustiva y exacta todo el texto, títulos, números de remitos, tablas y números visibles.\n"
+                            "2. DESCRIPCIÓN VISUAL: Describe brevemente los elementos visuales, diagramas, fotos, estructura o figuras presentes."
                         )
                     )
                     if res.get("success"):
