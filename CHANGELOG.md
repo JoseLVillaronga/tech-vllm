@@ -18,6 +18,10 @@ El formato está basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1
 - **Universalidad Multi-Modelo y Eficiencia Radical de Contexto (`docs/ARQUITECTURA_MULTIMODAL_DESACOPLADA_RAM_CPU.md`, `MANUAL_OPENWEBUI.md`):**
   - Documentación formal del desacoplamiento: cualquier modelo de texto puro local (Gemma 4, Qwen 2.5 32B/35B, GLM-4.7-Flash MoE, etc.) queda dotado de visión de alta fidelidad sin requerir proyector `mmproj` ni consumir VRAM.
   - Destilación semántica en texto estructurado con ahorro del 85% al 95% de la ventana de contexto en la GPU frente a proyectores visuales nativos o Base64.
+- **Mitigación de Sesgo de Anclaje RAG y Re-búsqueda Iterativa (`gateway/core/alignment_engine.py`, `tools/openwebui_rag_tool.py`):**
+  - Incorporado el Principio 6 en las Directivas Fundamentales MEA: evaluación crítica de pertinencia causal directa y prohibición de anclaje forzado de figuras contractuales o accesorias que no regulan el caso consultado.
+  - Reemplazo del mandato coercitivo por el *permiso de descarte*: el modelo queda autorizado a ignorar fragmentos tangenciales e instruido a ejecutar una segunda búsqueda iterativa (*multi-hop*) traduciendo lenguaje coloquial a figuras jurídicas de fondo.
+  - Sincronización en caliente en MongoDB (`db.alignment_settings`) y en la plantilla de herramientas de Open-WebUI.
 
 ## [2.7.0] - 2026-09-05
 

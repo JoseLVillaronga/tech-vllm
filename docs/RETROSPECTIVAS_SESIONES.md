@@ -48,7 +48,7 @@ Al finalizar cada sesión de trabajo, el agente y el usuario realizan una audito
 
 ## 📝 Fichas Detalladas por Sesión
 
-### 🔹 Sesión: 2026-09-06 Mediodía (`ca5c7e22-5f02-4c3e-8b9d-87b5c9479cce`) - Universalidad de Visión, Reescalado Adaptativo 2D & Prompt Estructurado en 2 Fases
+### 🔹 Sesión: 2026-09-06 Mediodía/Tarde (`ca5c7e22-5f02-4c3e-8b9d-87b5c9479cce`) - Universalidad de Visión, Reescalado Adaptativo 2D & Blindaje Anti-Sesgo RAG
 * **Hitos Principales:**
   1. **Auditoría de Aislamiento de Visión en Modelos Externos:**
      - Verificación rigurosa en código y configuración: se constató que los modelos de proveedores externos (OpenAI, Anthropic, Gemini, DeepSeek Cloud) configurados en Open-WebUI operan por canales directos a sus respectivas APIs, sin pasar por Qwen2.5-VL en RAM ni por el Gateway local, preservando intacta su visión multimodal nativa.
@@ -69,11 +69,16 @@ Al finalizar cada sesión de trabajo, el agente y el usuario realizan una audito
   6. **Suite de Pruebas Automatizadas y Validación Empírica en UI:**
      - Incorporado test unitario `test_optimize_image_resolution_for_vit` en `tests/test_gateway_tools.py` (29/29 tests aprobados, 100% OK).
      - Validación empírica confirmada directamente por el usuario en Open-WebUI con captura exitosa.
+  7. **Blindaje Anti-Sesgo de Anclaje RAG y Permiso de Descarte ([`gateway/core/alignment_engine.py`](../gateway/core/alignment_engine.py), [`tools/openwebui_rag_tool.py`](../tools/openwebui_rag_tool.py) - Commit `aeab647`):**
+     - Diagnóstico de sesgo de anclaje: modelos de escala 12B interpretan la directiva clásica (*"responde fundamentando con estos fragmentos"*) como una orden coercitiva de incorporar fragmentos aunque sean tangenciales (ej: derecho de superficie frente a usurpación de tierras).
+     - Incorporado el **Principio 6** en las Directivas Fundamentales MEA: evaluación crítica de pertinencia causal directa y prohibición de forzamiento en conclusiones o tablas.
+     - Reemplazo por el **permiso de descarte**: autorización explícita para ignorar fragmentos inaplicables e instrucción de ejecutar de inmediato una **segunda búsqueda iterativa (multi-hop)** traduciendo términos coloquiales a figuras típicas de fondo.
+     - Sincronización en caliente en MongoDB (`db.alignment_settings`) y en la plantilla del manual de Open-WebUI.
 * **Evaluación MEA v2.1 & Leyes de Ingeniería:**
   * **Invariantes (Gate 1):** **0 violaciones**. Cero secretos expuestos, cero rutas absolutas, veracidad empírica comprobada en vivo contra `llama-server` y `open-webui`.
-  * **Ley 1 (Modularización Estricta):** Cumplida al 100%. Las mejoras de reescalado y prompting residen exclusivamente en `gateway/tools/vision.py`.
-  * **Ley 2 (Atacar Causas Raíz):** Cumplida al 100%. Se identificó la causa raíz exacta (guardrail del prompt + truncamiento de enteros en resize) en vez de aplicar parches superficiales.
-  * **Ley 3 (Mínimo Blast Radius):** Cumplida al 100%. Modificaciones quirúrgicas de 20 líneas en `gateway/tools/vision.py` con retrocompatibilidad absoluta.
+  * **Ley 1 (Modularización Estricta):** Cumplida al 100%. Lógica de pre-procesamiento concentrada en `gateway/tools/vision.py` y alineamiento en `gateway/core/alignment_engine.py`.
+  * **Ley 2 (Atacar Causas Raíz):** Cumplida al 100%. Se resolvieron tanto los guardrails de visión como el sesgo de anclaje RAG a nivel de diseño de directivas y scaffolding.
+  * **Ley 3 (Mínimo Blast Radius):** Cumplida al 100%. Modificaciones quirúrgicas manteniendo total compatibilidad retroactiva.
   * **RVI Máximo:** `1/10`.
   * **Suite de Pruebas:** 29 tests unitarios y end-to-end aprobados (100% OK).
 
