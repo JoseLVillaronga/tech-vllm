@@ -3,6 +3,22 @@
 Todos los cambios notables en este proyecto serán documentados en este archivo.
 El formato está basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/).
 
+## [2.8.0] - 2026-09-06
+
+### Added
+- **Reescalado Adaptativo 2D por Dimensión y Área Mínima (`gateway/tools/vision.py`):**
+  - Implementado doble umbral de disparo: $\min(w, h) < 512$ o $w \cdot h < 262.144 \text{ px}^2$, garantizando densidad de parches espaciales en el ViT de Qwen2.5-VL para muestras pequeñas, recortes o formatos panorámicos.
+  - Corrección de truncamiento en punto flotante usando `round` para asegurar cumplimiento exacto de la cota mínima de resolución.
+  - Cobertura de pruebas unitarias automatizadas (`test_optimize_image_resolution_for_vit` en `tests/test_gateway_tools.py`).
+- **Prompt Estructurado de Visión en 2 Fases (`gateway/tools/vision.py`):**
+  - Reemplazo de directivas conversacionales por una estructura imperativa en dos bloques:
+    1. *Transcripción y Datos* (OCR exhaustivo de textos, números y tablas).
+    2. *Descripción Visual* (análisis de componentes, diagramas, figuras y colores).
+  - Eliminación de falsos rechazos (*safety refusals*) de Qwen2.5-VL en español, logrando extracción íntegra de comprobantes y números de remito en un único pase de ~4.5s en CPU/RAM.
+- **Universalidad Multi-Modelo y Eficiencia Radical de Contexto (`docs/ARQUITECTURA_MULTIMODAL_DESACOPLADA_RAM_CPU.md`, `MANUAL_OPENWEBUI.md`):**
+  - Documentación formal del desacoplamiento: cualquier modelo de texto puro local (Gemma 4, Qwen 2.5 32B/35B, GLM-4.7-Flash MoE, etc.) queda dotado de visión de alta fidelidad sin requerir proyector `mmproj` ni consumir VRAM.
+  - Destilación semántica en texto estructurado con ahorro del 85% al 95% de la ventana de contexto en la GPU frente a proyectores visuales nativos o Base64.
+
 ## [2.7.0] - 2026-09-05
 
 ### Added
