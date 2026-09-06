@@ -29,7 +29,8 @@ El formato está basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1
     3. Extracción de articulado literal e íntegro mediante `leer_documento_completo` (asegurando términos esenciales como *"patrimoniales"* y efectos rectores como *"efecto vinculante"*).
 - **Ampliación Universal del Grounding Documental y Refuerzo Anti-Decay en Turnos Avanzados (`gateway/core/alignment_engine.py`, `tools/openwebui_rag_tool.py`, `MANUAL_OPENWEBUI.md`):**
   - Extensión del deber de grounding no solo a derecho positivo y constitucional, sino también a **procedimientos operativos (SOPs), contratos, políticas corporativas y documentación interna de Teccam**.
-  - Mecanismo anti-atenuación atencional (*anti-decay*): inyección dinámica en el Gateway de un recordatorio perentorio de grounding al final de la última consulta del usuario cuando se detectan disparadores normativos, procedimentales, contractuales o de políticas, neutralizando la pérdida de atención (*lost-in-the-middle*) en sesiones de más de 4 turnos (>12.500 tokens).
+  - Taxonomía exhaustiva de disparadores de grounding (`GROUNDING_TRIGGERS_PATTERN`) en 6 grupos semánticos: (1) normas, leyes y códigos; (2) procedimientos, plazos y trámites; (3) contratos, cláusulas y penalidades; (4) políticas, seguridad y compliance; (5) instituciones, órganos, atribuciones y potestades (incluyendo Defensor del Pueblo, juzgados, ministerios); (6) manuales y documentación de Teccam.
+  - Mecanismo anti-atenuación atencional (*anti-decay*): inyección dinámica en el Gateway de un recordatorio perentorio de grounding al final de la última consulta del usuario ante cualquier término de la taxonomía, neutralizando el *lost-in-the-middle* en sesiones de más de 20 turnos (>50.000 tokens).
   - Sincronización en MongoDB `db.alignment_settings`, `static/js/dashboard_alignment.js` y en la suite de herramientas Open-WebUI.
 
 ## [2.7.0] - 2026-09-05

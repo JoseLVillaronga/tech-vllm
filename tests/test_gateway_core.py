@@ -275,6 +275,17 @@ class TestGatewayCore(unittest.TestCase):
         res_no_tools = asyncio.run(enrich_chat_payload(data_no_tools, actual_model="gemma", is_cloud_request=False))
         self.assertNotIn("[DIRECTIVA DE CONTROL Y GROUNDING OBLIGATORIO (MEA)]", res_no_tools["messages"][-1]["content"])
 
+        # 5. Consulta institucional / órganos (Defensor del Pueblo / Función) -> Debe inyectar recordatorio
+        data_institucional = {
+            "messages": [
+                {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "user", "content": "¿Cuál es la función del Defensor del Pueblo en el ordenamiento jurídico argentino?"}
+            ],
+            "tools": tools_with_rag
+        }
+        res_inst = asyncio.run(enrich_chat_payload(data_institucional, actual_model="gemma", is_cloud_request=False))
+        self.assertIn("[DIRECTIVA DE CONTROL Y GROUNDING OBLIGATORIO (MEA)]", res_inst["messages"][-1]["content"])
+
 
 if __name__ == "__main__":
     unittest.main()

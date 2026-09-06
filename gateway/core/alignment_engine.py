@@ -45,11 +45,24 @@ DEFAULT_INVARIANTS_PROMPT = """🏛️ [DIRECTIVAS FUNDAMENTALES Y DEBER DE VERA
 
 GROUNDING_TRIGGERS_PATTERN = re.compile(
     r"\b("
-    r"constituci[oó]n|art[ií]culo|ley|leyes|c[oó]digo|dnu|decreto|resoluci[oó]n|reglamento|jurisprudencia|fallo|fallos|"
-    r"procedimiento|procedimientos|instructivo|instructivos|protocolo|protocolos|flujograma|pasos|requisito|requisitos|condici[oó]n|condiciones|"
-    r"contrato|contratos|cl[aá]usula|cl[aá]usulas|convenio|convenios|acuerdo|acuerdos|pacto|pactos|"
-    r"pol[ií]tica|pol[ií]ticas|compliance|conducta|normativ[ao]|normas|"
-    r"mecanismo|mecanismos|facultad|facultades|competencia|competencias|eficacia|validez|acto\s+administrativo|"
+    # 1. Normas, leyes, códigos y jurisprudencia
+    r"constituci[oó]n|art[ií]culo|art[ií]culos|art\.|ley|leyes|c[oó]digo|c[oó]digos|dnu|decreto|decretos|"
+    r"resoluci[oó]n|resoluciones|reglamento|reglamentos|estatuto|estatutos|ordenanza|ordenanzas|jurisprudencia|fallo|fallos|doctrina|"
+    # 2. Procedimientos, instructivos y circuitos operativos
+    r"procedimiento|procedimientos|instructivo|instructivos|protocolo|protocolos|flujograma|flujogramas|pasos|circuito|circuitos|"
+    r"tr[aá]mite|tr[aá]mites|expediente|expedientes|requisito|requisitos|condici[oó]n|condiciones|etapa|etapas|gu[ií]a|gu[ií]as|"
+    r"plazo|plazos|t[eé]rmino|t[eé]rminos|vencimiento|vencimientos|vigencia|c[oó]mputo|notificaci[oó]n|publicaci[oó]n|"
+    # 3. Contratos, acuerdos, cláusulas y obligaciones
+    r"contrato|contratos|cl[aá]usula|cl[aá]usulas|convenio|convenios|acuerdo|acuerdos|pacto|pactos|pliego|pliegos|licitaci[oó]n|licitaciones|"
+    r"rescisi[oó]n|resoluci[oó]n|garant[ií]a|garant[ií]as|indemnizaci[oó]n|penalidad|penalidades|sanci[oó]n|sanciones|multa|multas|mora|"
+    # 4. Políticas, compliance y seguridad interna
+    r"pol[ií]tica|pol[ií]ticas|compliance|conducta|normativ[ao]|normas|confidencialidad|seguridad|calidad|auditor[ií]a|auditor[ií]as|"
+    # 5. Instituciones, órganos, potestades y competencias
+    r"funci[oó]n|funciones|atribuci[oó]n|atribuciones|potestad|potestades|competencia|competencias|facultad|facultades|"
+    r"deber|deberes|obligaci[oó]n|obligaciones|responsabilidad|responsabilidades|mecanismo|mecanismos|alcance|eficacia|validez|"
+    r"[oó]rgano|[oó]rganos|organismo|organismos|ente|entes|autoridad|autoridades|tribunal|tribunales|juzgado|juzgados|c[aá]mara|c[aá]maras|"
+    r"defensor|defensor[ií]a|ministerio\s+p[uú]blico|procuraci[oó]n|fiscal[ií]a|magistratura|sindicatura|congreso|senado|diputados|"
+    # 6. Documentación interna y Teccam
     r"documentaci[oó]n|manual|manuales|teccam"
     r")\b",
     re.IGNORECASE
