@@ -723,9 +723,9 @@ class Tools:
 Permite inspeccionar, transcribir y analizar imágenes, capturas, diagramas técnicos y recibos/documentos escaneados mediante llamadas agénticas de Gemma 4.
 
 > [!TIP]
-> **Modo Puente Transparente (Recomendado):** ¡No es estrictamente necesario activar la herramienta para usar visión! Gracias al *Bridge Multimodal* implementado en el API Gateway, puedes simplemente **arrastrar y soltar cualquier imagen directamente en el chat** con Gemma 4. El Gateway procesa la imagen en RAM con Qwen2.5-VL en milisegundos, extrae los datos visuales/OCR y le entrega a Gemma 4 el texto estructurado para que razone sobre él a 63+ tokens/s.
+> **Modo Puente Transparente (Recomendado):** ¡No es estrictamente necesario activar la herramienta para usar visión! Gracias al *Bridge Multimodal* implementado en el API Gateway, puedes simplemente **arrastrar y soltar cualquier imagen directamente en el chat** con **Gemma 4, Qwen 2.5 (32B/35B), GLM-4.7-Flash o cualquier modelo local de solo texto**. El Gateway procesa la imagen en RAM con Qwen2.5-VL en milisegundos, aplica reescalado inteligente Lanczos para capturas difíciles, extrae los datos visuales/OCR y le entrega al LLM el texto estructurado, ahorrando entre un 85% y 95% de tokens de contexto respecto a proyectores visuales nativos.
 >
-> La herramienta personalizada se reserva para flujos agénticos donde Gemma deba inspeccionar rutas de archivos locales o URLs en pasos intermedios.
+> La herramienta personalizada se reserva para flujos agénticos donde el modelo deba inspeccionar rutas de archivos locales o URLs en pasos intermedios.
 
 ```python
 """

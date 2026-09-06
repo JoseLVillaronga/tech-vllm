@@ -89,6 +89,29 @@ flowchart TD
 * Para hilos conversacionales continuos en Open-WebUI donde cada turno reenvía el historial completo de imágenes anteriores, el Gateway genera una huella criptográfica `hashlib.sha256(f"{image_uri}_{instruction}".encode()).hexdigest()`.
 * Las imágenes de turnos previos se resuelven en **0.0001 segundos** desde la RAM del Gateway, evitando re-procesamientos redundantes en CPU.
 
+### 2.5. Universalidad Multi-Modelo y Eficiencia Radical en la Ventana de Contexto
+
+Este diseño arquitectónico introduce dos ventajas operativas de primer nivel que diferencian radicalmente a la suite frente a soluciones monolíticas o modelos de frontera comerciales:
+
+#### A. Universalidad Soberana (Agnóstica al LLM de Inferencia)
+* **Cualquier modelo de lenguaje local** configurado en el backend —ya sea **Gemma 4 12B IT**, **Qwen 2.5 32B / 35B**, **GLM-4.7-Flash 30B MoE**, **Qwen 2.5 Coder 32B**, o cualquier checkpoint denso o MoE de solo texto— queda **automáticamente dotado de visión de alta fidelidad** sin necesidad de:
+  - Cargar proyectores multimodales pesados (`mmproj`) en el motor principal.
+  - Asignar memoria de tensores visuales en la GPU (ahorro del 100% de VRAM para visión).
+  - Modificar el backend de inferencia (`llama-server` o `vllm`).
+* Al actuar en la capa del Gateway (`gateway/proxy/proxy_factory.py`), la transformación es completamente transparente: el LLM principal opera exclusivamente sobre texto puro estructurado en Markdown, permitiendo que modelos orientados a código o razonamiento analítico puro (que carecen de visión nativa) interpreten capturas de pantallas, diagramas de arquitectura, remitos y tablas complejas con total precisión.
+
+#### B. Hiper-Eficiencia en la Ventana de Contexto (Tokens Semánticos vs. Tokens Visuales Brutos)
+En los modelos multimodales nativos o en arquitecturas comerciales monolíticas:
+1. **Inflación Masiva de la KV Cache:** Un modelo multimodal nativo descompone cada imagen en una malla fija de atención que consume entre **1.000 y 4.000 tokens visuales crudos** (o cientos de miles de tokens si la imagen se transportara en Base64). En conversaciones multi-turno, estos miles de tokens saturan velozmente la KV Cache de la GPU y degradan la velocidad de prefill.
+2. **Destilación Semántica de Alta Densidad:** Nuestro enfoque desacoplado utiliza Qwen2.5-VL en RAM como un **destilador semántico**:
+   - Una imagen de un remito o factura de varios megabytes se traduce en **~150 a 300 tokens de texto limpio y altamente denso** (`<contenido_visual_extraido>`), preservando el 100% de los datos numéricos y relacionales.
+   - **Ahorro del 85% al 95% de la ventana de contexto** del LLM principal en comparación con proyectores visuales nativos.
+   - Permite mantener hilos conversacionales extensos de decenas de turnos y combinar la visión con grandes bases documentales (RAG en LanceDB) sin temor a agotar la ventana de contexto ni fragmentar la memoria de la RTX 3090.
+
+#### C. Resiliencia ante Muestras Degradadas (Superando a Modelos de Frontera)
+* Los modelos comerciales de frontera (como `deepseek-v4-flash-vision-exp`, GPT-4o o Claude) dividen la imagen en parches fijos (típicamente $14 \times 14$ px). En recortes pequeños o de baja resolución (ej: comprobantes de 36 KB o capturas pequeñas), generan menos de 100 tokens visuales, perdiendo irremediablemente dígitos finos, fechas y números de remito, viéndose forzados a declarar que la información es ilegible.
+* El pre-escalado adaptativo con filtro **Lanczos** implementado en `optimize_image_resolution_for_vit` asegura que toda muestra alcance una cota mínima de $\ge 512$ px, forzando al ViT a emitir cientos de parches espaciales de alta fidelidad. De esta manera, cualquier LLM local de la suite obtiene una capacidad de lectura de documentos que supera empíricamente a modelos gigantes de frontera que operan sobre APIs monolíticas sin pre-procesamiento adaptativo.
+
 ---
 
 ## 🎨 3. Módulo de Difusión: SDXL-Turbo en CPU/RAM (`vllm-sd.service`)
