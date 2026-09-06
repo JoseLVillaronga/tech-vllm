@@ -221,6 +221,61 @@ class TestGatewayCore(unittest.TestCase):
         f2b.failed_attempts.pop(loopback_ip, None)
         os.environ["FAIL2BAN_EXCLUDE_LOOPBACK"] = "true"
 
+    def test_enrich_chat_payload_grounding_anti_decay(self):
+        import asyncio
+        from gateway.core.alignment_engine import enrich_chat_payload
+
+        tools_with_rag = [
+            {"type": "function", "function": {"name": "buscar_en_base_de_conocimiento"}}
+        ]
+
+        # 1. Consulta sensible (Constitución / Mecanismo) con herramientas RAG -> Debe inyectar recordatorio
+        data_sensible = {
+            "messages": [
+                {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "user", "content": "¿Cuál es el mecanismo establecido en la Constitución Nacional para reformar la Carta Magna?"}
+            ],
+            "tools": tools_with_rag
+        }
+        res = asyncio.run(enrich_chat_payload(data_sensible, actual_model="gemma", is_cloud_request=False))
+        last_msg = res["messages"][-1]
+        self.assertIn("[DIRECTIVA DE CONTROL Y GROUNDING OBLIGATORIO (MEA)]", last_msg["content"])
+        self.assertIn("procedimientos, contratos, políticas", last_msg["content"])
+
+        # 2. Consulta de procedimiento interno -> Debe inyectar recordatorio
+        data_proc = {
+            "messages": [
+                {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "user", "content": "¿Cuáles son los pasos del procedimiento de compras y el contrato de servicio?"}
+            ],
+            "tools": tools_with_rag
+        }
+        res_proc = asyncio.run(enrich_chat_payload(data_proc, actual_model="gemma", is_cloud_request=False))
+        self.assertIn("[DIRECTIVA DE CONTROL Y GROUNDING OBLIGATORIO (MEA)]", res_proc["messages"][-1]["content"])
+
+        # 3. Consulta general/conversacional -> NO debe inyectar recordatorio
+        data_chat = {
+            "messages": [
+                {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "user", "content": "Hola, buenos días, ¿cómo estás hoy?"}
+            ],
+            "tools": tools_with_rag
+        }
+        res_chat = asyncio.run(enrich_chat_payload(data_chat, actual_model="gemma", is_cloud_request=False))
+        self.assertNotIn("[DIRECTIVA DE CONTROL Y GROUNDING OBLIGATORIO (MEA)]", res_chat["messages"][-1]["content"])
+
+        # 4. Sin herramientas RAG disponibles -> NO debe inyectar recordatorio
+        data_no_tools = {
+            "messages": [
+                {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "user", "content": "¿Cuál es el mecanismo de la Constitución?"}
+            ],
+            "tools": []
+        }
+        res_no_tools = asyncio.run(enrich_chat_payload(data_no_tools, actual_model="gemma", is_cloud_request=False))
+        self.assertNotIn("[DIRECTIVA DE CONTROL Y GROUNDING OBLIGATORIO (MEA)]", res_no_tools["messages"][-1]["content"])
+
 
 if __name__ == "__main__":
     unittest.main()
+

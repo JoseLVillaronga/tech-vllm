@@ -241,11 +241,11 @@ class Tools:
                 f"1. EVALUACIÓN DE PERTINENCIA: Utiliza y cita ÚNICAMENTE los fragmentos que regulen de forma directa la situación consultada. "
                 f"Si algún fragmento trata sobre una figura distinta, tangencial o contractual (ej: derecho de superficie frente a una toma de hecho), "
                 f"TIENES PROHIBIDO forzar su inclusión en conclusiones o tablas; descártalo explícitamente.\n"
-                f"2. RE-BÚSQUEDA ITERATIVA: Si estos fragmentos no contienen la norma de fondo requerida, ejecuta de inmediato una SEGUNDA BÚSQUEDA reformulando la consulta "
-                f"con términos técnicos específicos (ej: traduciendo términos coloquiales a figuras típicas como 'usurpación de inmuebles', 'bienes del dominio público', etc.) "
+                f"2. RE-BÚSQUEDA ITERATIVA: Si estos fragmentos no contienen la norma, procedimiento, política o contrato requerido, ejecuta de inmediato una SEGUNDA BÚSQUEDA reformulando la consulta "
+                f"con términos técnicos específicos (ej: traduciendo términos coloquiales a figuras típicas como 'reforma constitucional artículo 30', 'procedimiento compras', etc.) "
                 f"o consulta 'obtener_estructura_documento'.\n"
-                f"3. TRANSICIONES Y NORMAS VIGENTES: En preguntas de seguimiento o contraste (ej: 'ahora el vigente'), utiliza 'obtener_estructura_documento' (con filtro temático) "
-                f"y 'leer_documento_completo' para ubicar y extraer el articulado positivo con exactitud literal, sin responder de memoria paramétrica."
+                f"3. NORMAS VIGENTES, PROCEDIMIENTOS Y CONTRATOS: En preguntas conceptuales, de seguimiento, de contraste (ej: 'ahora el vigente') o sobre procedimientos y políticas, utiliza 'obtener_estructura_documento' (con filtro temático) "
+                f"y 'leer_documento_completo' para ubicar y extraer el articulado positivo, los pasos del procedimiento o las cláusulas con exactitud literal, sin responder de memoria paramétrica."
             )
         except Exception as e:
             return f"Error de conexión con el Gateway RAG ({url}): {str(e)}"

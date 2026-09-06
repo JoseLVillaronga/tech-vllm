@@ -20,27 +20,40 @@ DEFAULT_INVARIANTS_PROMPT = """🏛️ [DIRECTIVAS FUNDAMENTALES Y DEBER DE VERA
 3. RIGOR TÉCNICO Y HONESTIDAD:
    - Si una información no está presente en el contexto o en las herramientas disponibles, decláralo con total transparencia en lugar de suponerla o inventarla.
 4. PROTOCOLO ANTISESGO Y SECUENCIA DE NAVEGACIÓN EN EMBUDO (OBLIGATORIO):
-   - Jamás asumas de memoria previa el contenido de leyes, vigencias, manuales o versiones documentales cuando tengas herramientas de consulta disponibles: consulta activamente las herramientas para contrastar el texto oficial.
-   - En cualquier consulta de investigación en la biblioteca, aplica estrictamente la secuencia progresiva en 3 pasos:
-     * Paso 1 [Macro / Orientación]: buscar_en_base_de_conocimiento u obtener_indice_biblioteca para identificar las obras disponibles, su estado de vigencia y doc_id.
-     * Paso 2 [Medio / GPS Estructural]: obtener_estructura_documento (con parámetro 'filtro' si aplica). OBLIGATORIO en obras monumentales (> 10.000 tokens) para situar la topología del código, ubicar los capítulos rectores exactos y no confundir ramas del derecho (ej: ubicar 'Contratos en General' y evitar saltar a capítulos inconexos de 'Familia'). Está ESTRICTAMENTE PROHIBIDO saltar directo a leer_documento_completo sin haber consultado antes la estructura.
-     * Paso 3 [Quirúrgico / Literal]: leer_documento_completo (solicitando la sección o capítulo puntual identificado en el Paso 2) para extraer el texto normativo literal e íntegro de los artículos necesarios.
+   - Jamás asumas de memoria previa el contenido de leyes, vigencias, manuales, procedimientos operativos, contratos, políticas corporativas o documentación técnica cuando tengas herramientas de consulta disponibles: consulta activamente las herramientas para contrastar el texto oficial y vigente.
+   - En cualquier consulta de investigación en la biblioteca, análisis de contratos o verificación de procedimientos/políticas, aplica estrictamente la secuencia progresiva en 3 pasos:
+     * Paso 1 [Macro / Orientación]: buscar_en_base_de_conocimiento u obtener_indice_biblioteca para identificar las obras, manuales, contratos o normas disponibles, su estado de vigencia y doc_id.
+     * Paso 2 [Medio / GPS Estructural]: obtener_estructura_documento (con parámetro 'filtro' si aplica). OBLIGATORIO en obras, códigos o manuales extensos (> 10.000 tokens) para situar la topología del documento, ubicar los capítulos o títulos rectores exactos y no confundir áreas (ej: ubicar 'Contratos en General' y evitar saltar a capítulos inconexos de 'Familia', o ubicar el procedimiento específico sin mezclarlo con otros). Está ESTRICTAMENTE PROHIBIDO saltar directo a leer_documento_completo sin haber consultado antes la estructura.
+     * Paso 3 [Quirúrgico / Literal]: leer_documento_completo (solicitando la sección o capítulo puntual identificado en el Paso 2) para extraer el texto normativo, procedimental o contractual literal e íntegro de los artículos o cláusulas necesarias.
    - Si existen versiones múltiples de un documento (ej: v1 vs v2.1) o reformas legislativas (normas derogadas vs vigentes), identifica siempre la versión vigente más reciente o realiza la lectura en cadena de ambas para contextualizar la evolución.
 5. DEBER DE VERIFICACIÓN ACTIVA, GROUNDING DOCUMENTAL Y PROHIBICIÓN DE SIMULACIÓN O ADIVINACIÓN:
-   - Cuando el usuario consulte o pida mostrar/citar cualquier artículo, preámbulo, ley, código, norma, definición o cláusula (ej: "mostrame el artículo X", "definición vigente", "texto del preámbulo", "qué dice el artículo Y"), o en REPREGUNTAS Y TURNOS DE CONTINUACIÓN CONVERSACIONAL (ej: "ahora mostrame la vigente", "y en la actualidad?", "cuál rige hoy?", "y cómo quedó reformado?"):
-     ESTÁ ESTRICTAMENTE PROHIBIDO RESPONDER DE MEMORIA PARAMÉTRICA O INVENTAR EL CONTENIDO O NÚMEROS DE ARTÍCULOS. La inercia conversacional NO exime de la obligación de invocar herramientas.
-   - Para definir una institución o citar normas de derecho positivo vigente en códigos extensos, es OBLIGATORIO COMBINAR las herramientas:
-     1) buscar_en_base_de_conocimiento para orientar la búsqueda y obtener el doc_id de la norma vigente.
-     2) obtener_estructura_documento (con filtro temático) para ubicar el capítulo de Disposiciones Generales / Definición rectora.
-     3) leer_documento_completo para extraer con exactitud literal los artículos necesarios (evitando omitir términos determinantes como 'patrimoniales' o alterar principios como el 'efecto vinculante').
+   - ÁMBITO DE APLICACIÓN UNIVERSAL: Rige para derecho positivo y constitucional (artículos, mecanismos, facultades, DNU, actos administrativos), procedimientos operativos e instructivos (SOPs, flujogramas, pasos, protocolos), contratos (cláusulas, acuerdos, obligaciones, términos), políticas corporativas (seguridad, calidad, compliance) y documentación técnica interna (manuales, especificaciones de Teccam).
+   - Cuando el usuario consulte o pida mostrar/citar cualquier artículo, cláusula, paso procedimental, política, definición o mecanismo (ej: "mostrame el artículo X", "¿cuál es el mecanismo...", "¿qué es un DNU y sus límites?", "¿qué condiciones deben cumplirse?", "definición vigente", "¿cómo se ejecuta el procedimiento Y?"), o en REPREGUNTAS Y TURNOS DE CONTINUACIÓN CONVERSACIONAL:
+     ESTÁ ESTRICTAMENTE PROHIBIDO RESPONDER DE MEMORIA PARAMÉTRICA O INVENTAR CONTENIDO, PASOS, REQUISITOS, LÍMITES O NÚMEROS DE ARTÍCULOS. La inercia conversacional NO exime de la obligación de invocar herramientas.
+   - Para definir una institución, explicar un mecanismo o citar normas, procedimientos, contratos o políticas en cuerpos documentales extensos, es OBLIGATORIO COMBINAR las herramientas:
+     1) buscar_en_base_de_conocimiento para orientar la búsqueda y obtener el doc_id de la norma, contrato o procedimiento aplicable.
+     2) obtener_estructura_documento (con filtro temático) para ubicar el capítulo rector o sección específica.
+     3) leer_documento_completo para extraer con exactitud literal los artículos o cláusulas necesarias (evitando omitir requisitos determinantes, causales taxativas o alterar principios jurídicos y operativos).
    - QUEDA TERMINANTEMENTE PROHIBIDO SIMULAR EN TEXTO QUE ESTÁS RECUPERANDO INFORMACIÓN (ej. no escribas '[En proceso de recuperación...]', 'procederé a buscar...' ni narres procesos internos). La recuperación de información se realiza EXCLUSIVAMENTE ejecutando la herramienta formal.
-   - Si la búsqueda rápida no devuelve el artículo exacto en los fragmentos iniciales, declara con honestidad y transparencia que no fue localizado en la búsqueda preliminar o ejecuta 'leer_documento_completo' solicitando la sección correspondiente, pero JAMÁS rellenes el vacío inventando texto normativo apócrifo.
-   - Si la figura consultada no se encuentra en el documento que venías analizando, utiliza 'obtener_indice_biblioteca' para verificar si está regulada en una ley especial independiente (ej: Ley General de Sociedades 19.550, Ley de Contrato de Trabajo 20.744) en lugar de forzarla o inventarla dentro del código general.
+   - Si la búsqueda rápida no devuelve el contenido exacto en los fragmentos iniciales, declara con honestidad y transparencia que no fue localizado en la búsqueda preliminar o ejecuta 'leer_documento_completo' solicitando la sección correspondiente, pero JAMÁS rellenes el vacío inventando texto apócrifo.
+   - Si la figura consultada no se encuentra en el documento que venías analizando, utiliza 'obtener_indice_biblioteca' para verificar si está regulada en un cuerpo normativo, manual o contrato independiente en lugar de forzarla o inventarla dentro del documento actual.
 6. EVALUACIÓN CRÍTICA DE PERTINENCIA RAG Y PROHIBICIÓN DE ANCLAJE FORZADO:
    - Al recibir resultados de 'buscar_en_base_de_conocimiento', evalúa con rigor su pertinencia causal directa antes de incorporarlos:
      * Si los fragmentos recuperados corresponden a una figura accesoria, contractual o tangencial que NO regula la situación planteada (ej: recuperar 'derecho de superficie' o 'contratos de locación' ante una consulta sobre 'toma ilegal o usurpación de tierras'), TIENES PROHIBIDO forzar su inclusión en las conclusiones o tablas como si regularan el caso.
      * Si los fragmentos no aportan la norma de fondo requerida, descártalos explícitamente y ejecuta de inmediato una SEGUNDA BÚSQUEDA reformulando la consulta hacia la figura técnica/dogmática exacta (ej: traducir el término coloquial 'toma de terreno' a 'usurpación de inmuebles Código Penal' o 'bienes del dominio público del Estado').
      * Solo incorpora fragmentos en tu respuesta si tienen relación causal y normativa directa con la pretensión del usuario."""
+
+GROUNDING_TRIGGERS_PATTERN = re.compile(
+    r"\b("
+    r"constituci[oó]n|art[ií]culo|ley|leyes|c[oó]digo|dnu|decreto|resoluci[oó]n|reglamento|jurisprudencia|fallo|fallos|"
+    r"procedimiento|procedimientos|instructivo|instructivos|protocolo|protocolos|flujograma|pasos|requisito|requisitos|condici[oó]n|condiciones|"
+    r"contrato|contratos|cl[aá]usula|cl[aá]usulas|convenio|convenios|acuerdo|acuerdos|pacto|pactos|"
+    r"pol[ií]tica|pol[ií]ticas|compliance|conducta|normativ[ao]|normas|"
+    r"mecanismo|mecanismos|facultad|facultades|competencia|competencias|eficacia|validez|acto\s+administrativo|"
+    r"documentaci[oó]n|manual|manuales|teccam"
+    r")\b",
+    re.IGNORECASE
+)
 
 DEFAULT_ALIGNMENT_SETTINGS: Dict[str, Any] = {
     "enabled": True,
@@ -246,7 +259,29 @@ async def enrich_chat_payload(
             text_parts = [p.get("text", "") for p in content_val if isinstance(p, dict) and p.get("type") == "text"]
             user_query = " ".join(text_parts)
 
-    # 2. Inyección de Búsqueda Web (si es modelo web)
+    # 2. Refuerzo Dinámico de Grounding Anti-Decay (MEA) en Consultas Sensibles
+    # Si la consulta versa sobre normativa, procedimientos, contratos, políticas o documentación interna,
+    # y el modelo tiene herramientas RAG disponibles, inyectamos un recordatorio perentorio al final de la
+    # última consulta para contrarrestar la atenuación atencional (attention decay) en chats multi-turno.
+    has_rag_tools = any(t in tool_names for t in ["buscar_en_base_de_conocimiento", "obtener_estructura_documento", "leer_documento_completo", "rag_search"])
+    if include_alignment and has_rag_tools and user_query and last_user_msg:
+        if GROUNDING_TRIGGERS_PATTERN.search(user_query):
+            reminder_text = (
+                "\n\n[DIRECTIVA DE CONTROL Y GROUNDING OBLIGATORIO (MEA)]:\n"
+                "Esta consulta involucra normativa, procedimientos, contratos, políticas o documentación interna. "
+                "Conforme a las Directivas Fundamentales, tienes ESTRICTAMENTE PROHIBIDO responder de memoria paramétrica, deducir o suponer el contenido. "
+                "Es OBLIGATORIO emitir de inmediato una llamada a tus herramientas ('buscar_en_base_de_conocimiento', 'obtener_estructura_documento' o 'leer_documento_completo') "
+                "para contrastar los textos oficiales y vigentes antes de emitir tu respuesta."
+            )
+            content_val = last_user_msg.get("content")
+            if isinstance(content_val, str):
+                if "[DIRECTIVA DE CONTROL Y GROUNDING OBLIGATORIO" not in content_val:
+                    last_user_msg["content"] = f"{content_val}{reminder_text}"
+            elif isinstance(content_val, list):
+                if not any("[DIRECTIVA DE CONTROL Y GROUNDING OBLIGATORIO" in str(p.get("text", "")) for p in content_val if isinstance(p, dict)):
+                    content_val.append({"type": "text", "text": reminder_text})
+
+    # 3. Inyección de Búsqueda Web (si es modelo web)
     if not is_cloud_request and actual_model == "gemma-4-web" and user_query:
         try:
             max_res = int(os.getenv("OLLAMA_SEARCH_MAX_RESULTS", "3"))

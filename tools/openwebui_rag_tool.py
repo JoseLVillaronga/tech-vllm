@@ -42,9 +42,9 @@ class Tools:
     ) -> str:
         """
         Consulta fragmentos relevantes en la base de datos documental y jurídica de Teccam en LanceDB.
-        HERRAMIENTA PRINCIPAL RECOMENDADA: Utilízala como primer paso para responder preguntas sobre leyes, artículos (ej: 'artículo 957'), definiciones, conceptos, procedimientos o jurisprudencia.
-        Si la consulta o repregunta es sobre la definición o régimen rector general de una institución (ej: 'contrato', 'definición vigente'), o ante transiciones normativas (ej: 'ahora el vigente'), utiliza esta herramienta como orientación/doc_id y combínala con 'obtener_estructura_documento' (con filtro temático) y 'leer_documento_completo' para extraer los artículos rectores con exactitud literal.
-        :param consulta: Pregunta o términos de búsqueda específicos para consultar en los libros y procedimientos (ej: 'definición de contrato', 'artículo 957', 'régimen de vacaciones LCT').
+        HERRAMIENTA PRINCIPAL RECOMENDADA: Utilízala como primer paso para responder preguntas sobre leyes, artículos (ej: 'artículo 957'), definiciones, conceptos, procedimientos operativos, contratos, políticas corporativas, documentación interna o jurisprudencia.
+        Si la consulta o repregunta es sobre la definición o régimen rector general de una institución (ej: 'contrato', 'definición vigente', 'reforma constitucional', 'DNU'), o ante transiciones normativas, procedimientos operativos, políticas o cláusulas contractuales, utiliza esta herramienta como orientación/doc_id y combínala con 'obtener_estructura_documento' (con filtro temático) y 'leer_documento_completo' para extraer el articulado, procedimiento o cláusula rectora con exactitud literal.
+        :param consulta: Pregunta o términos de búsqueda específicos para consultar en los libros, normas, procedimientos o contratos (ej: 'definición de contrato', 'artículo 957', 'mecanismo reforma constitucional', 'procedimiento compras', 'política de seguridad').
         :param dominios: Opcional: Tema o temas a filtrar separados por comas. Dejar vacío para buscar en toda la base.
         :param doc_id: Opcional: ID de la obra (ej: '6a976eb89e1c2342dd2e5b34' para CCCN) obtenido de 'obtener_indice_biblioteca' para acotar la búsqueda exclusivamente a ese documento.
         """
@@ -106,11 +106,11 @@ class Tools:
                 f"1. EVALUACIÓN DE PERTINENCIA: Utiliza y cita ÚNICAMENTE los fragmentos que regulen de forma directa la situación consultada. "
                 f"Si algún fragmento trata sobre una figura distinta, tangencial o contractual (ej: derecho de superficie frente a una toma de hecho), "
                 f"TIENES PROHIBIDO forzar su inclusión en conclusiones o tablas; descártalo explícitamente.\n"
-                f"2. RE-BÚSQUEDA ITERATIVA: Si estos fragmentos no contienen la norma de fondo requerida, ejecuta de inmediato una SEGUNDA BÚSQUEDA reformulando la consulta "
-                f"con términos técnicos específicos (ej: traduciendo términos coloquiales a figuras típicas como 'usurpación de inmuebles', 'bienes del dominio público', etc.) "
+                f"2. RE-BÚSQUEDA ITERATIVA: Si estos fragmentos no contienen la norma, procedimiento, política o contrato requerido, ejecuta de inmediato una SEGUNDA BÚSQUEDA reformulando la consulta "
+                f"con términos técnicos específicos (ej: traduciendo términos coloquiales a figuras típicas como 'reforma constitucional artículo 30', 'procedimiento compras', etc.) "
                 f"o consulta 'obtener_estructura_documento'.\n"
-                f"3. TRANSICIONES Y NORMAS VIGENTES: En preguntas de seguimiento o contraste (ej: 'ahora el vigente'), utiliza 'obtener_estructura_documento' (con filtro temático) "
-                f"y 'leer_documento_completo' para ubicar y extraer el articulado positivo con exactitud literal, sin responder de memoria paramétrica."
+                f"3. NORMAS VIGENTES, PROCEDIMIENTOS Y CONTRATOS: En preguntas conceptuales, de seguimiento, de contraste (ej: 'ahora el vigente') o sobre procedimientos y políticas, utiliza 'obtener_estructura_documento' (con filtro temático) "
+                f"y 'leer_documento_completo' para ubicar y extraer el articulado positivo, los pasos del procedimiento o las cláusulas con exactitud literal, sin responder de memoria paramétrica."
             )
         except Exception as e:
             return f"Error de conexión con el Gateway RAG ({url}): {str(e)}"

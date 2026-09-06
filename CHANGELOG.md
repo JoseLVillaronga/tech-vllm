@@ -27,7 +27,10 @@ El formato está basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1
     1. Orientación temática y obtención de `doc_id` mediante `buscar_en_base_de_conocimiento`.
     2. Navegación topológica mediante `obtener_estructura_documento` (con filtro) para ubicar el capítulo rector (evitando confusiones inter-ramas como Derecho de Familia vs Contratos).
     3. Extracción de articulado literal e íntegro mediante `leer_documento_completo` (asegurando términos esenciales como *"patrimoniales"* y efectos rectores como *"efecto vinculante"*).
-  - Sincronización en caliente en MongoDB (`db.alignment_settings`), `dashboard_alignment.js` y en el prompt devuelto por la herramienta Open-WebUI.
+- **Ampliación Universal del Grounding Documental y Refuerzo Anti-Decay en Turnos Avanzados (`gateway/core/alignment_engine.py`, `tools/openwebui_rag_tool.py`, `MANUAL_OPENWEBUI.md`):**
+  - Extensión del deber de grounding no solo a derecho positivo y constitucional, sino también a **procedimientos operativos (SOPs), contratos, políticas corporativas y documentación interna de Teccam**.
+  - Mecanismo anti-atenuación atencional (*anti-decay*): inyección dinámica en el Gateway de un recordatorio perentorio de grounding al final de la última consulta del usuario cuando se detectan disparadores normativos, procedimentales, contractuales o de políticas, neutralizando la pérdida de atención (*lost-in-the-middle*) en sesiones de más de 4 turnos (>12.500 tokens).
+  - Sincronización en MongoDB `db.alignment_settings`, `static/js/dashboard_alignment.js` y en la suite de herramientas Open-WebUI.
 
 ## [2.7.0] - 2026-09-05
 
