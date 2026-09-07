@@ -3,6 +3,9 @@ from typing import List, Dict, Any, Tuple
 
 
 DEFAULT_MAX_USER_TURNS = 18
+DEFAULT_MAX_CONTEXT_TOKENS = 70000
+DEFAULT_KEEP_TOOL_TURNS = 2
+CHARS_PER_TOKEN_ESTIMATE = 3.5
 
 
 def get_max_user_turns() -> int:
@@ -14,17 +17,60 @@ def get_max_user_turns() -> int:
         return DEFAULT_MAX_USER_TURNS
 
 
+def get_max_context_tokens() -> int:
+    """Obtiene el techo máximo seguro de tokens de contexto desde el entorno o usa el valor por defecto (70000)."""
+    try:
+        val = int(os.getenv("GATEWAY_MAX_CONTEXT_TOKENS", str(DEFAULT_MAX_CONTEXT_TOKENS)))
+        return max(1000, val)
+    except (ValueError, TypeError):
+        return DEFAULT_MAX_CONTEXT_TOKENS
+
+
+def get_keep_tool_turns() -> int:
+    """Obtiene la cantidad de turnos recientes cuyos tool outputs se mantienen íntegros (por defecto 2)."""
+    try:
+        val = int(os.getenv("GATEWAY_KEEP_TOOL_TURNS", str(DEFAULT_KEEP_TOOL_TURNS)))
+        return max(0, val)
+    except (ValueError, TypeError):
+        return DEFAULT_KEEP_TOOL_TURNS
+
+
+def estimate_tokens(messages: List[Dict[str, Any]]) -> int:
+    """
+    Estima de forma rápida el conteo de tokens del payload en base al conteo de caracteres.
+    Para español técnico/jurídico, ~3.5 caracteres equivalen a 1 token.
+    """
+    total_chars = 0
+    for m in messages:
+        c = m.get("content")
+        if isinstance(c, str):
+            total_chars += len(c)
+        elif isinstance(c, list):
+            for part in c:
+                if isinstance(part, dict) and "text" in part:
+                    total_chars += len(str(part.get("text", "")))
+        tc = m.get("tool_calls")
+        if tc:
+            total_chars += len(str(tc))
+    return int(total_chars / CHARS_PER_TOKEN_ESTIMATE)
+
+
 def prune_chat_history(
     messages: List[Dict[str, Any]],
-    max_user_turns: int = None
+    max_user_turns: int = None,
+    max_context_tokens: int = None,
+    keep_tool_turns: int = None
 ) -> Tuple[List[Dict[str, Any]], int]:
     """
-    Poda el historial de conversación aplicando una ventana deslizante de turnos de usuario (Olvido Selectivo).
-    - Preserva intactos los mensajes iniciales con role == 'system'.
-    - Agrupa los mensajes de diálogo en 'bloques atómicos de turno' delimitados por cada mensaje con role == 'user'.
-    - Si la cantidad de turnos de usuario excede 'max_user_turns' (por defecto 18), descarta los bloques más antiguos.
-    - Garantiza la atomicidad de las herramientas: nunca corta la relación entre un mensaje 'assistant'
-      con 'tool_calls' y sus correspondientes mensajes con role == 'tool'.
+    Poda el historial de conversación aplicando una ventana deslizante inteligente (Olvido Selectivo):
+    1. Preserva intactos los mensajes iniciales con role == 'system'.
+    2. Agrupa el diálogo en 'bloques atómicos de turno' delimitados por cada mensaje con role == 'user'.
+    3. Si la cantidad de turnos de usuario excede 'max_user_turns' (18), descarta los bloques más antiguos.
+    4. Compacta los outputs de herramientas (role == 'tool') de turnos antiguos (> keep_tool_turns),
+       preservando intactos únicamente los turnos recientes donde el usuario aún puede repreguntar sobre el documento.
+    5. Verifica el techo de seguridad de tokens ('max_context_tokens', por defecto 70.000). Si tras compactar
+       herramientas se supera el umbral, descarta turnos antiguos adicionales hasta encajar en el presupuesto.
+    6. Garantiza la atomicidad estricta de las herramientas: jamás separa un assistant con tool_calls de sus tools.
 
     Retorna:
         Tuple[List[Dict[str, Any]], int]: (mensajes_podados, cantidad_de_turnos_descartados)
@@ -34,6 +80,10 @@ def prune_chat_history(
 
     if max_user_turns is None:
         max_user_turns = get_max_user_turns()
+    if max_context_tokens is None:
+        max_context_tokens = get_max_context_tokens()
+    if keep_tool_turns is None:
+        keep_tool_turns = get_keep_tool_turns()
 
     # 1. Separar mensajes de cabecera del sistema (System Prompts iniciales)
     system_msgs: List[Dict[str, Any]] = []
@@ -47,8 +97,6 @@ def prune_chat_history(
         return messages, 0
 
     # 2. Agrupar el diálogo en bloques atómicos por turno de usuario
-    # Cada bloque comienza con role == 'user' y contiene todos los mensajes subsiguientes
-    # (assistant, tool, assistant...) hasta el siguiente mensaje con role == 'user'.
     turn_blocks: List[List[Dict[str, Any]]] = []
     current_block: List[Dict[str, Any]] = []
 
@@ -62,22 +110,14 @@ def prune_chat_history(
             if current_block:
                 current_block.append(msg)
             else:
-                # Caso atípico: mensajes de assistant o tool antes del primer user
-                # Los tratamos como un bloque preliminar
                 current_block = [msg]
 
     if current_block:
         turn_blocks.append(current_block)
 
-    # Contar cuántos bloques tienen al usuario como disparador
     user_blocks_count = sum(1 for b in turn_blocks if b and b[0].get("role") == "user")
 
-    # 3. Evaluar si se supera el umbral de turnos
-    if user_blocks_count <= max_user_turns:
-        return messages, 0
-
-    # 4. Conservar únicamente los últimos max_user_turns bloques que comienzan con 'user'
-    # Recorremos desde el final hacia el inicio acumulando bloques
+    # 3. Conservar únicamente los últimos max_user_turns bloques que comienzan con 'user'
     kept_blocks: List[List[Dict[str, Any]]] = []
     user_turns_counted = 0
 
@@ -90,25 +130,63 @@ def prune_chat_history(
             else:
                 break
         else:
-            # Mensaje no-user suelto al final o en medio
             if user_turns_counted < max_user_turns:
                 kept_blocks.append(block)
 
     kept_blocks.reverse()
     dropped_turns = user_blocks_count - user_turns_counted
 
-    # 5. Aplanar los bloques seleccionados
-    flattened_dialog: List[Dict[str, Any]] = []
-    for b in kept_blocks:
-        flattened_dialog.extend(b)
+    # 4. Compactación de tool outputs de turnos antiguos (> keep_tool_turns)
+    # Los últimos 'keep_tool_turns' bloques con user retienen herramientas intactas.
+    # Los bloques anteriores compactan el texto crudo de 'role: tool' para ahorrar decenas de miles de tokens.
+    user_indices = [i for i, b in enumerate(kept_blocks) if b and b[0].get("role") == "user"]
+    threshold_idx = user_indices[-keep_tool_turns] if len(user_indices) >= keep_tool_turns else 0
 
-    # 6. Verificación estricta de atomicidad para tool calls
-    # Asegurar que el primer mensaje no sea un 'tool' huérfano
+    compacted_blocks: List[List[Dict[str, Any]]] = []
+    for block_idx, block in enumerate(kept_blocks):
+        is_old_block = (block_idx < threshold_idx)
+        processed_block: List[Dict[str, Any]] = []
+
+        for m in block:
+            if is_old_block and m.get("role") == "tool":
+                content = m.get("content")
+                if isinstance(content, str) and len(content) > 250:
+                    tool_call_id = m.get("tool_call_id", "")
+                    archived_msg = dict(m)
+                    archived_msg["content"] = (
+                        f"[Contenido de herramienta archivado para optimizar contexto: "
+                        f"{len(content)} caracteres previamente sintetizados por el asistente]"
+                    )
+                    processed_block.append(archived_msg)
+                    continue
+            processed_block.append(m)
+
+        compacted_blocks.append(processed_block)
+
+    kept_blocks = compacted_blocks
+
+    # 5. Aplicar Techo de Seguridad de Tokens (70.000 tokens)
+    # Si aun con herramientas compactadas se supera el presupuesto, descartar turnos más viejos
+    def flatten(blocks: List[List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
+        flat: List[Dict[str, Any]] = []
+        for b in blocks:
+            flat.extend(b)
+        return flat
+
+    current_total_tokens = estimate_tokens(system_msgs + flatten(kept_blocks))
+    while current_total_tokens > max_context_tokens and len(kept_blocks) > 1:
+        discarded = kept_blocks.pop(0)
+        if discarded and discarded[0].get("role") == "user":
+            dropped_turns += 1
+        current_total_tokens = estimate_tokens(system_msgs + flatten(kept_blocks))
+
+    # 6. Aplanar y validar atomicidad final
+    flattened_dialog = flatten(kept_blocks)
     valid_dialog: List[Dict[str, Any]] = []
     skip_orphaned = True
     for m in flattened_dialog:
         if skip_orphaned and m.get("role") == "tool":
-            continue  # Descarta tool huérfano si quedó al corte
+            continue  # Descarta tool huérfano si quedó en el límite de corte
         skip_orphaned = False
         valid_dialog.append(m)
 
