@@ -716,9 +716,19 @@ def get_document_structure(doc_id: str, filtro: Optional[str] = None) -> Dict[st
 
     md_rows = []
     for s in display_sections:
-        sec_display = s["section"]
-        if len(sec_display) > 80:
-            sec_display = sec_display[:77] + "..."
+        full_sec = s["section"]
+        clean_sec = full_sec
+        # Quitar prefijo redundante del título de la obra si está presente en el breadcrumb
+        for pfx in [f"{doc_title} > ", f"{actual_doc_id} > ", "Codigo Penal Argentino > "]:
+            if clean_sec.lower().startswith(pfx.lower()):
+                clean_sec = clean_sec[len(pfx):]
+                break
+
+        if len(clean_sec) > 115:
+            sec_display = clean_sec[:112] + "..."
+        else:
+            sec_display = clean_sec
+
         clean_param = s["section"].split(">")[-1].strip().replace('"', '')
         if len(clean_param) < 4 and ">" in s["section"]:
             clean_param = s["section"].split(">")[-2].strip().replace('"', '')
