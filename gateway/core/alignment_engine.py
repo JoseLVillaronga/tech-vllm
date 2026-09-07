@@ -68,6 +68,21 @@ GROUNDING_TRIGGERS_PATTERN = re.compile(
     re.IGNORECASE
 )
 
+FOLLOWUP_TRIGGERS_PATTERN = re.compile(
+    r"\b("
+    r"detalle|detalles|detall[aá]|detallalos|detallalas|"
+    r"ampl[ií]a|ampliar|ampliame|ampliaci[oó]n|"
+    r"profundiz[ao]|profundizar|profundizame|"
+    r"m[aá]s|m[aá]s\s+detalles|m[aá]s\s+info|m[aá]s\s+informaci[oó]n|"
+    r"cu[aá]les|cu[aá]l|qu[eé]\s+m[aá]s|qu[eé]\s+dice|qu[eé]\s+establece|"
+    r"contin[uú]a|continuar|sigue|segu[ií]|desarroll[ao]|desarrollar|"
+    r"espec[ií]fic[ao]s?|puntual|puntuales|"
+    r"art[ií]culos?|cap[ií]tulos?|secciones|penas?|sanciones?|"
+    r"texto|textos|literal|literales|contenido|ejemplos?"
+    r")\b",
+    re.IGNORECASE
+)
+
 DEFAULT_ALIGNMENT_SETTINGS: Dict[str, Any] = {
     "enabled": True,
     "inject_temporal": True,
@@ -272,20 +287,60 @@ async def enrich_chat_payload(
             text_parts = [p.get("text", "") for p in content_val if isinstance(p, dict) and p.get("type") == "text"]
             user_query = " ".join(text_parts)
 
-    # 2. Refuerzo Dinámico de Grounding Anti-Decay (MEA) en Consultas Sensibles
+    # 2. Refuerzo Dinámico de Grounding Anti-Decay (MEA) en Consultas Sensibles y Repreguntas Contextuales
     # Si la consulta versa sobre normativa, procedimientos, contratos, políticas o documentación interna,
-    # y el modelo tiene herramientas RAG disponibles, inyectamos un recordatorio perentorio al final de la
-    # última consulta para contrarrestar la atenuación atencional (attention decay) en chats multi-turno.
+    # O si es una repregunta de seguimiento (ej: "dame más detalles", "amplía") en un chat donde previamente
+    # hubo grounding documental, inyectamos el recordatorio perentorio para neutralizar el attention decay.
     has_rag_tools = any(t in tool_names for t in ["buscar_en_base_de_conocimiento", "obtener_estructura_documento", "leer_documento_completo", "rag_search"])
     if include_alignment and has_rag_tools and user_query and last_user_msg:
-        if GROUNDING_TRIGGERS_PATTERN.search(user_query):
-            reminder_text = (
-                "\n\n[DIRECTIVA DE CONTROL Y GROUNDING OBLIGATORIO (MEA)]:\n"
-                "Esta consulta involucra normativa, procedimientos, contratos, políticas o documentación interna. "
-                "Conforme a las Directivas Fundamentales, tienes ESTRICTAMENTE PROHIBIDO responder de memoria paramétrica, deducir o suponer el contenido. "
-                "Es OBLIGATORIO emitir de inmediato una llamada a tus herramientas ('buscar_en_base_de_conocimiento', 'obtener_estructura_documento' o 'leer_documento_completo') "
-                "para contrastar los textos oficiales y vigentes antes de emitir tu respuesta."
-            )
+        is_direct_grounding = bool(GROUNDING_TRIGGERS_PATTERN.search(user_query))
+        
+        is_followup_candidate = (
+            bool(FOLLOWUP_TRIGGERS_PATTERN.search(user_query)) or 
+            len(user_query.strip().split()) <= 15
+        )
+        has_prior_grounding = False
+        if not is_direct_grounding and is_followup_candidate:
+            for m in messages:
+                if m is last_user_msg:
+                    continue
+                m_role = m.get("role")
+                if m_role == "tool":
+                    has_prior_grounding = True
+                    break
+                if m_role == "assistant":
+                    if m.get("tool_calls"):
+                        has_prior_grounding = True
+                        break
+                    m_content = str(m.get("content", ""))
+                    if any(kw in m_content for kw in ["doc_id:", "base_de_conocimiento", "obtener_estructura_documento", "leer_documento_completo"]):
+                        has_prior_grounding = True
+                        break
+                elif m_role == "user":
+                    u_txt = str(m.get("content", ""))
+                    if GROUNDING_TRIGGERS_PATTERN.search(u_txt):
+                        has_prior_grounding = True
+                        break
+
+        should_inject = is_direct_grounding or has_prior_grounding
+        if should_inject:
+            if is_direct_grounding:
+                reminder_text = (
+                    "\n\n[DIRECTIVA DE CONTROL Y GROUNDING OBLIGATORIO (MEA)]:\n"
+                    "Esta consulta involucra normativa, procedimientos, contratos, políticas o documentación interna. "
+                    "Conforme a las Directivas Fundamentales, tienes ESTRICTAMENTE PROHIBIDO responder de memoria paramétrica, deducir o suponer el contenido. "
+                    "Es OBLIGATORIO emitir de inmediato una llamada a tus herramientas ('buscar_en_base_de_conocimiento', 'obtener_estructura_documento' o 'leer_documento_completo') "
+                    "para contrastar los textos oficiales y vigentes antes de emitir tu respuesta."
+                )
+            else:
+                reminder_text = (
+                    "\n\n[DIRECTIVA DE CONTROL Y GROUNDING OBLIGATORIO (SEGUIMIENTO - MEA)]:\n"
+                    "Esta consulta es una repregunta o solicitud de detalles sobre la normativa, procedimiento, contrato o documentación técnica abordada previamente. "
+                    "Conforme a las Directivas Fundamentales, tienes ESTRICTAMENTE PROHIBIDO responder de memoria paramétrica, inventar o suponer artículos o clasificaciones. "
+                    "Es OBLIGATORIO emitir de inmediato una llamada a tus herramientas ('obtener_estructura_documento', 'leer_documento_completo' o 'buscar_en_base_de_conocimiento') "
+                    "para recuperar los textos oficiales, capítulos exactos y artículos literales antes de responder."
+                )
+
             content_val = last_user_msg.get("content")
             if isinstance(content_val, str):
                 if "[DIRECTIVA DE CONTROL Y GROUNDING OBLIGATORIO" not in content_val:

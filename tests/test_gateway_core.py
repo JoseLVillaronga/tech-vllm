@@ -286,6 +286,49 @@ class TestGatewayCore(unittest.TestCase):
         res_inst = asyncio.run(enrich_chat_payload(data_institucional, actual_model="gemma", is_cloud_request=False))
         self.assertIn("[DIRECTIVA DE CONTROL Y GROUNDING OBLIGATORIO (MEA)]", res_inst["messages"][-1]["content"])
 
+        # 6. Repregunta de seguimiento ("Dame mas detalles") tras consulta previa con grounding -> Debe inyectar recordatorio de seguimiento
+        data_followup = {
+            "messages": [
+                {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "user", "content": "¿Qué delitos se regulan en el Título I del Libro II del Código Penal argentino?"},
+                {"role": "assistant", "content": "El Título I regula los Delitos contra las Personas (doc_id: 6a9e2d4236300fe5f0afb9d8)."},
+                {"role": "user", "content": "Dame mas detalles"}
+            ],
+            "tools": tools_with_rag
+        }
+        res_followup = asyncio.run(enrich_chat_payload(data_followup, actual_model="gemma", is_cloud_request=False))
+        last_followup_msg = res_followup["messages"][-1]["content"]
+        self.assertIn("[DIRECTIVA DE CONTROL Y GROUNDING OBLIGATORIO (SEGUIMIENTO - MEA)]", last_followup_msg)
+        self.assertIn("obtener_estructura_documento", last_followup_msg)
+
+        # 7. Repregunta de seguimiento ("amplía") tras asistente con tool_calls -> Debe inyectar recordatorio de seguimiento
+        data_followup_tools = {
+            "messages": [
+                {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "user", "content": "Consulta general"},
+                {"role": "assistant", "content": None, "tool_calls": [{"id": "call_1", "type": "function", "function": {"name": "buscar_en_base_de_conocimiento"}}]},
+                {"role": "tool", "content": "Resultados de la norma"},
+                {"role": "assistant", "content": "Aquí tienes la introducción."},
+                {"role": "user", "content": "amplía"}
+            ],
+            "tools": tools_with_rag
+        }
+        res_ft = asyncio.run(enrich_chat_payload(data_followup_tools, actual_model="gemma", is_cloud_request=False))
+        self.assertIn("[DIRECTIVA DE CONTROL Y GROUNDING OBLIGATORIO (SEGUIMIENTO - MEA)]", res_ft["messages"][-1]["content"])
+
+        # 8. Consulta corta en chat puramente informal sin grounding previo -> NO debe inyectar
+        data_informal_followup = {
+            "messages": [
+                {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "user", "content": "Hola amigo"},
+                {"role": "assistant", "content": "Hola! En qué te puedo ayudar hoy?"},
+                {"role": "user", "content": "dame un chiste"}
+            ],
+            "tools": tools_with_rag
+        }
+        res_inf = asyncio.run(enrich_chat_payload(data_informal_followup, actual_model="gemma", is_cloud_request=False))
+        self.assertNotIn("[DIRECTIVA DE CONTROL Y GROUNDING OBLIGATORIO", res_inf["messages"][-1]["content"])
+
 
 if __name__ == "__main__":
     unittest.main()
