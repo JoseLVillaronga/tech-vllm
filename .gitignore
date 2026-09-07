@@ -37,3 +37,6 @@ outputs/
 *.png
 !screenshots/*.png
 
+# Salidas generadas por scripts de extracción
+scripts/output/
+
