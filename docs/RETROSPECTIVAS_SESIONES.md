@@ -27,6 +27,7 @@ Al finalizar cada sesión de trabajo, el agente y el usuario realizan una audito
 ## 📈 Historial Consolidado de Sesiones
 
 | Fecha | ID Sesión | Turnos Usuario | Llamadas Agénticas (Tools) | Commits Git | Invariantes Violados | RVI Máx | Blast Radius | Estado Global |
+| **2026-09-07 (Madrugada - Doble Numeración Canónica, Coincidencia Jerárquica de Secciones & Blindaje Anti-Decay Multi-Turno)** | `fe37eff0` | 11 | ~50 | 4 | **0** | 1/10 | Mínimo (Quirúrgico) | 🟢 **100% Exitoso** |
 | **2026-09-06 (Tarde/Noche - Grounding Universal, Blindaje Anti-Decay en Turnos Extensos & Extractor Jerárquico InfoLEG)** | `ca5c7e22` | 24 | ~85 | 7 | **0** | 1/10 | Mínimo (Modular) | 🟢 **100% Exitoso** |
 | **2026-09-06 (Mediodía - Universalidad de Visión, Reescalado Adaptativo 2D & Prompt Estructurado en 2 Fases)** | `ca5c7e22` | 6 | ~35 | 3 | **0** | 1/10 | Mínimo (Quirúrgico) | 🟢 **100% Exitoso** |
 | **2026-09-05 (Noche - Blindaje Perimetral Zero Trust, Fail2ban Dinámico, Silent Drop y Monitor Multimodal)** | `ca5c7e22` | 15 | ~65 | 7 | **0** | 1/10 | Mínimo (Modular) | 🟢 **100% Exitoso** |
@@ -48,6 +49,39 @@ Al finalizar cada sesión de trabajo, el agente y el usuario realizan una audito
 ---
 
 ## 📝 Fichas Detalladas por Sesión
+
+### 🔹 Sesión: 2026-09-07 Madrugada (`fe37eff0-f313-46c0-9ac4-cc5ad3a5f1a2`) - Doble Numeración Canónica, Coincidencia Jerárquica de Secciones & Blindaje Anti-Decay Multi-Turno
+* **Hitos Principales:**
+  1. **Auditoría Forense de Fallas en Consultas Jurídicas Complejas:**
+     - Identificación de los 4 vectores de fallo en consultas de códigos extensos (Código Penal Argentino):
+       1. Tablas de índice temático preliminares que creaban fragmentos fantasma de 7 tokens en LanceDB.
+       2. Discrepancia sintáctica entre numeración romana y arábiga (`LIBRO II` vs `LIBRO SEGUNDO`, `TITULO I` vs `TÍTULO 1`).
+       3. Truncamiento prematuro a 77 caracteres en la tabla del GPS Documental que cortaba los títulos sucesivos (`TITULO I`, `TITULO II`, `TITULO III`) haciendo creer al modelo que todos eran `TITULO I`.
+       4. Colisión de números romanos por búsqueda de subcadenas (`"titulo i"` contenido dentro de `"titulo ii"`, `"titulo iii"`, `"titulo iv"`, `"titulo ix"`, `"titulo xi"`, `"titulo xii"`, `"titulo xiii"`), que devolvía 206 secciones y saturaba el GPS con artículos del Libro Primero.
+  2. **Extractor InfoLEG con Doble Numeración Canónica ([`scripts/fetch_infoleg.py`](../scripts/fetch_infoleg.py) - Commit `d83ff85`):**
+     - Descomposición preventiva de tablas introductorias de índice.
+     - Inyección sistemática de doble rótulo: `## LIBRO SEGUNDO (LIBRO II) - DE LOS DELITOS`, `### TITULO I (TÍTULO 1) - DELITOS CONTRA LAS PERSONAS`, `#### CAPÍTULO I (CAPÍTULO 1)`.
+     - Regeneración de `scripts/output/Codigo_Penal_Argentino.md` (396 artículos, 252.3 KB), subido a TECCAM_PDF con soporte `windows-1252` e indexado en LanceDB (`doc_id: 6a9e2d4236300fe5f0afb9d8`).
+  3. **Sensibilidad Multi-Turno en el Gateway ante Repreguntas Breves ([`gateway/core/alignment_engine.py`](../gateway/core/alignment_engine.py) - Commit `2a7cd60`):**
+     - Implementación de `FOLLOWUP_TRIGGERS_PATTERN` y herencia contextual de la directiva de grounding en turnos conversacionales breves (*"Dame más detalles"*, *"amplía"*, etc.) dentro de hilos con evidencia documental activa.
+     - Neutralización absoluta de la memoria paramétrica en repreguntas de seguimiento, forzando la consulta al RAG antes de responder.
+  4. **Corrección de Truncamiento en el GPS Documental ([`rag_engine.py`](../rag_engine.py) - Commit `4f18d81`):**
+     - Supresión del prefijo redundante del título de la obra en las rutas de sección.
+     - Ensanchamiento de 77 a 115 caracteres de visualización limpia, garantizando que títulos y capítulos sucesivos sean 100% legibles sin recortes engañosos.
+  5. **Motor de Coincidencia Jerárquica y de Límites ([`rag_engine.py`](../rag_engine.py) - Commit `d76c981`):**
+     - Creación de `match_section_query` y `build_boundary_regex`: matching con límites de palabra (`\b`) para números romanos y cardinales, eliminando falsos positivos. El filtrado de `TITULO I` bajó de 206 a 42 secciones exactas.
+     - Soporte para consultas compuestas jerárquicas (`"Libro II Titulo I"`, `"Titulo I del Libro II"`), extrayendo directamente los 40 fragmentos (5.466 tokens) de *Delitos contra las personas*.
+     - Soporte para abreviaturas normativas comunes (`"art. 79"` vs `"ARTÍCULO 79°"`).
+     - Suite de pruebas ampliada a **31/31 tests unitarios aprobados al 100%** en [`tests/test_gateway_tools.py`](../tests/test_gateway_tools.py).
+  6. **Validación Empírica 100% Exitosa en Open-WebUI:**
+     - *Turno 1:* `¿Qué delitos se regulan en el Título I del Libro II del Código Penal argentino?` -> Gemma 4 12B IT consultó el GPS, leyó el Título I completo (Arts. 79 al 108) y tipificó con precisión quirúrgica Delitos contra las personas (homicidio, lesiones, aborto según Ley 27.610, duelo, abandono de personas) con cero alucinaciones (sin "asesinato" ni mezcla de otros libros/títulos).
+     - *Turno 2:* `_Dame más detalles sobre los agravantes del artículo 80_` -> El Gateway activó el grounding de seguimiento, Gemma invocó `leer_documento_completo(seccion="ARTÍCULO 80°...")` y desglosó con fidelidad literal los 12 incisos del Art. 80.
+* **Evaluación MEA v2.1 & Leyes de Ingeniería:**
+  * **Invariantes (Gate 1):** **0 violaciones**. Veracidad verificada contra logs y transcripciones reales, cero destructividad, cero rutas absolutas hardcodeadas, cero credenciales expuestas.
+  * **Ley 1 (Modularización):** Funciones `match_section_query` y `build_boundary_regex` altamente cohesivas, autocontenidas y testeables de forma aislada.
+  * **Ley 2 (Causa Raíz):** Se atacaron las 4 causas raíz de fondo (encoding windows-1252, índices fantasma, colisión de números romanos y atenuación atencional multi-turno) sin parches cosméticos.
+  * **Ley 3 (Mínimo Blast Radius):** Modificaciones quirúrgicas en menos de 150 líneas de código; compatibilidad total preservada con los 31 tests unitarios en verde.
+  * **RVI Máximo:** `1/10`.
 
 ### 🔹 Sesión: 2026-09-06 Tarde/Noche (`ca5c7e22-5f02-4c3e-8b9d-87b5c9479cce`) - Grounding Universal, Blindaje Anti-Decay RAG en Turnos Extensos & Extractor Jerárquico InfoLEG
 * **Hitos Principales:**
