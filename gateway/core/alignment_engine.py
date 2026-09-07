@@ -41,7 +41,12 @@ DEFAULT_INVARIANTS_PROMPT = """🏛️ [DIRECTIVAS FUNDAMENTALES Y DEBER DE VERA
    - Al recibir resultados de 'buscar_en_base_de_conocimiento', evalúa con rigor su pertinencia causal directa antes de incorporarlos:
      * Si los fragmentos recuperados corresponden a una figura accesoria, contractual o tangencial que NO regula la situación planteada (ej: recuperar 'derecho de superficie' o 'contratos de locación' ante una consulta sobre 'toma ilegal o usurpación de tierras'), TIENES PROHIBIDO forzar su inclusión en las conclusiones o tablas como si regularan el caso.
      * Si los fragmentos no aportan la norma de fondo requerida, descártalos explícitamente y ejecuta de inmediato una SEGUNDA BÚSQUEDA reformulando la consulta hacia la figura técnica/dogmática exacta (ej: traducir el término coloquial 'toma de terreno' a 'usurpación de inmuebles Código Penal' o 'bienes del dominio público del Estado').
-     * Solo incorpora fragmentos en tu respuesta si tienen relación causal y normativa directa con la pretensión del usuario."""
+     * Solo incorpora fragmentos en tu respuesta si tienen relación causal y normativa directa con la pretensión del usuario.
+7. PROHIBICIÓN ABSOLUTA DE JURISPRUDENCIA, CARÁTULAS O FALLOS FICTICIOS:
+   - Si el usuario consulta por jurisprudencia, fallos judiciales o precedentes (ej: de la Corte Suprema, Cámaras o Tribunales) y estos no surgen expresamente de los documentos indexados en la biblioteca ni de una búsqueda web verificable:
+   - Declara con total transparencia y honestidad que en la base de datos documental no constan precedentes judiciales sobre la materia.
+   - Queda TERMINANTEMENTE PROHIBIDO inventar nombres de causas, carátulas, números de decretos disfrazados de sentencias, años, o atribuir fallos a salas u órganos judiciales inexistentes (ej: jamás inventar 'Corte Suprema, Sala Civil y Comercial' o 'Decreto 115/2004')."""
+
 
 GROUNDING_TRIGGERS_PATTERN = re.compile(
     r"\b("
@@ -330,7 +335,8 @@ async def enrich_chat_payload(
                     "Esta consulta involucra normativa, procedimientos, contratos, políticas o documentación interna. "
                     "Conforme a las Directivas Fundamentales, tienes ESTRICTAMENTE PROHIBIDO responder de memoria paramétrica, deducir o suponer el contenido. "
                     "Es OBLIGATORIO emitir de inmediato una llamada a tus herramientas ('buscar_en_base_de_conocimiento', 'obtener_estructura_documento' o 'leer_documento_completo') "
-                    "para contrastar los textos oficiales y vigentes antes de emitir tu respuesta."
+                    "para contrastar los textos oficiales y vigentes antes de emitir tu respuesta. "
+                    "Si se solicita jurisprudencia y no consta en las fuentes recuperadas, declara con honestidad su ausencia sin inventar fallos, carátulas ni salas."
                 )
             else:
                 reminder_text = (
@@ -338,7 +344,8 @@ async def enrich_chat_payload(
                     "Esta consulta es una repregunta o solicitud de detalles sobre la normativa, procedimiento, contrato o documentación técnica abordada previamente. "
                     "Conforme a las Directivas Fundamentales, tienes ESTRICTAMENTE PROHIBIDO responder de memoria paramétrica, inventar o suponer artículos o clasificaciones. "
                     "Es OBLIGATORIO emitir de inmediato una llamada a tus herramientas ('obtener_estructura_documento', 'leer_documento_completo' o 'buscar_en_base_de_conocimiento') "
-                    "para recuperar los textos oficiales, capítulos exactos y artículos literales antes de responder."
+                    "para recuperar los textos oficiales, capítulos exactos y artículos literales antes de responder. "
+                    "Si se solicita jurisprudencia y no consta en las fuentes recuperadas, declara con honestidad su ausencia sin inventar fallos, carátulas ni salas."
                 )
 
             content_val = last_user_msg.get("content")
