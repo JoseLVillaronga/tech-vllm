@@ -1,6 +1,6 @@
 # 🏛️ Reglas Fundamentales de Ingeniería y Desarrollo (Leyes Universales de José Luis Villaronga)
 
-Estas tres leyes son principios arquitectónicos y de ingeniería de software de máxima prioridad para todo agente de IA (**Antigravity**) que trabaje con este usuario, aplicables de forma universal a cualquier proyecto, módulo o servicio:
+Estas cuatro leyes son principios arquitectónicos y de ingeniería de software de máxima prioridad para todo agente de IA (**Antigravity**) que trabaje con este usuario, aplicables de forma universal a cualquier proyecto, módulo o servicio:
 
 ---
 
@@ -25,6 +25,14 @@ Estas tres leyes son principios arquitectónicos y de ingeniería de software de
 
 * **Prohibición:** No reescribir código innecesariamente, no introducir sobre-ingeniería ni alterar partes que ya funcionan de forma estable por meras preferencias estilísticas.
 * **Mandato:** Realizar intervenciones quirúrgicas, directas, elegantes y verificables. Preservar intacta la funcionalidad existente, minimizando el diff de cambios para facilitar auditorías de código, pruebas de regresión y rollbacks limpios.
+
+---
+
+### Ley 4: Integridad en Cascada para Sistemas RAG (Principio de la Alucinación Inducida por Contexto Viciado)
+> *Un modelo de lenguaje alineado admite ignorancia ante el vacío de información, pero ante un contexto recuperado corrupto, truncado, ambiguo o falsamente clasificado por el middleware, el modelo forzará probabilísticamente una síntesis coherente sobre dicha evidencia, induciendo inevitablemente una alucinación racionalizada.*
+
+* **Prohibición:** Jamás intentar resolver mediante prompts o reescrituras de instrucciones problemas originados por encodings defectuosos, truncamientos ciegos en tablas de herramientas, colisiones de búsqueda por subcadenas o índices fantasma.
+* **Mandato:** La fidelidad de un sistema RAG debe garantizarse atacando la causa raíz en sus fases precedentes: pureza en la ingesta (encodings limpios, jerarquías canónicas explícitas), determinismo matemático en la recuperación (búsquedas con límites de palabra, contratos de interfaz sin recortes engañosos) y grounding perentorio en el gateway. Toda arquitectura RAG debe regirse por la especificación detallada en [`docs/ARQUITECTURA_RAG_TECCAM.md`](docs/ARQUITECTURA_RAG_TECCAM.md).
 
 ---
 
