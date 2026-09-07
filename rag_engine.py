@@ -523,6 +523,72 @@ def normalize_text(text: str) -> str:
     cleaned = ''.join(c for c in nfkd if not unicodedata.combining(c))
     return ' '.join(cleaned.split())
 
+def build_boundary_regex(phrase: str) -> str:
+    """Construye un patrón regex con límites de palabra seguros al inicio y al final si son alfanuméricos."""
+    if not phrase:
+        return ""
+    words = [re.escape(w) for w in phrase.split()]
+    inner = r"\s+".join(words)
+    prefix = r"(?:\b|^)" if phrase[0].isalnum() else ""
+    suffix = r"(?:\b|$)" if phrase[-1].isalnum() else ""
+    return prefix + inner + suffix
+
+def match_section_query(query: str, target: str) -> bool:
+    """
+    Comprueba si una consulta o filtro coincide semántica y estructuralmente con una ruta de sección.
+    - Respeta límites de palabra para evitar colisiones de números romanos (ej: 'titulo i' dentro de 'titulo ii' o 'titulo ix').
+    - Admite consultas jerárquicas compuestas (ej: 'Libro II Titulo I', 'Titulo I del Libro II', 'Libro II > Titulo I').
+    - Tolera diferencias de acentos, mayúsculas y diacríticos.
+    - Maneja abreviaturas normativas comunes ('art. 79' vs 'articulo 79').
+    """
+    if not query or not target:
+        return False
+
+    q_norm = normalize_text(query)
+    t_norm = normalize_text(target)
+    if not q_norm or not t_norm:
+        return False
+
+    # 1. Coincidencia completa con límites seguros
+    full_pat = build_boundary_regex(q_norm)
+    if re.search(full_pat, t_norm):
+        return True
+
+    # 2. Inverso: si el target (o su parte final) está contenido en la consulta
+    target_pat = build_boundary_regex(t_norm)
+    if re.search(target_pat, q_norm):
+        return True
+
+    # 3. Consultas compuestas estructuradas (ej: "Titulo I del Libro II", "Libro II Titulo I")
+    raw_clauses = re.split(r"\s*(?:>|-|,|\bdel\b|\bde\s+la\b|\bde\s+los\b|\bde\b|\ben\s+el\b|\ben\b)\s*", q_norm)
+    clauses = [c.strip() for c in raw_clauses if len(c.strip()) >= 2]
+    
+    if len(clauses) <= 1:
+        struct_split = re.split(r"(?<=\S)\s+(?=(?:libro|titulo|capitulo|seccion|parte|articulo|art)\b)", q_norm)
+        if len(struct_split) > 1:
+            clauses = [c.strip() for c in struct_split if len(c.strip()) >= 2]
+
+    if len(clauses) > 1:
+        all_match = True
+        for clause in clauses:
+            c_pat = build_boundary_regex(clause)
+            if not re.search(c_pat, t_norm):
+                all_match = False
+                break
+        if all_match:
+            return True
+
+    # 4. Fallback tolerante para abreviaturas tipo "art. 79" vs "articulo 79"
+    q_expanded = re.sub(r"\bart(?:\.|\b)\s*", "articulo ", q_norm)
+    t_expanded = re.sub(r"\bart(?:\.|\b)\s*", "articulo ", t_norm)
+    if q_expanded != q_norm or t_expanded != t_norm:
+        exp_pat = build_boundary_regex(q_expanded)
+        if re.search(exp_pat, t_expanded):
+            return True
+
+    return False
+
+
 def find_documents_by_fuzzy_title(query: str) -> List[Dict[str, Any]]:
     """
     Busca documentos en LanceDB que coincidan con la consulta por título, palabras clave o substring (estilo SQL LIKE %...%).
@@ -704,10 +770,14 @@ def get_document_structure(doc_id: str, filtro: Optional[str] = None) -> Dict[st
             "estimated_tokens": current_sec_tokens
         })
 
-    # Filtrar secciones por palabra clave si se proporcionó filtro
-    clean_filtro = normalize_text(filtro) if filtro and filtro.strip() else ""
+    # Filtrar secciones por jerarquía/palabra clave con límites seguros
+    clean_filtro = filtro.strip() if filtro and filtro.strip() else ""
     if clean_filtro:
-        sections_list = [s for s in sections_list if clean_filtro in normalize_text(s["section"])]
+        filtered = [s for s in sections_list if match_section_query(clean_filtro, s["section"])]
+        if not filtered:
+            f_norm = normalize_text(clean_filtro)
+            filtered = [s for s in sections_list if f_norm in normalize_text(s["section"])]
+        sections_list = filtered
 
     # 4. Formatear la tabla Markdown del GPS Documental con límite seguro de filas
     MAX_GPS_ROWS = 50
@@ -743,19 +813,19 @@ def get_document_structure(doc_id: str, filtro: Optional[str] = None) -> Dict[st
 
     alt_notice = ""
     if candidates and len(candidates) > 1:
-        other_matches = [f"'{c['title']}' (doc_id: {c['doc_id']})" for c in candidates[1:4]]
-        alt_notice = f"💡 *Nota de Búsqueda:* Se seleccionó '{doc_title}'. Otras coincidencias: {', '.join(other_matches)}\n\n"
+        alt_names = [f"`{c['doc_id']}` ({c['title'][:45]})" for c in candidates[1:3]]
+        alt_notice = f"*(Nota: También existen otras versiones o normas afines disponibles: {', '.join(alt_names)})*\n\n"
 
     overflow_notice = ""
     if total_found_sections > MAX_GPS_ROWS:
         overflow_notice = (
-            f"\n\n> ⚠️ **Aviso de Granularidad:** Mostrando las primeras {MAX_GPS_ROWS} secciones de {total_found_sections:,} totales. "
+            f"\n\n> ⚠️ **Aviso de Granularidad:** Mostrando las primeras {MAX_GPS_ROWS} secciones de {total_found_sections} totales. "
             f"Para acotar la estructura, ejecuta `obtener_estructura_documento(doc_id=\"{actual_doc_id}\", filtro=\"<palabra_clave>\")` "
             f"o utiliza directamente `buscar_en_base_de_conocimiento(consulta=\"...\", doc_id=\"{actual_doc_id}\")` para recuperar los artículos puntuales."
         )
 
-    filtro_notice = f" (Filtrado por: '{filtro}')" if clean_filtro else ""
-    vig_badge = f" | **Vigencia:** `{doc_vigencia.upper()}`" if doc_vigencia and doc_vigencia != "NA (no aplica)" else ""
+    filtro_notice = f" (Filtrado por: '{filtro}')" if filtro and filtro.strip() else ""
+    vig_badge = f" | **Vigencia:** `{doc_vigencia}`" if doc_vigencia and doc_vigencia != "NA (no aplica)" else ""
     pub_badge = f" | **B.O. / Publicación:** {doc_fecha_pub}" if doc_fecha_pub else ""
 
     content_md = (
@@ -767,7 +837,8 @@ def get_document_structure(doc_id: str, filtro: Optional[str] = None) -> Dict[st
         f"{table_header}" + "\n".join(md_rows) + overflow_notice + "\n\n"
         f"---\n"
         f"💡 **Guía de Navegación para el LLM y Usuario:**\n"
-        f"- Para leer una sección específica sin desbordar el contexto, ejecuta: `leer_documento_completo(doc_id=\"{actual_doc_id}\", seccion=\"<nombre_de_seccion>\")`.\n"
+        f"- Para leer un Título o Capítulo completo, indica su nombre temático o jerárquico (ej: `leer_documento_completo(doc_id=\"{actual_doc_id}\", seccion=\"TITULO I (TÍTULO 1) - DELITOS CONTRA LAS PERSONAS\")` o `seccion=\"DELITOS CONTRA LAS PERSONAS\"`).\n"
+        f"- Para leer un artículo puntual sugerido en la tabla, usa el parámetro sugerido de la columna derecha.\n"
         f"- Para paginación secuencial completa, ejecuta: `leer_documento_completo(doc_id=\"{actual_doc_id}\", parte=1)`."
     )
 
@@ -925,12 +996,19 @@ def get_document_full_content(
     # CASO 1: BÚSQUEDA FOCALIZADA POR SECCIÓN O CAPÍTULO
     # =========================================================================
     if seccion and seccion.strip():
-        req_sec_norm = normalize_text(seccion)
+        clean_sec_req = seccion.strip()
         matched_items = []
         for ch_id, sec, cont, tok_cnt in sorted_items:
-            s_norm = normalize_text(sec)
-            if req_sec_norm in s_norm or s_norm in req_sec_norm:
+            if match_section_query(clean_sec_req, sec):
                 matched_items.append((ch_id, sec, cont, tok_cnt))
+
+        # Fallback tolerante si no hubo coincidencia por límites
+        if not matched_items:
+            req_sec_norm = normalize_text(clean_sec_req)
+            for ch_id, sec, cont, tok_cnt in sorted_items:
+                s_norm = normalize_text(sec)
+                if req_sec_norm in s_norm or s_norm in req_sec_norm:
+                    matched_items.append((ch_id, sec, cont, tok_cnt))
                 
         if not matched_items:
             unique_secs = []

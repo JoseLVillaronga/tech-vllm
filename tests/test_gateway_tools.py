@@ -189,7 +189,50 @@ class TestGatewayToolsAndCloud(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((bw, bh), (800, 800))
 
 
+    def test_section_matching_roman_and_hierarchy(self):
+        from rag_engine import match_section_query
+
+        s_l1_t1 = "Codigo Penal Argentino > LIBRO PRIMERO (LIBRO I) - DISPOSICIONES GENERALES > TITULO I (TÍTULO 1) - APLICACION DE LA LEY PENAL > ARTÍCULO 1°"
+        s_l1_t2 = "Codigo Penal Argentino > LIBRO PRIMERO (LIBRO I) - DISPOSICIONES GENERALES > TITULO II (TÍTULO 2) - DE LAS PENAS > ARTÍCULO 5°"
+        s_l1_t4 = "Codigo Penal Argentino > LIBRO PRIMERO (LIBRO I) - DISPOSICIONES GENERALES > TITULO IV (TÍTULO 4) - REPARACION > ARTÍCULO 29°"
+        s_l1_t9 = "Codigo Penal Argentino > LIBRO PRIMERO (LIBRO I) - DISPOSICIONES GENERALES > TITULO IX (TÍTULO 9) - CONCURSO > ARTÍCULO 54°"
+        s_l1_t12 = "Codigo Penal Argentino > LIBRO PRIMERO (LIBRO I) - DISPOSICIONES GENERALES > TITULO XII (TÍTULO 12) - SUSPENSION > ARTÍCULO 76°"
+        s_l2_t1 = "Codigo Penal Argentino > LIBRO SEGUNDO (LIBRO II) - DE LOS DELITOS > TITULO I (TÍTULO 1) - DELITOS CONTRA LAS PERSONAS > ARTÍCULO 79° - -** Se aplicará"
+        s_l2_t2 = "Codigo Penal Argentino > LIBRO SEGUNDO (LIBRO II) - DE LOS DELITOS > TITULO II (TÍTULO 2) - DELITOS CONTRA EL HONOR > ARTÍCULO 109°"
+
+        # 1. 'TITULO I' no debe colisionar con TITULO II, IV, IX, XII
+        self.assertTrue(match_section_query("TITULO I", s_l1_t1))
+        self.assertTrue(match_section_query("TITULO I", s_l2_t1))
+        self.assertFalse(match_section_query("TITULO I", s_l1_t2))
+        self.assertFalse(match_section_query("TITULO I", s_l1_t4))
+        self.assertFalse(match_section_query("TITULO I", s_l1_t9))
+        self.assertFalse(match_section_query("TITULO I", s_l1_t12))
+        self.assertFalse(match_section_query("TITULO I", s_l2_t2))
+
+        # 2. 'LIBRO I' vs 'LIBRO II'
+        self.assertTrue(match_section_query("LIBRO I", s_l1_t1))
+        self.assertFalse(match_section_query("LIBRO I", s_l2_t1))
+        self.assertTrue(match_section_query("LIBRO II", s_l2_t1))
+        self.assertFalse(match_section_query("LIBRO II", s_l1_t1))
+
+        # 3. Consultas compuestas jerárquicas
+        self.assertTrue(match_section_query("Libro II Titulo I", s_l2_t1))
+        self.assertFalse(match_section_query("Libro II Titulo I", s_l1_t1))
+        self.assertTrue(match_section_query("Titulo I del Libro II", s_l2_t1))
+        self.assertFalse(match_section_query("Titulo I del Libro II", s_l1_t1))
+
+        # 4. Denominación temática
+        self.assertTrue(match_section_query("Delitos contra las personas", s_l2_t1))
+        self.assertFalse(match_section_query("Delitos contra las personas", s_l2_t2))
+
+        # 5. Abreviaturas normativas (art. 79 vs ARTÍCULO 79°)
+        self.assertTrue(match_section_query("art. 79", s_l2_t1))
+        self.assertTrue(match_section_query("articulo 79", s_l2_t1))
+        self.assertFalse(match_section_query("art. 80", s_l2_t1))
+
+
 if __name__ == "__main__":
     unittest.main()
+
 
 
