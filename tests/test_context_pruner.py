@@ -24,7 +24,7 @@ class TestContextPruner(unittest.TestCase):
         self.assertEqual(get_max_user_turns(), DEFAULT_MAX_USER_TURNS)
         self.assertEqual(get_max_user_turns(), 18)
         self.assertEqual(get_max_context_tokens(), DEFAULT_MAX_CONTEXT_TOKENS)
-        self.assertEqual(get_max_context_tokens(), 70000)
+        self.assertEqual(get_max_context_tokens(), 52000)
         self.assertEqual(get_keep_tool_turns(), DEFAULT_KEEP_TOOL_TURNS)
         self.assertEqual(get_keep_tool_turns(), 2)
 

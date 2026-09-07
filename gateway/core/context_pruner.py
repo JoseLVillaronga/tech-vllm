@@ -3,7 +3,7 @@ from typing import List, Dict, Any, Tuple
 
 
 DEFAULT_MAX_USER_TURNS = 18
-DEFAULT_MAX_CONTEXT_TOKENS = 70000
+DEFAULT_MAX_CONTEXT_TOKENS = 52000
 DEFAULT_KEEP_TOOL_TURNS = 2
 CHARS_PER_TOKEN_ESTIMATE = 3.5
 
@@ -18,7 +18,7 @@ def get_max_user_turns() -> int:
 
 
 def get_max_context_tokens() -> int:
-    """Obtiene el techo máximo seguro de tokens de contexto desde el entorno o usa el valor por defecto (70000)."""
+    """Obtiene el techo máximo seguro de tokens de contexto desde el entorno o usa el valor por defecto (52000)."""
     try:
         val = int(os.getenv("GATEWAY_MAX_CONTEXT_TOKENS", str(DEFAULT_MAX_CONTEXT_TOKENS)))
         return max(1000, val)
@@ -68,7 +68,7 @@ def prune_chat_history(
     3. Si la cantidad de turnos de usuario excede 'max_user_turns' (18), descarta los bloques más antiguos.
     4. Compacta los outputs de herramientas (role == 'tool') de turnos antiguos (> keep_tool_turns),
        preservando intactos únicamente los turnos recientes donde el usuario aún puede repreguntar sobre el documento.
-    5. Verifica el techo de seguridad de tokens ('max_context_tokens', por defecto 70.000). Si tras compactar
+    5. Verifica el techo de seguridad de tokens ('max_context_tokens', por defecto 52.000). Si tras compactar
        herramientas se supera el umbral, descarta turnos antiguos adicionales hasta encajar en el presupuesto.
     6. Garantiza la atomicidad estricta de las herramientas: jamás separa un assistant con tool_calls de sus tools.
 
@@ -165,7 +165,7 @@ def prune_chat_history(
 
     kept_blocks = compacted_blocks
 
-    # 5. Aplicar Techo de Seguridad de Tokens (70.000 tokens)
+    # 5. Aplicar Techo de Seguridad de Tokens (52.000 tokens)
     # Si aun con herramientas compactadas se supera el presupuesto, descartar turnos más viejos
     def flatten(blocks: List[List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
         flat: List[Dict[str, Any]] = []
