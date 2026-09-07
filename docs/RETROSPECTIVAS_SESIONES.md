@@ -27,6 +27,7 @@ Al finalizar cada sesión de trabajo, el agente y el usuario realizan una audito
 ## 📈 Historial Consolidado de Sesiones
 
 | Fecha | ID Sesión | Turnos Usuario | Llamadas Agénticas (Tools) | Commits Git | Invariantes Violados | RVI Máx | Blast Radius | Estado Global |
+| **2026-09-07 (Mediodía/Tarde - Estrés Multi-Turno 30 Consultas, Límite 52k de Atención, Context Crosstalk y Olvido Selectivo con Compactación de Tools)** | `fe37eff0` | 18 | ~75 | 4 | **0** | 1/10 | Mínimo (Quirúrgico) | 🟢 **100% Exitoso** |
 | **2026-09-07 (Madrugada - Doble Numeración Canónica, Coincidencia Jerárquica de Secciones, Blindaje Anti-Decay & Ley 4 RAG)** | `fe37eff0` | 14 | ~65 | 6 | **0** | 1/10 | Mínimo (Quirúrgico) | 🟢 **100% Exitoso** |
 | **2026-09-06 (Tarde/Noche - Grounding Universal, Blindaje Anti-Decay en Turnos Extensos & Extractor Jerárquico InfoLEG)** | `ca5c7e22` | 24 | ~85 | 7 | **0** | 1/10 | Mínimo (Modular) | 🟢 **100% Exitoso** |
 | **2026-09-06 (Mediodía - Universalidad de Visión, Reescalado Adaptativo 2D & Prompt Estructurado en 2 Fases)** | `ca5c7e22` | 6 | ~35 | 3 | **0** | 1/10 | Mínimo (Quirúrgico) | 🟢 **100% Exitoso** |
@@ -49,6 +50,38 @@ Al finalizar cada sesión de trabajo, el agente y el usuario realizan una audito
 ---
 
 ## 📝 Fichas Detalladas por Sesión
+
+### 🔹 Sesión: 2026-09-07 Mediodía/Tarde (`fe37eff0-f313-46c0-9ac4-cc5ad3a5f1a2`) - Estrés Multi-Turno (30 Consultas), Límite de Atención 52k, Context Crosstalk y Olvido Selectivo con Compactación de Tools
+* **Hitos Principales:**
+  1. **Auditoría Forense de Prueba de Estrés de 30 Consultas Jurídicas:**
+     - Descubrimiento del fenómeno de *Context Crosstalk* / Interferencia destructiva de atención en sesiones multi-turno densas.
+     - Diagnóstico de la *Falacia del Conteo de Turnos*: 18 turnos de usuario acumularon **114.202 tokens** debido a los textos extensos devueltos por las herramientas (`role: "tool"`).
+     - Identificación de los 3 fallos de crosstalk (Turno 20 respondiendo la pregunta del T14, Turno 22 repitiendo la respuesta del T21, y Turno 30 respondiendo la del T25 con fuga de monólogo interno en inglés).
+     - Detección del ahogamiento de memoria en `llama-server` (desalojo de prompt cache de 2.5 GB, prefill degradado de 1.2s a 45.2s).
+  2. **Descubrimiento de la Regla de la Ventana Operativa Efectiva:**
+     - Brecha entre la ventana nominal de 128k (probada en benchmarks sintéticos *Needle In A Haystack*) y la ventana efectiva multi-turno con RAG.
+     - Formulación de la regla empírica: $\text{Ventana Operativa Multi-Turno} \approx 40\% \text{ a } 50\% \text{ de la Ventana Nominal}$ (~52k tokens).
+  3. **Implementación del Olvido Selectivo en Tres Fases ([`gateway/core/context_pruner.py`](../gateway/core/context_pruner.py) - Commits `7a71164`, `8d7e1ab`, `af7dcae`):**
+     - *Fase 1 (Ventana Atómica):* Retención de los últimos 18 turnos de usuario, blindando la atomicidad de las llamadas de herramientas.
+     - *Fase 2 (Compactación de Tools Antiguas):* Preservación intacta de herramientas en los últimos 2 turnos (repreguntas inmediatas) y archivado de textos de herramientas viejas a 1 línea liviana (`[Contenido archivado...]`), reduciendo el prompt en más de 70%.
+     - *Fase 3 (Techo de Seguridad Empírico):* Cota rígida de `52.000 tokens` con poda en cascada de turnos viejos preservando siempre el turno activo.
+  4. **Microbenchmarking de Latencia en CPU:**
+     - Medición de 1.000 podas consecutivas sobre 121 mensajes / 604.000 caracteres (~172.500 tokens): latencia promedio de **0.045 ms (45 microsegundos)** por petición (< 0.05% del middleware).
+  5. **Verificación Empírica 100% Exitosa en Turno 30 Regenerado:**
+     - Reducción del prompt de **113.068 a 29.541 tokens (-73.8%)**.
+     - Reducción del tiempo de prefill de **45.2 segundos a 6.6 segundos (casi 7x más rápido)**.
+     - Cero desalojos de cache en `llama-server`, cero crosstalk y cero fuga de scratchpad.
+     - Cumplimiento estricto de la **Ley 4**: el modelo verificó el Decreto 70/2025 y declaró con honestidad epistémica que no modificaba la Ley de Identidad de Género.
+  6. **Documentación Arquitectónica Completa:**
+     - Creación del reporte de prueba de campo [`docs/pruebas_campo/prueba_campo_olvido_selectivo_y_ventana_operativa_2026-09-07.md`](pruebas_campo/prueba_campo_olvido_selectivo_y_ventana_operativa_2026-09-07.md).
+     - Actualización de [`docs/ARQUITECTURA_RAG_TECCAM.md`](ARQUITECTURA_RAG_TECCAM.md) y [`docs/pruebas_campo/README.md`](pruebas_campo/README.md).
+* **Evaluación MEA v2.1 & Leyes de Ingeniería:**
+  * **Invariantes (Gate 1):** **0 violaciones**. Cero datos simulados, reproducibilidad empírica 100% auditada en logs reales de systemd y Open-WebUI.
+  * **Ley 1 (Modularización Estricta):** El podador quedó completamente aislado en `gateway/core/context_pruner.py`, testeable sin dependencias pesadas.
+  * **Ley 2 (Atacar Causa Raíz):** Se atacó la causa raíz de la saturación del KV cache (payloads de herramientas viejas) en lugar de limitar arbitrariamente a pocos turnos de usuario.
+  * **Ley 3 (Mínimo Blast Radius):** Modificación quirúrgica y limpia; 9/9 tests de pruner y 16/16 tests de gateway core aprobados.
+  * **Ley 4 (Integridad en Cascada RAG):** Verificada en dos casos de honestidad epistémica (Turno 29 Ley Nicolás y Turno 30 Decreto 70/2025).
+  * **RVI Máximo:** `1/10`.
 
 ### 🔹 Sesión: 2026-09-07 Madrugada (`fe37eff0-f313-46c0-9ac4-cc5ad3a5f1a2`) - Doble Numeración Canónica, Coincidencia Jerárquica de Secciones, Blindaje Anti-Decay & Ley 4 RAG
 * **Hitos Principales:**
