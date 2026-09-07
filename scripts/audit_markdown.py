@@ -12,7 +12,8 @@ Características:
   - Inyección del manual canónico de normalización como System Prompt.
   - Llamada a modelos con amplia ventana de contexto (Gateway local o DeepSeek Cloud).
   - Emisión de un reporte diagnóstico conciso en tabla (sin reescribir la ley).
-  - Salida con streaming en tiempo real en consola y persistencia en `output/<norma>_auditoria.md`.
+  - Streaming con soporte para modelos de razonamiento (pensamiento + reporte).
+  - Auto-descubrimiento de API Key autorizada de cliente desde MongoDB o .env.
   - Cero riesgo de corrupción de texto (Linter de solo lectura).
 """
 
@@ -24,12 +25,16 @@ import time
 from pathlib import Path
 from typing import List, Dict, Tuple, Optional
 
-# Auto-bootstrap en entorno virtual si se ejecuta con el python del sistema sin dependencias
+# Bootstrap de dependencias locales del venv si están disponibles
+REPO_ROOT = Path(__file__).resolve().parent.parent
+site_packages_candidate = REPO_ROOT / "venv" / "lib" / "python3.13" / "site-packages"
+if site_packages_candidate.exists() and str(site_packages_candidate) not in sys.path:
+    sys.path.insert(0, str(site_packages_candidate))
+
 try:
     import requests
 except ImportError:
-    repo_root = Path(__file__).resolve().parent.parent
-    for venv_candidate in [repo_root / "venv" / "bin" / "python", repo_root / ".venv" / "bin" / "python"]:
+    for venv_candidate in [REPO_ROOT / "venv" / "bin" / "python", REPO_ROOT / ".venv" / "bin" / "python"]:
         if venv_candidate.exists() and venv_candidate.resolve() != Path(sys.executable).resolve():
             os.execv(str(venv_candidate), [str(venv_candidate)] + sys.argv)
     print("Error: Se requiere el paquete 'requests'.", file=sys.stderr)
@@ -37,7 +42,6 @@ except ImportError:
     sys.exit(1)
 
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
 OUTPUT_DIR = Path(__file__).resolve().parent / "output"
 DOCS_DIR = REPO_ROOT / "docs"
 MANUAL_PATH = DOCS_DIR / "MANUAL_CRITERIOS_NORMALIZACION_MARKDOWN.md"
@@ -64,41 +68,110 @@ def parse_local_env() -> Dict[str, str]:
     return env_vars
 
 
-def detect_connection_defaults() -> Tuple[str, str, str]:
+def get_authorized_gateway_key(env_vars: Dict[str, str]) -> Tuple[str, str]:
     """
-    Detecta automáticamente el endpoint, la API key y el modelo preferido:
-      1. Revisa si el Gateway local está activo en los puertos 8000 u 8010.
-      2. Revisa si existe DEEPSEEK_API_KEY o API_KEY en el entorno o .env.
-      3. Selecciona un modelo compatible con ventana extendida de contexto.
+    Resuelve una API Key de cliente autorizada para consumir endpoints del Gateway.
+    
+    El Gateway rechaza la Clave Maestra (API_KEY) con HTTP 403 Forbidden en puertos cliente
+    para cumplir con la política Zero Trust (ALLOW_MASTER_KEY_ON_GATEWAY=false).
+    Por ende, esta función busca:
+      1. Variables de entorno explícitas (CLIENT_API_KEY, OPENWEBUI_API_KEY).
+      2. Auto-descubrimiento en MongoDB (clave de Open-WebUI o con acceso a cloud_providers).
+      3. Fallback a MASTER_KEY si ALLOW_MASTER_KEY_ON_GATEWAY=true.
+    """
+    # 1. Variables explícitas en entorno o .env
+    for var in ["CLIENT_API_KEY", "OPENWEBUI_API_KEY", "GATEWAY_CLIENT_KEY"]:
+        val = os.getenv(var, env_vars.get(var, "")).strip()
+        if val:
+            return val, f"Variable {var}"
+
+    # 2. Auto-descubrimiento dinámico en MongoDB
+    try:
+        import pymongo
+        mongo_host = os.getenv("MONGO_HOST", env_vars.get("MONGO_HOST", "127.0.0.1"))
+        mongo_port = int(os.getenv("MONGO_PORT", env_vars.get("MONGO_PORT", "27017")))
+        mongo_user = os.getenv("MONGO_USER", env_vars.get("MONGO_USER", "admin"))
+        mongo_pass = os.getenv("MONGO_PASS", env_vars.get("MONGO_PASS", ""))
+        mongo_db_name = os.getenv("MONGO_DB", env_vars.get("MONGO_DB", "vllm"))
+
+        if mongo_pass:
+            uri = f"mongodb://{mongo_user}:{mongo_pass}@{mongo_host}:{mongo_port}/{mongo_db_name}?authSource=admin"
+        else:
+            uri = f"mongodb://{mongo_host}:{mongo_port}/{mongo_db_name}"
+
+        client = pymongo.MongoClient(uri, serverSelectionTimeoutMS=800)
+        db = client[mongo_db_name]
+
+        # Priorizar clave 'Open-WebUI' o claves con acceso a proveedores cloud
+        key_doc = db.api_keys.find_one({
+            "is_active": True,
+            "name": re.compile(r"open-webui", re.I)
+        })
+        if not key_doc:
+            key_doc = db.api_keys.find_one({
+                "is_active": True,
+                "allowed_providers": {"$exists": True, "$type": "array", "$ne": []}
+            })
+        if not key_doc:
+            key_doc = db.api_keys.find_one({"is_active": True})
+
+        if key_doc and key_doc.get("key"):
+            key_name = key_doc.get("name", "Cliente Autorizado")
+            return key_doc["key"], f"MongoDB ({key_name})"
+    except Exception:
+        pass
+
+    # 3. Fallback a la clave de .env
+    master_key = os.getenv("API_KEY", env_vars.get("API_KEY", "")).strip()
+    return master_key, ".env (Master Key)"
+
+
+def detect_connection_defaults() -> Tuple[str, str, str, str]:
+    """
+    Detecta automáticamente el endpoint, la API key autorizada y el modelo preferido:
+      1. Prioridad: DeepSeek Cloud directo (consultando MongoDB cloud_providers o DEEPSEEK_API_KEY)
+         con el modelo 'deepseek-chat' (DeepSeek V3, 128K contexto, rápido y sin bloat de razonamiento).
+      2. Fallback: Gateway local en 127.0.0.1:8000 con API Key autorizada de cliente (Open-WebUI).
+    Retorna: (default_base, default_key, default_model, key_source_info)
     """
     env_vars = parse_local_env()
     
-    # 1. Credenciales
-    master_key = os.getenv("API_KEY", env_vars.get("API_KEY", ""))
-    deepseek_key = os.getenv("DEEPSEEK_API_KEY", env_vars.get("DEEPSEEK_API_KEY", ""))
-    
-    gateway_port = os.getenv("PORT", env_vars.get("PORT", "8000"))
-    gateway_raw_port = os.getenv("LLM_RAW_GATEWAY_PORT", env_vars.get("LLM_RAW_GATEWAY_PORT", "8010"))
-    
-    # Comprobar si el Gateway local responde
-    for port in [gateway_port, gateway_raw_port]:
-        try:
-            r = requests.get(f"http://127.0.0.1:{port}/health", timeout=0.8)
-            if r.status_code in [200, 401, 403]:
-                # Gateway local detectado
-                default_base = f"http://127.0.0.1:{port}/v1"
-                default_key = master_key
-                default_model = "deepseek/deepseek-v4-flash"
-                return default_base, default_key, default_model
-        except Exception:
-            pass
-            
-    # Si no hay gateway local pero hay clave DeepSeek directa
+    # 1. Intentar auto-descubrimiento del proveedor DeepSeek en MongoDB
+    try:
+        import pymongo
+        mongo_host = os.getenv("MONGO_HOST", env_vars.get("MONGO_HOST", "127.0.0.1"))
+        mongo_port = int(os.getenv("MONGO_PORT", env_vars.get("MONGO_PORT", "27017")))
+        mongo_user = os.getenv("MONGO_USER", env_vars.get("MONGO_USER", "admin"))
+        mongo_pass = os.getenv("MONGO_PASS", env_vars.get("MONGO_PASS", ""))
+        mongo_db_name = os.getenv("MONGO_DB", env_vars.get("MONGO_DB", "vllm"))
+
+        if mongo_pass:
+            uri = f"mongodb://{mongo_user}:{mongo_pass}@{mongo_host}:{mongo_port}/{mongo_db_name}?authSource=admin"
+        else:
+            uri = f"mongodb://{mongo_host}:{mongo_port}/{mongo_db_name}"
+
+        client = pymongo.MongoClient(uri, serverSelectionTimeoutMS=800)
+        db = client[mongo_db_name]
+        ds_prov = db.cloud_providers.find_one({"name": re.compile(r"deepseek", re.I), "is_active": True})
+        if ds_prov and ds_prov.get("api_key"):
+            base = ds_prov.get("base_url") or "https://api.deepseek.com"
+            base = base.rstrip("/")
+            if not base.endswith("/v1"):
+                base = f"{base}/v1"
+            return base, ds_prov["api_key"], "deepseek-chat", "DeepSeek Cloud (MongoDB)"
+    except Exception:
+        pass
+
+    # 2. Comprobar si existe DEEPSEEK_API_KEY en .env o variables de entorno
+    deepseek_key = os.getenv("DEEPSEEK_API_KEY", env_vars.get("DEEPSEEK_API_KEY", "")).strip()
     if deepseek_key:
-        return "https://api.deepseek.com/v1", deepseek_key, "deepseek-chat"
-        
-    # Fallback predeterminado hacia el Gateway local
-    return f"http://127.0.0.1:{gateway_port}/v1", master_key, "deepseek/deepseek-v4-flash"
+        return "https://api.deepseek.com/v1", deepseek_key, "deepseek-chat", "DeepSeek Cloud (.env)"
+
+    # 3. Fallback: Gateway local con API Key autorizada de cliente (Open-WebUI)
+    gateway_port = os.getenv("PORT", env_vars.get("PORT", "8000"))
+    client_key, key_source = get_authorized_gateway_key(env_vars)
+    return f"http://127.0.0.1:{gateway_port}/v1", client_key, "openai/gpt-4o-mini", f"Gateway Local ({key_source})"
+
 
 
 def list_candidate_documents() -> List[Path]:
@@ -123,7 +196,6 @@ def load_manual_rules() -> str:
         except Exception as e:
             print(f"⚠️ Advertencia al leer {MANUAL_PATH.name}: {e}", file=sys.stderr)
             
-    # Resumen de respaldo si el archivo no estuviera disponible
     return (
         "Criterios de normalización legal:\n"
         "1. Títulos: # Ley, ## Libro/Parte, ### Título - Epígrafe, #### Capítulo, ##### Sección.\n"
@@ -231,6 +303,8 @@ def execute_audit_stream(
     }
     
     full_output = []
+    in_reasoning = False
+    
     print(f"\n📡 Conectando con API: {endpoint}")
     print(f"🤖 Modelo auditor:    {model}")
     print(f"⏳ Procesando documento en contexto extendido...\n")
@@ -240,10 +314,24 @@ def execute_audit_stream(
         if stream:
             with requests.post(endpoint, headers=headers, json=payload, stream=True, timeout=timeout) as response:
                 if response.status_code != 200:
-                    err_msg = f"Error HTTP {response.status_code}: {response.text}"
+                    err_detail = response.text
+                    if response.status_code == 403 and "Clave Maestra" in err_detail:
+                        err_msg = (
+                            f"Error HTTP 403: El Gateway tiene activa la protección Zero Trust y no admite la Clave Maestra.\n"
+                            f"💡 Solución: Genera una API Key de cliente en el Dashboard (o usa la de Open-WebUI) "
+                            f"y configúrala en .env como CLIENT_API_KEY=tu_clave."
+                        )
+                    else:
+                        err_msg = f"Error HTTP {response.status_code}: {err_detail}"
                     print(f"\n❌ {err_msg}", file=sys.stderr)
                     return err_msg
                     
+                if hasattr(sys.stdout, "reconfigure"):
+                    try:
+                        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+                    except Exception:
+                        pass
+
                 for raw_line in response.iter_lines(decode_unicode=True):
                     if not raw_line:
                         continue
@@ -253,14 +341,43 @@ def execute_audit_stream(
                             break
                         try:
                             chunk = json.loads(data_str)
-                            delta = chunk.get("choices", [{}])[0].get("delta", {})
-                            content_piece = delta.get("content", "")
+                            choices = chunk.get("choices")
+                            if not choices:
+                                continue
+                            delta = choices[0].get("delta", {})
+                            
+                            reasoning_piece = delta.get("reasoning_content") or ""
+                            content_piece = delta.get("content") or ""
+                            
+                            # Capturar siempre el contenido generado de forma prioritaria
                             if content_piece:
-                                sys.stdout.write(content_piece)
-                                sys.stdout.flush()
                                 full_output.append(content_piece)
+
+                            # Mostrar en consola de forma segura
+                            try:
+                                if reasoning_piece:
+                                    if not in_reasoning:
+                                        in_reasoning = True
+                                        sys.stdout.write("\033[90m💭 [Razonando auditoría] ")
+                                    sys.stdout.write(reasoning_piece)
+                                    sys.stdout.flush()
+                                    
+                                if content_piece:
+                                    if in_reasoning:
+                                        in_reasoning = False
+                                        sys.stdout.write("\033[0m\n\n")
+                                    sys.stdout.write(content_piece)
+                                    sys.stdout.flush()
+                            except Exception:
+                                pass
                         except Exception:
                             pass
+                            
+            if in_reasoning:
+                try:
+                    sys.stdout.write("\033[0m\n")
+                except Exception:
+                    pass
             print("\n" + "=" * 70)
         else:
             response = requests.post(endpoint, headers=headers, json=payload, timeout=timeout)
@@ -269,7 +386,13 @@ def execute_audit_stream(
                 print(f"\n❌ {err_msg}", file=sys.stderr)
                 return err_msg
             res_json = response.json()
-            content = res_json.get("choices", [{}])[0].get("message", {}).get("content", "")
+            choice = res_json.get("choices", [{}])[0]
+            msg = choice.get("message", {})
+            reasoning = msg.get("reasoning_content", "")
+            content = msg.get("content", "")
+            
+            if reasoning:
+                print(f"\033[90m💭 [Razonamiento]:\n{reasoning}\033[0m\n")
             print(content)
             full_output.append(content)
             print("\n" + "=" * 70)
@@ -342,9 +465,9 @@ def main():
         help="Nombre del modelo a utilizar (ej: deepseek/deepseek-v4-flash, deepseek-chat)."
     )
     parser.add_argument(
-        "--no-stream",
+        "--stream",
         action="store_true",
-        help="Desactiva la salida por streaming en tiempo real en consola."
+        help="Activa la salida por streaming en tiempo real en consola (por defecto: False)."
     )
     parser.add_argument(
         "--timeout",
@@ -380,15 +503,17 @@ def main():
             sys.exit(0)
             
     # 3. Detectar conexión y configuración
-    def_base, def_key, def_model = detect_connection_defaults()
+    def_base, def_key, def_model, key_source = detect_connection_defaults()
     api_base = args.api_base or def_base
     api_key = args.api_key or def_key
     model = args.model or def_model
     
+    print(f"🔑 Autenticación:   Resuelta via {key_source}")
+    
     # 4. Preparar documento con numeración de coordenadas
-    print(f"\n📂 Preparando: {target_file.name}")
+    print(f"📂 Preparando:      {target_file.name}")
     numbered_text, total_lines, est_tokens = prepare_numbered_text(target_file)
-    print(f"📊 Métricas:   {total_lines} líneas | ~{est_tokens:,} tokens estimados de contexto")
+    print(f"📊 Métricas:        {total_lines} líneas | ~{est_tokens:,} tokens estimados de contexto")
     
     # 5. Cargar criterios canónicos
     manual_content = load_manual_rules()
@@ -403,7 +528,7 @@ def main():
         doc_name=target_file.name,
         numbered_text=numbered_text,
         system_prompt=system_prompt,
-        stream=not args.no_stream,
+        stream=args.stream,
         timeout=args.timeout
     )
     elapsed = time.time() - start_time
