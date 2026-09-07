@@ -27,6 +27,7 @@ Al finalizar cada sesión de trabajo, el agente y el usuario realizan una audito
 ## 📈 Historial Consolidado de Sesiones
 
 | Fecha | ID Sesión | Turnos Usuario | Llamadas Agénticas (Tools) | Commits Git | Invariantes Violados | RVI Máx | Blast Radius | Estado Global |
+| **2026-09-06 (Tarde/Noche - Grounding Universal, Blindaje Anti-Decay en Turnos Extensos & Extractor Jerárquico InfoLEG)** | `ca5c7e22` | 24 | ~85 | 7 | **0** | 1/10 | Mínimo (Modular) | 🟢 **100% Exitoso** |
 | **2026-09-06 (Mediodía - Universalidad de Visión, Reescalado Adaptativo 2D & Prompt Estructurado en 2 Fases)** | `ca5c7e22` | 6 | ~35 | 3 | **0** | 1/10 | Mínimo (Quirúrgico) | 🟢 **100% Exitoso** |
 | **2026-09-05 (Noche - Blindaje Perimetral Zero Trust, Fail2ban Dinámico, Silent Drop y Monitor Multimodal)** | `ca5c7e22` | 15 | ~65 | 7 | **0** | 1/10 | Mínimo (Modular) | 🟢 **100% Exitoso** |
 | **2026-09-05 (Tarde - Visión y Difusión en RAM/CPU, Bridge Multimodal & Protección de Contexto)** | `bba5ef3a` | 12 | ~60 | 4 | **0** | 1/10 | Mínimo (Modular) | 🟢 **100% Exitoso** |
@@ -47,6 +48,47 @@ Al finalizar cada sesión de trabajo, el agente y el usuario realizan una audito
 ---
 
 ## 📝 Fichas Detalladas por Sesión
+
+### 🔹 Sesión: 2026-09-06 Tarde/Noche (`ca5c7e22-5f02-4c3e-8b9d-87b5c9479cce`) - Grounding Universal, Blindaje Anti-Decay RAG en Turnos Extensos & Extractor Jerárquico InfoLEG
+* **Hitos Principales:**
+  1. **Auditoría Forense de Inercia Conversacional y Fatiga Atencional (*Lost-in-the-Middle*):**
+     - Análisis empírico sobre transcripciones reales de Open-WebUI de hasta 21 turnos y más de 91.000 tokens acumulados.
+     - Diagnóstico de la causa raíz: a partir del 4to turno o en contextos masivos, el modelo caía en atenuación atencional, respondiendo de memoria paramétrica o asumiendo contexto previo en lugar de invocar las herramientas RAG.
+  2. **Inyección Dinámica de Recencia Anti-Decay ([`gateway/core/alignment_engine.py`](../gateway/core/alignment_engine.py) - Commit `801e2e9`):**
+     - Implementación de un recordatorio perentorio de recencia inyectado al pie del último mensaje del usuario en `enrich_chat_payload` cuando las herramientas RAG están activas.
+     - Neutralización de la inercia conversacional: comprobación empírica en sesiones de 51k y 91k tokens donde el LLM sostuvo invocación activa y determinista de RAG a lo largo de 21 turnos sin decaer.
+  3. **Ampliación Universal del Grounding Documental (Commit `801e2e9` y `8e5ee31`):**
+     - Extensión del deber de grounding no solo al derecho positivo, sino a **procedimientos operativos (SOPs), contratos, plazos, políticas de compliance y documentación interna de Teccam**.
+     - Consolidación del patrón `GROUNDING_TRIGGERS_PATTERN` en 6 macro-familias semánticas:
+       1. Normativa, derecho positivo y códigos (`ley`, `decreto`, `código`, `art`, `cccn`).
+       2. Procedimientos, trámites y plazos (`sop`, `proceso`, `instructivo`, `caducidad`).
+       3. Contratos, cláusulas y penalidades (`acuerdo`, `rescisión`, `garantía`, `mora`).
+       4. Políticas, seguridad y compliance (`seguridad`, `pii`, `directiva`, `estándar`).
+       5. Instituciones, órganos, funciones y potestades (`defensor del pueblo`, `ministerio`, `tribunal`, `juzgado`, `competencia`).
+       6. Manuales y documentación técnica de Teccam.
+     - Sincronización en MongoDB `alignment_settings` y herramientas Open-WebUI con 30/30 pruebas unitarias pasando.
+  4. **Diagnóstico e Ingeniería Inversa del Ecosistema InfoLEG:**
+     - Identificación de la dualidad estructural: páginas de portal (`verNorma.do`) con metadatos oficiales (fecha, Boletín Oficial, resumen) sin texto vs páginas de texto directo (`norma.htm` / `texact.htm`) con articulado íntegro sin carátula.
+     - Detección y resolución del bloqueo `403 Forbidden` de Apache InfoLEG mediante cabeceras canónicas de navegador de escritorio.
+     - Resolución de encodings: decodificación estricta en `windows-1252` para salvaguardar ordinales (`º`), guiones largos de separación (`—`), comillas tipográficas y viñetas frente al falso `ISO-8859-1`.
+     - Corrección del parser DOM para código malformado de Word 97, delimitando párrafos exclusivamente por bloques HTML (`<p>`, `<div>`, `<li>`) para evitar el colapso de articulados en una sola línea o la mutilación de epígrafes.
+  5. **Desarrollo del Extractor y Jerarquizador Normativo ([`scripts/fetch_infoleg.py`](../scripts/fetch_infoleg.py) - Commit `1e17f89`):**
+     - Arquitectura modular desacoplada: `InfoLegFetcher` (gestión HTTP, resolución de redirecciones, priorización de texto actualizado `texact.htm`, extracción de metadatos) e `InfoLegParser` (limpieza de boilerplate, tablas GFM y jerarquización legal).
+     - Jerarquía compatible con LanceDB: `# Título`, `## Libro/Parte`, `### Título/Visto/Considerando`, `#### Capítulo`, `##### Sección`, y articulado `**ARTÍCULO X°.- Epígrafe.**` 100% reconocible por `detect_heuristic_header`.
+     - Doble interfaz: modo interactivo asistido por consola y modo desatendido por argumentos CLI (`--url`, `--title`).
+     - Auto-bootstrap de virtualenv y estricto cumplimiento del Invariante de Portabilidad (cero rutas absolutas).
+  6. **Validación Práctica en los 3 Arquetipos Normativos en [`scripts/output/`](../scripts/output/):**
+     - *Ley 26.639 (Glaciares):* 18 artículos, 11.7 KB, 23 chunks acotados en LanceDB con 21 secciones mapeadas de forma unívoca en el GPS documental.
+     - *Decreto 70/2025 (Estructura Organizativa):* 14 artículos, 20.8 KB, macro-bloques VISTO, CONSIDERANDO y DECRETA íntegros.
+     - *Código Civil y Comercial de la Nación:* 2.713 artículos, 1.2 MB, 11.690 líneas, 6 Libros, Título Preliminar y Anexos sin fragmentación de tablas.
+  7. **Documentación Oficial y Guía de Usuario ([`docs/MANUAL_EXTRACTOR_INFOLEG.md`](../docs/MANUAL_EXTRACTOR_INFOLEG.md), [`scripts/README.md`](../scripts/README.md) - Commit `b245f93`):**
+     - Manual técnico exhaustivo y actualización de cabecera en `README.md` y `CHANGELOG.md` (v2.9.0).
+* **Evaluación MEA v2.1 & Leyes de Ingeniería:**
+  * **Invariantes (Gate 1):** **0 violaciones**. Veracidad absoluta en todas las ejecuciones, cero destructividad, cero rutas absolutas hardcodeadas, cero credenciales o URLs expuestas.
+  * **Ley 1 (Modularización):** Cumplida al 100%. `fetch_infoleg.py` modularizado en componentes especializados desde el inicio.
+  * **Ley 2 (Causa Raíz):** Cumplida al 100%. Se atacó la inercia conversacional en el gateway inyectando recencia, y se resolvió el parsing de InfoLEG a nivel de encodings (`windows-1252`) y bloques DOM.
+  * **Ley 3 (Mínimo Blast Radius):** Cumplida al 100%. Las herramientas y scripts no alteraron el funcionamiento de los microservicios existentes en producción; 30/30 unit tests en verde.
+  * **RVI Máximo:** `1/10`.
 
 ### 🔹 Sesión: 2026-09-06 Mediodía/Tarde (`ca5c7e22-5f02-4c3e-8b9d-87b5c9479cce`) - Universalidad de Visión, Reescalado Adaptativo 2D & Blindaje Anti-Sesgo RAG
 * **Hitos Principales:**
