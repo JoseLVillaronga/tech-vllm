@@ -329,6 +329,21 @@ class TestGatewayCore(unittest.TestCase):
         res_inf = asyncio.run(enrich_chat_payload(data_informal_followup, actual_model="gemma", is_cloud_request=False))
         self.assertNotIn("[DIRECTIVA DE CONTROL Y GROUNDING OBLIGATORIO", res_inf["messages"][-1]["content"])
 
+        # 9. Conversación con más de 18 turnos de usuario -> Debe podar a los últimos 18 turnos conservando el system prompt
+        long_chat_msgs = [{"role": "system", "content": "You are a helpful assistant."}]
+        for i in range(1, 23):  # 22 turnos
+            long_chat_msgs.append({"role": "user", "content": f"Turno {i}"})
+            long_chat_msgs.append({"role": "assistant", "content": f"Respuesta {i}"})
+
+        data_long = {"messages": long_chat_msgs, "tools": []}
+        res_pruned = asyncio.run(enrich_chat_payload(data_long, actual_model="gemma", is_cloud_request=False))
+        user_msgs_in_res = [m for m in res_pruned["messages"] if m.get("role") == "user"]
+        self.assertEqual(len(user_msgs_in_res), 18)
+        self.assertEqual(user_msgs_in_res[0]["content"], "Turno 5")
+        self.assertEqual(user_msgs_in_res[-1]["content"], "Turno 22")
+        self.assertEqual(res_pruned["messages"][0]["role"], "system")
+
+
 
 if __name__ == "__main__":
     unittest.main()

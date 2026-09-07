@@ -9,6 +9,8 @@ from pymongo import MongoClient
 
 from config import get_mongo_uri, MONGO_DB
 from gateway.tools.web_search import perform_ollama_web_search
+from gateway.core.context_pruner import prune_chat_history
+
 
 DEFAULT_INVARIANTS_PROMPT = """🏛️ [DIRECTIVAS FUNDAMENTALES Y DEBER DE VERACIDAD (INVARIANTES NO NEGOCIABLES)]
 1. PROHIBICIÓN ABSOLUTA DE ENLACES SIMULADOS O FICTICIOS:
@@ -245,6 +247,17 @@ async def enrich_chat_payload(
     settings = get_alignment_settings()
     if not settings.get("enabled", True):
         return data
+
+    # 0. Poda de contexto selectiva (Ventana Deslizante de 18 Turnos de Usuario)
+    pruned_msgs, dropped_turns = prune_chat_history(data["messages"])
+    if dropped_turns > 0:
+        data["messages"] = pruned_msgs
+        print(
+            f"🧹 [Context Pruner] Conversación acotada: descartados {dropped_turns} turnos de usuario antiguos "
+            f"(retenidos los últimos 18 turnos atómicos).",
+            file=sys.stderr,
+            flush=True
+        )
 
     messages: List[Dict[str, Any]] = data["messages"]
     tools: List[Dict[str, Any]] = data.get("tools", [])
