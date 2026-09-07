@@ -27,7 +27,7 @@ Al finalizar cada sesión de trabajo, el agente y el usuario realizan una audito
 ## 📈 Historial Consolidado de Sesiones
 
 | Fecha | ID Sesión | Turnos Usuario | Llamadas Agénticas (Tools) | Commits Git | Invariantes Violados | RVI Máx | Blast Radius | Estado Global |
-| **2026-09-07 (Madrugada - Doble Numeración Canónica, Coincidencia Jerárquica de Secciones & Blindaje Anti-Decay Multi-Turno)** | `fe37eff0` | 11 | ~50 | 4 | **0** | 1/10 | Mínimo (Quirúrgico) | 🟢 **100% Exitoso** |
+| **2026-09-07 (Madrugada - Doble Numeración Canónica, Coincidencia Jerárquica de Secciones, Blindaje Anti-Decay & Ley 4 RAG)** | `fe37eff0` | 14 | ~65 | 6 | **0** | 1/10 | Mínimo (Quirúrgico) | 🟢 **100% Exitoso** |
 | **2026-09-06 (Tarde/Noche - Grounding Universal, Blindaje Anti-Decay en Turnos Extensos & Extractor Jerárquico InfoLEG)** | `ca5c7e22` | 24 | ~85 | 7 | **0** | 1/10 | Mínimo (Modular) | 🟢 **100% Exitoso** |
 | **2026-09-06 (Mediodía - Universalidad de Visión, Reescalado Adaptativo 2D & Prompt Estructurado en 2 Fases)** | `ca5c7e22` | 6 | ~35 | 3 | **0** | 1/10 | Mínimo (Quirúrgico) | 🟢 **100% Exitoso** |
 | **2026-09-05 (Noche - Blindaje Perimetral Zero Trust, Fail2ban Dinámico, Silent Drop y Monitor Multimodal)** | `ca5c7e22` | 15 | ~65 | 7 | **0** | 1/10 | Mínimo (Modular) | 🟢 **100% Exitoso** |
@@ -50,7 +50,7 @@ Al finalizar cada sesión de trabajo, el agente y el usuario realizan una audito
 
 ## 📝 Fichas Detalladas por Sesión
 
-### 🔹 Sesión: 2026-09-07 Madrugada (`fe37eff0-f313-46c0-9ac4-cc5ad3a5f1a2`) - Doble Numeración Canónica, Coincidencia Jerárquica de Secciones & Blindaje Anti-Decay Multi-Turno
+### 🔹 Sesión: 2026-09-07 Madrugada (`fe37eff0-f313-46c0-9ac4-cc5ad3a5f1a2`) - Doble Numeración Canónica, Coincidencia Jerárquica de Secciones, Blindaje Anti-Decay & Ley 4 RAG
 * **Hitos Principales:**
   1. **Auditoría Forense de Fallas en Consultas Jurídicas Complejas:**
      - Identificación de los 4 vectores de fallo en consultas de códigos extensos (Código Penal Argentino):
@@ -76,11 +76,15 @@ Al finalizar cada sesión de trabajo, el agente y el usuario realizan una audito
   6. **Validación Empírica 100% Exitosa en Open-WebUI:**
      - *Turno 1:* `¿Qué delitos se regulan en el Título I del Libro II del Código Penal argentino?` -> Gemma 4 12B IT consultó el GPS, leyó el Título I completo (Arts. 79 al 108) y tipificó con precisión quirúrgica Delitos contra las personas (homicidio, lesiones, aborto según Ley 27.610, duelo, abandono de personas) con cero alucinaciones (sin "asesinato" ni mezcla de otros libros/títulos).
      - *Turno 2:* `_Dame más detalles sobre los agravantes del artículo 80_` -> El Gateway activó el grounding de seguimiento, Gemma invocó `leer_documento_completo(seccion="ARTÍCULO 80°...")` y desglosó con fidelidad literal los 12 incisos del Art. 80.
+  7. **Consagración de la Ley 4 Universal de Ingeniería y Documentación Arquitectónica ([`AGENTS.md`](../AGENTS.md), [`GEMINI.md`](../GEMINI.md), [`docs/ARQUITECTURA_RAG_TECCAM.md`](../docs/ARQUITECTURA_RAG_TECCAM.md) - Commit `d305c0c`):**
+     - Formalización de la **Ley de Integridad en Cascada para Sistemas RAG (Principio de la Alucinación Inducida por Contexto Viciado)** y sus tres corolarios: Racionalización de Evidencia Falsa, Impotencia del Prompt Parche y Embudo de Fidelidad Estructural.
+     - Publicación de la especificación técnica completa en 3 capas (Ingesta, Middleware RAG, Gateway/Inferencia).
 * **Evaluación MEA v2.1 & Leyes de Ingeniería:**
   * **Invariantes (Gate 1):** **0 violaciones**. Veracidad verificada contra logs y transcripciones reales, cero destructividad, cero rutas absolutas hardcodeadas, cero credenciales expuestas.
   * **Ley 1 (Modularización):** Funciones `match_section_query` y `build_boundary_regex` altamente cohesivas, autocontenidas y testeables de forma aislada.
   * **Ley 2 (Causa Raíz):** Se atacaron las 4 causas raíz de fondo (encoding windows-1252, índices fantasma, colisión de números romanos y atenuación atencional multi-turno) sin parches cosméticos.
   * **Ley 3 (Mínimo Blast Radius):** Modificaciones quirúrgicas en menos de 150 líneas de código; compatibilidad total preservada con los 31 tests unitarios en verde.
+  * **Ley 4 (Integridad en Cascada RAG):** Cumplida al 100%. Se garantizó la pureza en la ingesta, el determinismo en la recuperación por límites y el grounding perentorio en el gateway.
   * **RVI Máximo:** `1/10`.
 
 ### 🔹 Sesión: 2026-09-06 Tarde/Noche (`ca5c7e22-5f02-4c3e-8b9d-87b5c9479cce`) - Grounding Universal, Blindaje Anti-Decay RAG en Turnos Extensos & Extractor Jerárquico InfoLEG
