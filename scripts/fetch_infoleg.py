@@ -29,6 +29,7 @@ import os
 import sys
 import re
 import argparse
+import unicodedata
 from pathlib import Path
 from urllib.parse import urljoin, urlparse, parse_qs
 
@@ -205,6 +206,108 @@ class InfoLegParser:
             "regístrese", "notifíquese", "déjase", "instrúyese", "desígnase"
         }
 
+    ROMAN_TO_ARABIC = {
+        "I": 1, "II": 2, "III": 3, "IV": 4, "V": 5, "VI": 6, "VII": 7, "VIII": 8, "IX": 9, "X": 10,
+        "XI": 11, "XII": 12, "XIII": 13, "XIV": 14, "XV": 15, "XVI": 16, "XVII": 17, "XVIII": 18,
+        "XIX": 19, "XX": 20, "XXI": 21, "XXII": 22, "XXIII": 23, "XXIV": 24, "XXV": 25, "XXVI": 26,
+        "XXVII": 27, "XXVIII": 28, "XXIX": 29, "XXX": 30
+    }
+    ARABIC_TO_ROMAN = {v: k for k, v in ROMAN_TO_ARABIC.items()}
+
+    WORD_TO_ROMAN_LIBRO = {
+        "PRIMERO": ("LIBRO PRIMERO", "LIBRO I"),
+        "SEGUNDO": ("LIBRO SEGUNDO", "LIBRO II"),
+        "TERCERO": ("LIBRO TERCERO", "LIBRO III"),
+        "CUARTO": ("LIBRO CUARTO", "LIBRO IV"),
+        "QUINTO": ("LIBRO QUINTO", "LIBRO V"),
+        "SEXTO": ("LIBRO SEXTO", "LIBRO VI"),
+        "SEPTIMO": ("LIBRO SÉPTIMO", "LIBRO VII"),
+        "SÉPTIMO": ("LIBRO SÉPTIMO", "LIBRO VII"),
+        "OCTAVO": ("LIBRO OCTAVO", "LIBRO VIII"),
+        "NOVENO": ("LIBRO NOVENO", "LIBRO IX"),
+        "DECIMO": ("LIBRO DÉCIMO", "LIBRO X"),
+        "DÉCIMO": ("LIBRO DÉCIMO", "LIBRO X"),
+    }
+
+    def canonicalize_libro(self, raw_libro: str) -> str:
+        """Genera doble denominación canónica para Libros: 'LIBRO SEGUNDO (LIBRO II)'."""
+        raw = raw_libro.strip().upper()
+        m = re.match(r"^LIBRO\s+(.+)$", raw)
+        if not m:
+            return raw
+        id_part = m.group(1).strip()
+        if id_part in self.WORD_TO_ROMAN_LIBRO:
+            w_form, r_form = self.WORD_TO_ROMAN_LIBRO[id_part]
+            return f"{w_form} ({r_form})"
+        if id_part in self.ROMAN_TO_ARABIC:
+            arabic = self.ROMAN_TO_ARABIC[id_part]
+            word_found = None
+            for w, (_, r) in self.WORD_TO_ROMAN_LIBRO.items():
+                if r == f"LIBRO {id_part}":
+                    word_found = w
+                    break
+            if word_found:
+                return f"LIBRO {word_found} (LIBRO {id_part})"
+            return f"LIBRO {id_part} (LIBRO {arabic})"
+        dig = re.sub(r"[^\d]", "", id_part)
+        if dig.isdigit():
+            d_val = int(dig)
+            r_val = self.ARABIC_TO_ROMAN.get(d_val)
+            if r_val:
+                return f"LIBRO {r_val} (LIBRO {d_val})"
+        return raw
+
+    def canonicalize_titulo(self, raw_titulo: str) -> str:
+        """Genera doble denominación canónica para Títulos: 'TITULO I (TÍTULO 1)'."""
+        raw = raw_titulo.strip().upper()
+        m = re.match(r"^T[IÍ]TULO\s+(.+)$", raw)
+        if not m:
+            return raw
+        id_part = m.group(1).strip().rstrip("°º.")
+        if id_part in self.ROMAN_TO_ARABIC:
+            arabic = self.ROMAN_TO_ARABIC[id_part]
+            return f"TITULO {id_part} (TÍTULO {arabic})"
+        if id_part.isdigit():
+            d_val = int(id_part)
+            r_val = self.ARABIC_TO_ROMAN.get(d_val)
+            if r_val:
+                return f"TITULO {r_val} (TÍTULO {d_val})"
+        return raw
+
+    def canonicalize_capitulo(self, raw_cap: str) -> str:
+        """Genera doble denominación canónica para Capítulos: 'CAPÍTULO I (CAPÍTULO 1)'."""
+        raw = raw_cap.strip().upper()
+        m = re.match(r"^CAP[IÍ]TULO\s+(.+)$", raw)
+        if not m:
+            return raw
+        id_part = m.group(1).strip().rstrip("°ºª.")
+        if id_part in self.ROMAN_TO_ARABIC:
+            arabic = self.ROMAN_TO_ARABIC[id_part]
+            return f"CAPÍTULO {id_part} (CAPÍTULO {arabic})"
+        if id_part.isdigit():
+            d_val = int(id_part)
+            r_val = self.ARABIC_TO_ROMAN.get(d_val)
+            if r_val:
+                return f"CAPÍTULO {r_val} (CAPÍTULO {d_val})"
+        return raw
+
+    def canonicalize_seccion(self, raw_sec: str) -> str:
+        """Genera doble denominación canónica para Secciones: 'SECCIÓN I (SECCIÓN 1)'."""
+        raw = raw_sec.strip().upper()
+        m = re.match(r"^SECCI[OÓ]N\s+(.+)$", raw)
+        if not m:
+            return raw
+        id_part = m.group(1).strip().rstrip("°ºªa.")
+        if id_part in self.ROMAN_TO_ARABIC:
+            arabic = self.ROMAN_TO_ARABIC[id_part]
+            return f"SECCIÓN {id_part} (SECCIÓN {arabic})"
+        if id_part.isdigit():
+            d_val = int(id_part)
+            r_val = self.ARABIC_TO_ROMAN.get(d_val)
+            if r_val:
+                return f"SECCIÓN {r_val} (SECCIÓN {d_val})"
+        return raw
+
     def clean_soup(self, soup: BeautifulSoup) -> BeautifulSoup:
         """Elimina elementos decorativos, scripts, estilos y encabezados web de InfoLEG."""
         # Eliminar tags técnicos
@@ -224,6 +327,17 @@ class InfoLegParser:
                     parent.decompose()
                 else:
                     a.decompose()
+
+        # Eliminar tablas de índice temático / sumario normativo inicial si existen
+        for table in soup.find_all("table"):
+            rows = table.find_all("tr")
+            if not rows:
+                continue
+            toc_rows = sum(1 for r in rows if re.search(r"\barts?\.?\s*\d+", r.get_text(), re.IGNORECASE))
+            if toc_rows >= 2 and (toc_rows / len(rows) >= 0.35 or len(rows) >= 10):
+                table_text = table.get_text()[:400].lower()
+                if any(kw in table_text for kw in ["libro", "título", "titulo", "capítulo", "capitulo"]):
+                    table.decompose()
 
         return soup
 
@@ -375,6 +489,19 @@ class InfoLegParser:
                 i += 1
                 continue
 
+            # Omitir Bloque de Índice Temático Inicial si existe
+            norm_p = "".join(c for c in unicodedata.normalize("NFD", p.lower()) if unicodedata.category(c) != "Mn")
+            if norm_p in ["indice tematico", "indice general", "sumario", "indice"]:
+                i += 1
+                while i < total:
+                    next_check = paragraphs[i].strip()
+                    if re.match(r"^(?:LEY\s+N?°?\s*\d+|DECRETO\s+N?°?\s*\d+|EL SENADO Y CÁMARA|EL SENADO Y CAMARA|SANCIONADA:|ART[IÍ]CULO\s+1[°º]?\b)", next_check, re.IGNORECASE):
+                        break
+                    if re.match(r"^CODIGO\s+(?:PENAL|CIVIL)", next_check, re.IGNORECASE) and i + 1 < total and re.match(r"^(?:LIBRO|T[IÍ]TULO|ART[IÍ]CULO)", paragraphs[i+1], re.IGNORECASE):
+                        break
+                    i += 1
+                continue
+
             # Preservar líneas de tabla Markdown
             if p.startswith("|") and p.endswith("|"):
                 structured.append(p)
@@ -405,7 +532,8 @@ class InfoLegParser:
                     if not re.match(r"^(?:T[IÍ]TULO|CAP[IÍ]TULO|SECCI[OÓ]N|ART[IÍ]CULO)", next_p, re.I):
                         rest = next_p
                         i += 1
-                header_text = f"{libro_num.upper()} - {rest}" if rest else libro_num.upper()
+                canon_libro = self.canonicalize_libro(libro_num)
+                header_text = f"{canon_libro} - {rest}" if rest else canon_libro
                 structured.append(f"## {header_text}")
                 i += 1
                 continue
@@ -419,7 +547,8 @@ class InfoLegParser:
                     if not re.match(r"^(?:CAP[IÍ]TULO|SECCI[OÓ]N|ART[IÍ]CULO)", next_p, re.I):
                         rest = next_p
                         i += 1
-                header_text = f"{tit_num.upper()} - {rest}" if rest else tit_num.upper()
+                canon_tit = self.canonicalize_titulo(tit_num)
+                header_text = f"{canon_tit} - {rest}" if rest else canon_tit
                 structured.append(f"### {header_text}")
                 i += 1
                 continue
@@ -433,7 +562,8 @@ class InfoLegParser:
                     if not re.match(r"^(?:SECCI[OÓ]N|ART[IÍ]CULO)", next_p, re.I):
                         rest = next_p
                         i += 1
-                header_text = f"{cap_num.upper()} - {rest}" if rest else cap_num.upper()
+                canon_cap = self.canonicalize_capitulo(cap_num)
+                header_text = f"{canon_cap} - {rest}" if rest else canon_cap
                 structured.append(f"#### {header_text}")
                 i += 1
                 continue
@@ -447,7 +577,8 @@ class InfoLegParser:
                     if not re.match(r"^ART[IÍ]CULO", next_p, re.I):
                         rest = next_p
                         i += 1
-                header_text = f"{sec_num.upper()} - {rest}" if rest else sec_num.upper()
+                canon_sec = self.canonicalize_seccion(sec_num)
+                header_text = f"{canon_sec} - {rest}" if rest else canon_sec
                 structured.append(f"##### {header_text}")
                 i += 1
                 continue
