@@ -3,6 +3,20 @@
 Todos los cambios notables en este proyecto serán documentados en este archivo.
 El formato está basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/).
 
+## [2.9.0] - 2026-09-06
+
+### Added
+- **Extractor y Jerarquizador Normativo InfoLEG a Markdown (`scripts/fetch_infoleg.py`, `docs/MANUAL_EXTRACTOR_INFOLEG.md`):**
+  - Implementación de `InfoLegFetcher` con resolución transparente de URLs directas (`norma.htm`, `texact.htm`), páginas de carátula (`verNorma.do?id=...`) o IDs numéricos, con priorización automática de texto actualizado frente al texto original histórico.
+  - Evasión de bloqueo `403 Forbidden` de Apache InfoLEG mediante cabecera canónica `User-Agent` de escritorio.
+  - Extracción de metadatos oficiales (Boletín Oficial, fecha, tipo de norma, organismo emisor y resumen oficial) e inyección estructurada en el encabezado del documento Markdown.
+  - Normalización forzada bajo codificación `windows-1252`, preservando ordinales normativos (`1°`, `2°`, `10°`), guiones largos (`—`) y comillas tipográficas.
+  - Implementación de `InfoLegParser` para depuración de boilerplate (scripts, estilos, banners `#branding`, menús y mapas web), preservación de bloques formales de párrafo y conversión de tablas HTML a tablas Markdown GFM.
+  - Estructuración legal multinivel `# Título`, `## Libro/Parte`, `### Título/Visto/Considerando`, `#### Capítulo`, `##### Sección`, y articulado `**ARTÍCULO X°.- Epígrafe.**` 100% compatible con la función `detect_heuristic_header` de LanceDB (`app_rag_sync.py`).
+  - Soporte para ejecución en modo interactivo asistido por consola y modo desatendido por argumentos CLI (`--url`, `--title`).
+  - Validación de extracción en 3 normativas de prueba en `scripts/output/`: Ley 26.639 (Glaciares, 18 artículos), Decreto 70/2025 (Estructura Organizativa, 14 artículos) y Código Civil y Comercial de la Nación (2.713 artículos continuos).
+  - Manual técnico y guía de usuario completa en [`docs/MANUAL_EXTRACTOR_INFOLEG.md`](docs/MANUAL_EXTRACTOR_INFOLEG.md) y [`scripts/README.md`](scripts/README.md).
+
 ## [2.8.0] - 2026-09-06
 
 ### Added
