@@ -308,6 +308,65 @@ class InfoLegParser:
                 return f"SECCIÓN {r_val} (SECCIÓN {d_val})"
         return raw
 
+    def resolve_header_subtitle(
+        self,
+        paragraphs: list[str],
+        current_idx: int,
+        stop_pattern: str,
+        max_lookahead: int = 4,
+        max_len: int = 250
+    ) -> tuple[str, list[str], int]:
+        """
+        Explora los párrafos subsiguientes para capturar el nombre/subtítulo temático
+        de una división estructural (Libro, Título, Capítulo, Sección), saltando y
+        preservando notas editoriales intermedias ('Nota Infoleg:', etc.).
+
+        Retorna:
+            (subtitle, pending_notes, consumed_paragraphs_count)
+        """
+        total = len(paragraphs)
+        pending_notes = []
+        consumed = 0
+        subtitle = ""
+
+        k = current_idx + 1
+        steps = 0
+
+        while k < total and steps < max_lookahead:
+            cand = paragraphs[k].strip()
+            if not cand:
+                k += 1
+                consumed += 1
+                continue
+
+            # 1. Detectar notas editoriales de InfoLEG o notas de redacción intermedias
+            if re.match(r"^\(?\s*Nota\s+(?:Infoleg|de\s+Redacci[oó]n|al\s+texto|aclaratoria)?\s*:", cand, re.IGNORECASE):
+                pending_notes.append(cand)
+                k += 1
+                consumed += 1
+                steps += 1
+                continue
+
+            # 2. Si choca con otra división estructural o con el articulado, detenerse
+            if re.match(stop_pattern, cand, re.IGNORECASE):
+                break
+
+            # 3. Si es una tabla Markdown, detenerse
+            if cand.startswith("|"):
+                break
+
+            # 4. Candidato a subtítulo temático (hasta max_len caracteres)
+            # Descartar párrafos narrativos largos o que comiencen con fórmulas dispositivas
+            if len(cand) <= max_len and not re.match(r"^(?:VISTO|CONSIDERANDO|DECRETA|RESUELVE|DISPONE)\b", cand, re.IGNORECASE):
+                subtitle = cand.strip(" -–—.")
+                k += 1
+                consumed += 1
+                break
+            else:
+                break
+
+        return subtitle, pending_notes, consumed
+
     def clean_soup(self, soup: BeautifulSoup) -> BeautifulSoup:
         """Elimina elementos decorativos, scripts, estilos y encabezados web de InfoLEG."""
         # Eliminar tags técnicos
@@ -526,15 +585,17 @@ class InfoLegParser:
             )
             if m_libro:
                 libro_num, rest = m_libro.groups()
-                # Verificar si el nombre viene en el párrafo siguiente (ej: PARTE GENERAL)
-                if not rest and i + 1 < total and len(paragraphs[i + 1]) < 80:
-                    next_p = paragraphs[i + 1].strip()
-                    if not re.match(r"^(?:T[IÍ]TULO|CAP[IÍ]TULO|SECCI[OÓ]N|ART[IÍ]CULO)", next_p, re.I):
-                        rest = next_p
-                        i += 1
+                pending_notes = []
+                if not rest:
+                    stop_pat = r"^(?:LIBRO|T[IÍ]TULO|CAP[IÍ]TULO|SECCI[OÓ]N|ART[IÍ]CULO|Art\.)\b"
+                    rest, pending_notes, consumed = self.resolve_header_subtitle(paragraphs, i, stop_pat)
+                    i += consumed
+
                 canon_libro = self.canonicalize_libro(libro_num)
-                header_text = f"{canon_libro} - {rest}" if rest else canon_libro
+                header_text = f"{canon_libro} - {rest.strip(' -–—.')}" if rest else canon_libro
                 structured.append(f"## {header_text}")
+                for note in pending_notes:
+                    structured.append(note)
                 i += 1
                 continue
 
@@ -542,14 +603,17 @@ class InfoLegParser:
             m_tit = re.match(r"^(T[IÍ]TULO\s+(?:[IVXLCDM]+|\d+[°º]?))\s*[-–—]?\s*(.*)$", p, re.IGNORECASE)
             if m_tit:
                 tit_num, rest = m_tit.groups()
-                if not rest and i + 1 < total and len(paragraphs[i + 1]) < 80:
-                    next_p = paragraphs[i + 1].strip()
-                    if not re.match(r"^(?:CAP[IÍ]TULO|SECCI[OÓ]N|ART[IÍ]CULO)", next_p, re.I):
-                        rest = next_p
-                        i += 1
+                pending_notes = []
+                if not rest:
+                    stop_pat = r"^(?:LIBRO|T[IÍ]TULO|CAP[IÍ]TULO|SECCI[OÓ]N|ART[IÍ]CULO|Art\.)\b"
+                    rest, pending_notes, consumed = self.resolve_header_subtitle(paragraphs, i, stop_pat)
+                    i += consumed
+
                 canon_tit = self.canonicalize_titulo(tit_num)
-                header_text = f"{canon_tit} - {rest}" if rest else canon_tit
+                header_text = f"{canon_tit} - {rest.strip(' -–—.')}" if rest else canon_tit
                 structured.append(f"### {header_text}")
+                for note in pending_notes:
+                    structured.append(note)
                 i += 1
                 continue
 
@@ -557,14 +621,17 @@ class InfoLegParser:
             m_cap = re.match(r"^(CAP[IÍ]TULO\s+(?:[IVXLCDM]+|\d+[°ºª]?))\s*[-–—]?\s*(.*)$", p, re.IGNORECASE)
             if m_cap:
                 cap_num, rest = m_cap.groups()
-                if not rest and i + 1 < total and len(paragraphs[i + 1]) < 80:
-                    next_p = paragraphs[i + 1].strip()
-                    if not re.match(r"^(?:SECCI[OÓ]N|ART[IÍ]CULO)", next_p, re.I):
-                        rest = next_p
-                        i += 1
+                pending_notes = []
+                if not rest:
+                    stop_pat = r"^(?:LIBRO|T[IÍ]TULO|CAP[IÍ]TULO|SECCI[OÓ]N|ART[IÍ]CULO|Art\.)\b"
+                    rest, pending_notes, consumed = self.resolve_header_subtitle(paragraphs, i, stop_pat)
+                    i += consumed
+
                 canon_cap = self.canonicalize_capitulo(cap_num)
-                header_text = f"{canon_cap} - {rest}" if rest else canon_cap
+                header_text = f"{canon_cap} - {rest.strip(' -–—.')}" if rest else canon_cap
                 structured.append(f"#### {header_text}")
+                for note in pending_notes:
+                    structured.append(note)
                 i += 1
                 continue
 
@@ -572,14 +639,17 @@ class InfoLegParser:
             m_sec = re.match(r"^(SECCI[OÓ]N\s+(?:\d+[ªºa]?|[IVXLCDM]+))\s*[-–—]?\s*(.*)$", p, re.IGNORECASE)
             if m_sec:
                 sec_num, rest = m_sec.groups()
-                if not rest and i + 1 < total and len(paragraphs[i + 1]) < 80:
-                    next_p = paragraphs[i + 1].strip()
-                    if not re.match(r"^ART[IÍ]CULO", next_p, re.I):
-                        rest = next_p
-                        i += 1
+                pending_notes = []
+                if not rest:
+                    stop_pat = r"^(?:LIBRO|T[IÍ]TULO|CAP[IÍ]TULO|SECCI[OÓ]N|ART[IÍ]CULO|Art\.)\b"
+                    rest, pending_notes, consumed = self.resolve_header_subtitle(paragraphs, i, stop_pat)
+                    i += consumed
+
                 canon_sec = self.canonicalize_seccion(sec_num)
-                header_text = f"{canon_sec} - {rest}" if rest else canon_sec
+                header_text = f"{canon_sec} - {rest.strip(' -–—.')}" if rest else canon_sec
                 structured.append(f"##### {header_text}")
+                for note in pending_notes:
+                    structured.append(note)
                 i += 1
                 continue
 
