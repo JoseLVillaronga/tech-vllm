@@ -10,6 +10,8 @@ version: 2.0.0
 license: MIT
 """
 
+import os
+import re
 import requests
 from typing import Optional
 from pydantic import BaseModel, Field
@@ -64,9 +66,15 @@ class Tools:
 
         clean_filename = str(filename).strip() if filename and not str(type(filename)).endswith("FieldInfo'>") else ""
         if not clean_filename:
-            clean_filename = f"{clean_title.lower().replace(' ', '_')}.pdf"
-        if not clean_filename.lower().endswith(".pdf"):
-            clean_filename += ".pdf"
+            clean_filename = clean_title
+
+        # Sanitizar para evitar errores de ruta causados por barras (ej: 'Decreto 1030/2020') o caracteres inválidos
+        clean_filename = clean_filename.replace("/", "_").replace("\\", "_")
+        clean_filename = re.sub(r'\.{2,}', '_', clean_filename)
+        if clean_filename.lower().endswith(".pdf"):
+            clean_filename = clean_filename[:-4]
+        clean_filename = re.sub(r'[^\w\-\.]', '_', clean_filename)
+        clean_filename = f"{re.sub(r'_+', '_', clean_filename).strip('._').lower() or 'documento'}.pdf"
 
         headers = {
             "Authorization": f"Bearer {self.valves.API_KEY}",

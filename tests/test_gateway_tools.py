@@ -230,6 +230,38 @@ class TestGatewayToolsAndCloud(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(match_section_query("articulo 79", s_l2_t1))
         self.assertFalse(match_section_query("art. 80", s_l2_t1))
 
+    def test_pdf_filename_sanitization_and_slashes(self):
+        from pdf_engine import sanitize_pdf_filename, create_pdf_from_markdown
+
+        # 1. Título con barras (ej: Decreto 1030/2020) no debe contener / en el filename resultante
+        fname_decreto = sanitize_pdf_filename(None, fallback_title="Decreto 1030/2020")
+        self.assertEqual(fname_decreto, "decreto_1030_2020.pdf")
+
+        # 2. Filename explícito con barras y espacios
+        fname_explicit = sanitize_pdf_filename("ley/27.520 y decreto 1030/2020.pdf")
+        self.assertEqual(fname_explicit, "ley_27.520_y_decreto_1030_2020.pdf")
+        self.assertNotIn("/", fname_explicit)
+        self.assertNotIn("\\", fname_explicit)
+
+        # 3. Path traversal intento ../../etc/passwd
+        fname_traversal = sanitize_pdf_filename("../../etc/passwd")
+        self.assertEqual(fname_traversal, "etc_passwd.pdf")
+        self.assertNotIn("/", fname_traversal)
+        self.assertNotIn("..", fname_traversal)
+
+        # 4. Creación real de PDF con título con barras inclinadas (Decreto 1030/2020) sin Errno 2
+        res = create_pdf_from_markdown(
+            title="Análisis del Decreto 1030/2020",
+            markdown_content="# Análisis\n\nTexto de prueba.",
+            filename=None
+        )
+        self.assertTrue(res["success"])
+        self.assertNotIn("/", res["filename"])
+        self.assertTrue(res["filename"].endswith(".pdf"))
+        self.assertIn("1030_2020", res["filename"])
+        import os
+        self.assertTrue(os.path.exists(res["file_path"]))
+
 
 if __name__ == "__main__":
     unittest.main()

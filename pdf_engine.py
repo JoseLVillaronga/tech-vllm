@@ -14,7 +14,8 @@ import re
 import uuid
 from typing import Optional, Dict, Any, List
 
-PDF_STORAGE_DIR = "/home/jose/vllm/outputs/pdfs"
+PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
+PDF_STORAGE_DIR = os.getenv("PDF_STORAGE_DIR", os.path.join(PROJECT_DIR, "outputs", "pdfs"))
 os.makedirs(PDF_STORAGE_DIR, exist_ok=True)
 
 # Métricas aproximadas de ancho de caracteres para fuentes estándar Helvetica / Helvetica-Bold
@@ -529,6 +530,38 @@ def cleanup_old_pdfs(max_age_hours: int = 24):
         print(f"⚠️ Error limpiando PDFs antiguos: {e}", file=sys.stderr)
 
 
+def sanitize_pdf_filename(filename: Optional[str] = None, fallback_title: str = "documento") -> str:
+    """
+    Sanitiza de forma segura un nombre de archivo para PDFs, neutralizando rutas,
+    barras inclinadas, caracteres de control y secuencias inválidas para el sistema de archivos.
+    """
+    raw = str(filename or "").strip()
+    if not raw or raw.endswith("FieldInfo'>"):
+        raw = fallback_title
+
+    # Neutralizar separadores de ruta y posibles secuencias de path traversal (ej: '1030/2020' -> '1030_2020')
+    clean = raw.replace("/", "_").replace("\\", "_")
+    clean = re.sub(r'\.{2,}', '_', clean)
+
+    if clean.lower().endswith(".pdf"):
+        clean = clean[:-4]
+
+    # Reemplazar cualquier caracter que no sea palabra (\w), guion o punto por guion bajo
+    # En Python 3, \w preserva caracteres alfanuméricos unicode (letras con tilde, ñ, etc.)
+    # y neutraliza / \ : * ? " < > | y espacios
+    clean = re.sub(r'[^\w\-\.]', '_', clean)
+    clean = re.sub(r'_+', '_', clean).strip('._')
+
+    if not clean:
+        clean = re.sub(r'[^\w\-\.]', '_', fallback_title)
+        clean = re.sub(r'_+', '_', clean).strip('._')
+
+    if not clean:
+        clean = "documento"
+
+    return f"{clean.lower()}.pdf"
+
+
 def create_pdf_from_markdown(
     title: str,
     markdown_content: str,
@@ -548,9 +581,7 @@ def create_pdf_from_markdown(
     if not clean_title:
         clean_title = "Documento Oficial"
 
-    clean_filename = filename.strip() if filename else f"{re.sub(r'[^a-zA-Z0-9_-]', '_', clean_title.lower())}.pdf"
-    if not clean_filename.lower().endswith(".pdf"):
-        clean_filename += ".pdf"
+    clean_filename = sanitize_pdf_filename(filename, fallback_title=clean_title)
 
     builder = PDFDocumentBuilder(company_name=company_name)
     builder.render_markdown(markdown_content, title=clean_title)
