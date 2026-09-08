@@ -245,7 +245,12 @@ def search_knowledge_base(
         for t in topics_to_filter:
             if t and t.strip():
                 clean_t = t.strip().replace("'", "''")
-                topic_conditions.append(f"doc_topic LIKE '%{clean_t}%'")
+                norm_t = normalize_text(clean_t)
+                topic_conditions.append(
+                    f"(lower(doc_topic) LIKE '%{clean_t.lower()}%' OR "
+                    f"lower(doc_title) LIKE '%{clean_t.lower()}%' OR "
+                    f"lower(doc_title) LIKE '%{norm_t}%')"
+                )
         if len(topic_conditions) == 1:
             filter_clauses.append(topic_conditions[0])
         elif len(topic_conditions) > 1:
@@ -321,6 +326,28 @@ def search_knowledge_base(
                 }
     except Exception as fe:
         pass
+
+    # Fallback de seguridad: si un filtro temático restrictivo devolvió 0 candidatos
+    # (ej: el LLM pasó un nombre de subdisciplina o ley que no coincide con doc_topic ni doc_title),
+    # reintentar búsqueda vectorial sin la cláusula temática para no dejar sin respuesta al usuario.
+    if not all_candidates and topics_to_filter:
+        non_topic_clauses = [c for c in filter_clauses if c not in topic_conditions and not any(tc in c for tc in topic_conditions)]
+        fallback_expr = " AND ".join(non_topic_clauses) if non_topic_clauses else None
+        try:
+            vec_builder = table.search(query_vector, query_type="vector")
+            if fallback_expr:
+                vec_builder = vec_builder.where(fallback_expr)
+            for item in vec_builder.limit(top_k * 5).to_list():
+                d_id = item.get("id")
+                dist = item.get("_distance", 1.0)
+                all_candidates[d_id] = {
+                    "item": item,
+                    "vec_sim": max(0.0, 1.0 - (dist / 2.0)),
+                    "fts_score": 0.0,
+                    "dist": dist
+                }
+        except Exception:
+            pass
 
     results = []
     for d_id, data in all_candidates.items():

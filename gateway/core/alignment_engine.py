@@ -9,7 +9,7 @@ from pymongo import MongoClient
 
 from config import get_mongo_uri, MONGO_DB
 from gateway.tools.web_search import perform_ollama_web_search
-from gateway.core.context_pruner import prune_chat_history
+from gateway.core.context_pruner import prune_chat_history, get_max_user_turns
 
 
 DEFAULT_INVARIANTS_PROMPT = """🏛️ [DIRECTIVAS FUNDAMENTALES Y DEBER DE VERACIDAD (INVARIANTES NO NEGOCIABLES)]
@@ -47,7 +47,11 @@ DEFAULT_INVARIANTS_PROMPT = """🏛️ [DIRECTIVAS FUNDAMENTALES Y DEBER DE VERA
 7. PROHIBICIÓN ABSOLUTA DE JURISPRUDENCIA, CARÁTULAS O FALLOS FICTICIOS:
    - Si el usuario consulta por jurisprudencia, fallos judiciales o precedentes (ej: de la Corte Suprema, Cámaras o Tribunales) y estos no surgen expresamente de los documentos indexados en la biblioteca ni de una búsqueda web verificable:
    - Declara con total transparencia y honestidad que en la base de datos documental no constan precedentes judiciales sobre la materia.
-   - Queda TERMINANTEMENTE PROHIBIDO inventar nombres de causas, carátulas, números de decretos disfrazados de sentencias, años, o atribuir fallos a salas u órganos judiciales inexistentes (ej: jamás inventar 'Corte Suprema, Sala Civil y Comercial' o 'Decreto 115/2004')."""
+   - Queda TERMINANTEMENTE PROHIBIDO inventar nombres de causas, carátulas, números de decretos disfrazados de sentencias, años, o atribuir fallos a salas u órganos judiciales inexistentes (ej: jamás inventar 'Corte Suprema, Sala Civil y Comercial' o 'Decreto 115/2004').
+8. FOCO PERENTORIO EN LA CONSULTA ACTUAL Y PROHIBICIÓN DE CONTAMINACIÓN CONVERSACIONAL (ANTI-CROSSTALK):
+   - Cada turno del usuario delimita el objetivo primario y excluyente de la respuesta actual.
+   - Aunque el historial conversacional reciente se mantenga disponible para contexto, ilación y repreguntas, está ESTRICTAMENTE PROHIBIDO sustituir el tema, ley o documento consultado por temas tratados en turnos precedentes.
+   - Responde de forma precisa, exhaustiva y exclusiva a lo requerido en la consulta actual del usuario."""
 
 
 GROUNDING_TRIGGERS_PATTERN = re.compile(
@@ -248,16 +252,25 @@ async def enrich_chat_payload(
     if not settings.get("enabled", True):
         return data
 
-    # 0. Poda de contexto selectiva (Ventana Deslizante de 18 Turnos de Usuario)
+    # 0. Poda de contexto selectiva (Ventana Deslizante Canónica: 10 Turnos de Usuario o 32k Tokens)
     pruned_msgs, dropped_turns = prune_chat_history(data["messages"])
     if dropped_turns > 0:
         data["messages"] = pruned_msgs
+        max_u_turns = get_max_user_turns()
         print(
             f"🧹 [Context Pruner] Conversación acotada: descartados {dropped_turns} turnos de usuario antiguos "
-            f"(retenidos los últimos 18 turnos atómicos).",
+            f"(retenidos los últimos {max_u_turns} turnos atómicos).",
             file=sys.stderr,
             flush=True
         )
+        # Nivel 1: Forzar reevaluación limpia en llama-server (ignorar prefijo sucio del KV cache)
+        if not is_cloud_request:
+            data["cache_prompt"] = False
+            print(
+                f"🧹 [Context Pruner] Inyectado 'cache_prompt: false' para forzar reevaluación limpia del KV cache en backend local.",
+                file=sys.stderr,
+                flush=True
+            )
 
     messages: List[Dict[str, Any]] = data["messages"]
     tools: List[Dict[str, Any]] = data.get("tools", [])
@@ -294,7 +307,7 @@ async def enrich_chat_payload(
         else:
             messages.insert(0, {"role": "system", "content": full_system_header})
 
-    # Extraer última consulta del usuario para contextualización
+    # Extraer última consulta del usuario para contextualización y anclaje
     last_user_msg = next((m for m in reversed(messages) if m.get("role") == "user"), None)
     user_query = ""
     if last_user_msg:
@@ -304,6 +317,18 @@ async def enrich_chat_payload(
         elif isinstance(content_val, list):
             text_parts = [p.get("text", "") for p in content_val if isinstance(p, dict) and p.get("type") == "text"]
             user_query = " ".join(text_parts)
+
+        # Anclaje explícito del target actual para prevenir atención errática / crosstalk hacia turnos anteriores
+        if include_alignment:
+            if isinstance(content_val, str):
+                if not content_val.startswith("[CONSULTA ACTUAL DEL USUARIO]:"):
+                    last_user_msg["content"] = f"[CONSULTA ACTUAL DEL USUARIO]:\n{content_val}"
+            elif isinstance(content_val, list) and content_val:
+                first_part = content_val[0]
+                if isinstance(first_part, dict) and first_part.get("type") == "text":
+                    txt = first_part.get("text", "")
+                    if not txt.startswith("[CONSULTA ACTUAL DEL USUARIO]:"):
+                        first_part["text"] = f"[CONSULTA ACTUAL DEL USUARIO]:\n{txt}"
 
     # 2. Refuerzo Dinámico de Grounding Anti-Decay (MEA) en Consultas Sensibles y Repreguntas Contextuales
     # Si la consulta versa sobre normativa, procedimientos, contratos, políticas o documentación interna,
@@ -368,6 +393,33 @@ async def enrich_chat_payload(
             elif isinstance(content_val, list):
                 if not any("[DIRECTIVA DE CONTROL Y GROUNDING OBLIGATORIO" in str(p.get("text", "")) for p in content_val if isinstance(p, dict)):
                     content_val.append({"type": "text", "text": reminder_text})
+
+    # 2.1 Refuerzo de Foco Activo en Salidas de Herramientas (Anti-Attention Decay & Anti-Crosstalk)
+    # Durante bucles de múltiples llamadas a herramientas consecutivas, el objetivo de la pregunta del usuario
+    # puede diluirse ante el volumen de texto devuelto. Si el último mensaje es un resultado de herramienta ('tool'),
+    # inyectamos un pie de anclaje perentorio que recuerda el objetivo excluyente de la consulta actual.
+    if include_alignment and messages and messages[-1].get("role") == "tool" and last_user_msg:
+        clean_query = user_query
+        if "[DIRECTIVA DE CONTROL" in clean_query:
+            clean_query = clean_query.split("[DIRECTIVA DE CONTROL")[0]
+        if "[CONSULTA ACTUAL DEL USUARIO]:" in clean_query:
+            clean_query = clean_query.replace("[CONSULTA ACTUAL DEL USUARIO]:", "")
+        clean_query = clean_query.strip()
+
+        if clean_query:
+            footer_tag = "[RECORDATORIO DE FOCO ACTIVO Y REGLA DE PERTINENCIA (ANTI-CROSSTALK)]"
+            last_tool_msg = messages[-1]
+            t_content = last_tool_msg.get("content")
+            if isinstance(t_content, str) and footer_tag not in t_content:
+                focus_reminder = (
+                    f"\n\n📌 {footer_tag}:\n"
+                    f"Estás procesando información para responder EXCLUSIVAMENTE a la consulta actual del usuario:\n"
+                    f"\"{clean_query}\"\n"
+                    f"1. Si este resultado de herramienta contiene citas accidentales, decretos u otros temas que no regulen directamente dicha consulta, descártalos de inmediato.\n"
+                    f"2. Está ESTRICTAMENTE PROHIBIDO desviar tu respuesta o tus próximas herramientas hacia temas de turnos anteriores.\n"
+                    f"3. Mantén el foco perentorio en resolver: \"{clean_query}\"."
+                )
+                last_tool_msg["content"] = f"{t_content}{focus_reminder}"
 
     # 3. Inyección de Búsqueda Web (si es modelo web)
     if not is_cloud_request and actual_model == "gemma-4-web" and user_query:

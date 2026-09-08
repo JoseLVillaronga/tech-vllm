@@ -329,7 +329,7 @@ class TestGatewayCore(unittest.TestCase):
         res_inf = asyncio.run(enrich_chat_payload(data_informal_followup, actual_model="gemma", is_cloud_request=False))
         self.assertNotIn("[DIRECTIVA DE CONTROL Y GROUNDING OBLIGATORIO", res_inf["messages"][-1]["content"])
 
-        # 9. Conversación con más de 18 turnos de usuario -> Debe podar a los últimos 18 turnos conservando el system prompt
+        # 9. Conversación con más de 6 turnos de usuario -> Debe podar a los últimos 6 turnos conservando el system prompt y anclando el último turno
         long_chat_msgs = [{"role": "system", "content": "You are a helpful assistant."}]
         for i in range(1, 23):  # 22 turnos
             long_chat_msgs.append({"role": "user", "content": f"Turno {i}"})
@@ -338,10 +338,30 @@ class TestGatewayCore(unittest.TestCase):
         data_long = {"messages": long_chat_msgs, "tools": []}
         res_pruned = asyncio.run(enrich_chat_payload(data_long, actual_model="gemma", is_cloud_request=False))
         user_msgs_in_res = [m for m in res_pruned["messages"] if m.get("role") == "user"]
-        self.assertEqual(len(user_msgs_in_res), 18)
-        self.assertEqual(user_msgs_in_res[0]["content"], "Turno 5")
-        self.assertEqual(user_msgs_in_res[-1]["content"], "Turno 22")
+        self.assertEqual(len(user_msgs_in_res), 6)
+        self.assertEqual(user_msgs_in_res[0]["content"], "Turno 17")
+        self.assertIn("Turno 22", user_msgs_in_res[-1]["content"])
+        self.assertTrue(user_msgs_in_res[-1]["content"].startswith("[CONSULTA ACTUAL DEL USUARIO]:"))
         self.assertEqual(res_pruned["messages"][0]["role"], "system")
+        self.assertFalse(res_pruned.get("cache_prompt"))
+
+        # 10. Turno en medio de un bucle de herramientas (último mensaje role == 'tool')
+        # Debe inyectar el pie de foco activo con la consulta limpia del usuario
+        data_tool_loop = {
+            "messages": [
+                {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "user", "content": "¿Qué reformas introdujo la Ley 27.742 laboral?"},
+                {"role": "assistant", "content": None, "tool_calls": [{"id": "c1", "type": "function", "function": {"name": "buscar"}}]},
+                {"role": "tool", "tool_call_id": "c1", "content": "Fragmentos con mención accidental al Decreto 70/2023."}
+            ],
+            "tools": [{"type": "function", "function": {"name": "buscar"}}]
+        }
+        res_tool = asyncio.run(enrich_chat_payload(data_tool_loop, actual_model="gemma", is_cloud_request=False))
+        last_tool = res_tool["messages"][-1]
+        self.assertEqual(last_tool["role"], "tool")
+        self.assertIn("[RECORDATORIO DE FOCO ACTIVO Y REGLA DE PERTINENCIA (ANTI-CROSSTALK)]", last_tool["content"])
+        self.assertIn("¿Qué reformas introdujo la Ley 27.742 laboral?", last_tool["content"])
+        self.assertIn("ESTRICTAMENTE PROHIBIDO desviar tu respuesta o tus próximas herramientas hacia temas de turnos anteriores", last_tool["content"])
 
 
 

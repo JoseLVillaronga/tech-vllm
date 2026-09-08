@@ -3,6 +3,35 @@
 Todos los cambios notables en este proyecto serán documentados en este archivo.
 El formato está basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/).
 
+## [2.10.0] - 2026-09-07
+
+### Added
+- **Recordatorio Dinámico de Foco Activo Intra-Turno (`gateway/core/alignment_engine.py`):**
+  - Inyección perentoria de anclaje contextual (`📌 [RECORDATORIO DE FOCO ACTIVO]`) en la última respuesta de herramienta del turno (`messages[-1]["role"] == "tool"`).
+  - Ancla directamente el requerimiento del usuario a 0 tokens de distancia del bloque `<think>`, neutralizando la atenuación atencional (*In-Turn Attention Decay*) y el secuestro atencional (*Attention Crosstalk*) inducido por tokens incidentales en ciclos multi-herramienta extensos.
+  - Invariante 8 formalizado en el motor de alineación y sincronizado con MongoDB `db.alignment_settings`.
+- **Vaciado Físico Asíncrono de Slots KV Cache (`gateway/core/slot_flusher.py`, `llama-srv.sh`):**
+  - Implementación del módulo `slot_flusher.py` para invocar asíncronamente `POST /slots/{id}?action=erase` contra `llama-server` ante eventos de poda de contexto o colisiones de prefijo.
+  - Inclusión de `--parallel 2` y `--slot-save-path "${PROJECT_DIR}/scratch/slots"` en `llama-srv.sh` habilitando control granular de slots y persistencia física en disco sin saturación de RAM.
+  - Inyección de `cache_prompt: false` en los payloads JSON podados para invalidar prefijos corruptos o viciados en el motor de inferencia.
+
+### Changed
+- **Calibración Matemática de Poda y Compactación Selectiva de Contexto (`gateway/core/context_pruner.py`):**
+  - Ajuste del factor de estimación léxica de tokens para español técnico y serialización JSON a 2.8 caracteres por token, con un overhead basal de 5.000 tokens reservados para esquemas de herramientas y system prompt.
+  - Reducción del límite de ventana deslizante a 6 turnos atómicos de usuario (`CONTEXT_PRUNER_MAX_TURNS=6`) y techo de 32.000 tokens (`CONTEXT_PRUNER_MAX_TOKENS=32000`).
+  - Compactación selectiva de respuestas previas del asistente anteriores a los últimos 2 turnos: condensación a los primeros 300 caracteres (párrafo rector) y sustitución del contenido extenso por marcador de resumen, suprimiendo atractores semánticos masivos sin quebrar el hilo conversacional.
+- **Resolución de Filtrado Cruzado y Fallback Abierto en RAG (`rag_engine.py`):**
+  - Expansión de la cláusula de pre-filtrado SQL en LanceDB: búsqueda insensible a mayúsculas/minúsculas y acentos sobre `doc_topic` y cruzada contra `doc_title` (`(lower(doc_topic) LIKE '%{tema}%' OR lower(doc_title) LIKE '%{tema}%')`).
+  - Implementación de mecanismo de *fallback* automático a búsqueda abierta no restringida si el pre-filtrado por dominio o título devuelve 0 candidatos, erradicando fallos silenciosos de recuperación causados por divergencias de taxonomía en el LLM (Ley 4).
+
+### Documented
+- **Prueba de Campo de 31 Turnos de Estrés (`docs/pruebas_campo/prueba_campo_anti_crosstalk_y_foco_dinamico_2026-09-07.md`):**
+  - Auditoría forense exhaustiva de 31 turnos sin un solo colapso de atención ni alucinación cruzada (*0% failure rate*).
+  - Mantenimiento constante de velocidad de prefill a ~4.500 tok/s en turnos avanzados (>25 turnos) gracias a la poda calibrada.
+  - Validación de honestidad epistémica radical ante preguntas capciosas de derecho tributario (impuesto PAIS inmobiliario) y recuperación exhaustiva de los 28 artículos del Título I del Libro II del Código Penal.
+- **Retrospectiva de Sesión (`docs/RETROSPECTIVAS_SESIONES.md`):**
+  - Registro de la sesión nocturna del 2026-09-07 con análisis de causas raíz, lecciones aprendidas sobre falsas hipótesis de discrepancia léxica vs SQL pre-filters, y auditoría de RVI (0.0/10).
+
 ## [2.9.0] - 2026-09-06
 
 ### Added

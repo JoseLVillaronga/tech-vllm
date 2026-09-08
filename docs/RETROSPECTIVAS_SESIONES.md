@@ -27,6 +27,7 @@ Al finalizar cada sesión de trabajo, el agente y el usuario realizan una audito
 ## 📈 Historial Consolidado de Sesiones
 
 | Fecha | ID Sesión | Turnos Usuario | Llamadas Agénticas (Tools) | Commits Git | Invariantes Violados | RVI Máx | Blast Radius | Estado Global |
+| **2026-09-07 (Noche - Blindaje Anti-Crosstalk, Foco Dinámico en Tools, Compactación Selectiva del Asistente, Resolución de Búsqueda RAG Intermitente y Prueba de 31 Turnos)** | `fe37eff0` | 24 | ~110 | 8 | **0** | 1/10 | Mínimo (Quirúrgico) | 🟢 **100% Exitoso** |
 | **2026-09-07 (Mediodía/Tarde - Estrés Multi-Turno 30 Consultas, Límite 52k de Atención, Context Crosstalk y Olvido Selectivo con Compactación de Tools)** | `fe37eff0` | 18 | ~75 | 4 | **0** | 1/10 | Mínimo (Quirúrgico) | 🟢 **100% Exitoso** |
 | **2026-09-07 (Madrugada - Doble Numeración Canónica, Coincidencia Jerárquica de Secciones, Blindaje Anti-Decay & Ley 4 RAG)** | `fe37eff0` | 14 | ~65 | 6 | **0** | 1/10 | Mínimo (Quirúrgico) | 🟢 **100% Exitoso** |
 | **2026-09-06 (Tarde/Noche - Grounding Universal, Blindaje Anti-Decay en Turnos Extensos & Extractor Jerárquico InfoLEG)** | `ca5c7e22` | 24 | ~85 | 7 | **0** | 1/10 | Mínimo (Modular) | 🟢 **100% Exitoso** |
@@ -50,6 +51,33 @@ Al finalizar cada sesión de trabajo, el agente y el usuario realizan una audito
 ---
 
 ## 📝 Fichas Detalladas por Sesión
+
+### 🔹 Sesión: 2026-09-07 Noche (`fe37eff0-f313-46c0-9ac4-cc5ad3a5f1a2`) - Blindaje Anti-Crosstalk, Foco Dinámico en Tools, Compactación Selectiva del Asistente, Resolución de Búsqueda RAG Intermitente y Estrés Exitoso de 31 Turnos
+* **Hitos Principales:**
+  1. **Diagnóstico Forense de In-Turn Attention Decay y Atractores Semánticos:**
+     - Identificación del secuestro atencional en bucles multi-herramienta: cuando un turno encadena múltiples llamados a herramientas, la pregunta original queda enterrada cientos de tokens atrás.
+     - Detección del "agujero negro" semántico: el DNU 70/2023 (1.000 tokens en Turno 15) atraía al modelo cada vez que una herramienta mencionaba incidentalmente `"70/2023"`.
+  2. **Implementación de la Solución 2 (Estructural - Ley 2):**
+     - *Refuerzo Dinámico de Foco Activo:* Inyección automática de `[RECORDATORIO DE FOCO ACTIVO Y REGLA DE PERTINENCIA (ANTI-CROSSTALK)]` en el pie de cada salida de herramienta (`role: "tool"`), dejando la consulta limpia del usuario a 0 tokens de la siguiente generación (`<think>`).
+     - *Compactación Selectiva del Asistente:* Poda de tablas densas y articulados exhaustivos en respuestas del asistente de turnos viejos (>2 turnos previos, >600 caracteres), preservando el resumen introductorio de 300 caracteres y desarticulando el atractor semántico.
+  3. **Calibración Matemática de Contexto:**
+     - Ajuste del ratio a `CHARS_PER_TOKEN_ESTIMATE = 2.8` (específico para español técnico y serializaciones JSON).
+     - Incorporación de `BASE_PROMPT_OVERHEAD_TOKENS = 5000` (esquemas de tools + MEA) y ventana acotada a `GATEWAY_MAX_USER_TURNS = 6`.
+  4. **Vaciado de Memoria RAM en Llama.cpp:**
+     - Configuración de `--parallel 2` y `--slot-save-path` en `llama-srv.sh`.
+     - Inyección de `cache_prompt: false` en peticiones con poda y vaciado asíncrono en background vía `flush_llama_slots` (`/slots/{id}?action=erase`).
+  5. **Resolución de Búsquedas RAG Intermitentes (Ley 4 - Integridad en Cascada):**
+     - Descubrimiento de que las fallas de recuperación (ej: Turno 23 sobre Código Penal) no eran discrepancias léxicas de números romanos, sino el pre-filtro SQL `WHERE doc_topic LIKE '%Código Penal%'` que anulaba toda la base (cuyo topic es `'Derecho Argentino'`).
+     - Modificación en `rag_engine.py`: evaluación cruzada de `doc_topic` OR `doc_title` (insensible a mayúsculas y acentos) y **fallback automático a búsqueda abierta** ante 0 resultados.
+  6. **Prueba de Campo de 31 Turnos Consecutivos (Validación al 100%):**
+     - Cero colapsos de atención en toda la sesión (~1.1 MB de historial JSON).
+     - Corrección del cálculo de vacaciones en Turno 17 (21 días corridos, Art. 150 LCT).
+     - Respuesta impecable en Turno 19 (foco 100% en Ley 27.742 sin desviarse a locaciones).
+     - Respuestas maestras ante preguntas capciosas (Turnos 24, 29, 30: honestidad radical).
+     - Extracción quirúrgica de los 28 artículos del Código Penal (Arts. 79-108) en Turno 31.
+     - Velocidad constante de prefill entre 4.300 y 5.067 tok/s sin fugas de memoria.
+
+---
 
 ### 🔹 Sesión: 2026-09-07 Mediodía/Tarde (`fe37eff0-f313-46c0-9ac4-cc5ad3a5f1a2`) - Estrés Multi-Turno (30 Consultas), Límite de Atención 52k, Context Crosstalk y Olvido Selectivo con Compactación de Tools
 * **Hitos Principales:**

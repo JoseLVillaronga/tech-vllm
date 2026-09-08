@@ -64,6 +64,9 @@ REASONING="${LLAMA_REASONING:-off}"
 THREADS="${LLAMA_THREADS:-8}"
 LOAD_MODE="${LLAMA_LOAD_MODE:-mlock}"
 AUTH_KEY="${API_KEY:-}"
+PARALLEL="${LLAMA_PARALLEL:-2}"
+SLOT_SAVE_PATH="${LLAMA_SLOT_SAVE_PATH:-${PROJECT_DIR}/scratch/slots}"
+mkdir -p "${SLOT_SAVE_PATH}"
 
 # 5.1 Parámetro Opcional Multimodal Projector (Visión)
 MMPROJ_PATH="${LLAMA_MMPROJ_PATH:-}"
@@ -91,6 +94,8 @@ echo "🎮 GPU Layers:       ${GPU_LAYERS} (MoE CPU: ${N_CPU_MOE})"
 echo "💭 Razonamiento:     ${REASONING}"
 echo "🔒 Modo de Carga:    --load-mode ${LOAD_MODE}"
 echo "🧵 Hilos CPU:        ${THREADS}"
+echo "👥 Slots Paralelos:  ${PARALLEL}"
+echo "💾 Ruta Slots KV:    ${SLOT_SAVE_PATH}"
 echo "============================================================"
 
 # Reemplazar la shell por el proceso llama-server para gestión nativa en systemd
@@ -99,6 +104,8 @@ exec "${LLAMA_BIN}" \
   --alias "${ALIAS}" \
   "${MMPROJ_ARGS[@]}" \
   --ctx-size "${CTX_SIZE}" \
+  --parallel "${PARALLEL}" \
+  --slot-save-path "${SLOT_SAVE_PATH}" \
   --batch-size "${BATCH_SIZE}" \
   --ubatch-size "${UBATCH_SIZE}" \
   --gpu-layers "${GPU_LAYERS}" \

@@ -2,14 +2,15 @@ import os
 from typing import List, Dict, Any, Tuple
 
 
-DEFAULT_MAX_USER_TURNS = 18
-DEFAULT_MAX_CONTEXT_TOKENS = 52000
+DEFAULT_MAX_USER_TURNS = 6
+DEFAULT_MAX_CONTEXT_TOKENS = 32000
 DEFAULT_KEEP_TOOL_TURNS = 2
-CHARS_PER_TOKEN_ESTIMATE = 3.5
+CHARS_PER_TOKEN_ESTIMATE = 2.8
+BASE_PROMPT_OVERHEAD_TOKENS = 5000
 
 
 def get_max_user_turns() -> int:
-    """Obtiene el número máximo de turnos de usuario a retener desde el entorno o usa el valor por defecto (18)."""
+    """Obtiene el número máximo de turnos de usuario a retener desde el entorno o usa el valor por defecto (6)."""
     try:
         val = int(os.getenv("GATEWAY_MAX_USER_TURNS", str(DEFAULT_MAX_USER_TURNS)))
         return max(1, val)
@@ -18,7 +19,7 @@ def get_max_user_turns() -> int:
 
 
 def get_max_context_tokens() -> int:
-    """Obtiene el techo máximo seguro de tokens de contexto desde el entorno o usa el valor por defecto (52000)."""
+    """Obtiene el techo máximo seguro de tokens de contexto desde el entorno o usa el valor por defecto (32000)."""
     try:
         val = int(os.getenv("GATEWAY_MAX_CONTEXT_TOKENS", str(DEFAULT_MAX_CONTEXT_TOKENS)))
         return max(1000, val)
@@ -35,10 +36,11 @@ def get_keep_tool_turns() -> int:
         return DEFAULT_KEEP_TOOL_TURNS
 
 
-def estimate_tokens(messages: List[Dict[str, Any]]) -> int:
+def estimate_tokens(messages: List[Dict[str, Any]], base_overhead: int = 0) -> int:
     """
-    Estima de forma rápida el conteo de tokens del payload en base al conteo de caracteres.
-    Para español técnico/jurídico, ~3.5 caracteres equivalen a 1 token.
+    Estima de forma precisa el conteo de tokens del payload en base al conteo de caracteres.
+    Para español técnico/jurídico con formateo markdown y JSON, ~2.8 caracteres equivalen a 1 token.
+    Permite incorporar el sobrecosto base (ej: ~5000 tokens de herramientas e invariantes).
     """
     total_chars = 0
     for m in messages:
@@ -52,7 +54,10 @@ def estimate_tokens(messages: List[Dict[str, Any]]) -> int:
         tc = m.get("tool_calls")
         if tc:
             total_chars += len(str(tc))
-    return int(total_chars / CHARS_PER_TOKEN_ESTIMATE)
+    tokens = int(total_chars / CHARS_PER_TOKEN_ESTIMATE)
+    if messages and base_overhead > 0:
+        tokens += base_overhead
+    return tokens
 
 
 def prune_chat_history(
@@ -65,10 +70,10 @@ def prune_chat_history(
     Poda el historial de conversación aplicando una ventana deslizante inteligente (Olvido Selectivo):
     1. Preserva intactos los mensajes iniciales con role == 'system'.
     2. Agrupa el diálogo en 'bloques atómicos de turno' delimitados por cada mensaje con role == 'user'.
-    3. Si la cantidad de turnos de usuario excede 'max_user_turns' (18), descarta los bloques más antiguos.
+    3. Si la cantidad de turnos de usuario excede 'max_user_turns' (10), descarta los bloques más antiguos.
     4. Compacta los outputs de herramientas (role == 'tool') de turnos antiguos (> keep_tool_turns),
        preservando intactos únicamente los turnos recientes donde el usuario aún puede repreguntar sobre el documento.
-    5. Verifica el techo de seguridad de tokens ('max_context_tokens', por defecto 52.000). Si tras compactar
+    5. Verifica el techo de seguridad de tokens ('max_context_tokens', por defecto 32.000). Si tras compactar
        herramientas se supera el umbral, descarta turnos antiguos adicionales hasta encajar en el presupuesto.
     6. Garantiza la atomicidad estricta de las herramientas: jamás separa un assistant con tool_calls de sus tools.
 
@@ -159,13 +164,30 @@ def prune_chat_history(
                     )
                     processed_block.append(archived_msg)
                     continue
+            elif is_old_block and m.get("role") == "assistant" and not m.get("tool_calls"):
+                content = m.get("content")
+                if isinstance(content, str) and len(content) > 600:
+                    archived_asst = dict(m)
+                    cut_idx = content.find("\n|", 100)
+                    if cut_idx == -1 or cut_idx > 350:
+                        cut_idx = content.find("\n\n", 100)
+                    if cut_idx == -1 or cut_idx > 350:
+                        cut_idx = 300
+                    summary_prefix = content[:cut_idx].strip()
+                    archived_asst["content"] = (
+                        f"{summary_prefix}\n\n"
+                        f"[Detalle normativo extenso y tablas archivadas para optimizar contexto: "
+                        f"{len(content) - len(summary_prefix)} caracteres previos]"
+                    )
+                    processed_block.append(archived_asst)
+                    continue
             processed_block.append(m)
 
         compacted_blocks.append(processed_block)
 
     kept_blocks = compacted_blocks
 
-    # 5. Aplicar Techo de Seguridad de Tokens (52.000 tokens)
+    # 5. Aplicar Techo de Seguridad de Tokens (32.000 tokens)
     # Si aun con herramientas compactadas se supera el presupuesto, descartar turnos más viejos
     def flatten(blocks: List[List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
         flat: List[Dict[str, Any]] = []
@@ -173,12 +195,13 @@ def prune_chat_history(
             flat.extend(b)
         return flat
 
-    current_total_tokens = estimate_tokens(system_msgs + flatten(kept_blocks))
+    overhead = BASE_PROMPT_OVERHEAD_TOKENS if max_context_tokens > (BASE_PROMPT_OVERHEAD_TOKENS * 1.5) else 0
+    current_total_tokens = estimate_tokens(system_msgs + flatten(kept_blocks), base_overhead=overhead)
     while current_total_tokens > max_context_tokens and len(kept_blocks) > 1:
         discarded = kept_blocks.pop(0)
         if discarded and discarded[0].get("role") == "user":
             dropped_turns += 1
-        current_total_tokens = estimate_tokens(system_msgs + flatten(kept_blocks))
+        current_total_tokens = estimate_tokens(system_msgs + flatten(kept_blocks), base_overhead=overhead)
 
     # 6. Aplanar y validar atomicidad final
     flattened_dialog = flatten(kept_blocks)

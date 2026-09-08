@@ -28,6 +28,7 @@ from gateway.tools.image_gen import handle_image_generation_request
 from gateway.tools.rag_endpoints import handle_rag_search, handle_rag_document, handle_rag_structure, handle_rag_library_index
 from gateway.cloud.cloud_router import handle_models_list, resolve_cloud_model
 from gateway.core.alignment_engine import enrich_chat_payload
+from gateway.core.slot_flusher import flush_llama_slots
 
 # Cliente HTTP compartido globalmente para evitar fugas de sockets y memoria
 _http_client = None
@@ -280,6 +281,10 @@ def create_proxy_app(service_name: str, target_port: int, fallback_port: Optiona
                         apply_rag_injection=apply_rag_injection,
                         include_alignment=include_alignment
                     )
+
+                    # Tier 2: Si se podó el contexto (data["cache_prompt"] == False), programar vaciado físico de slots en llama-server
+                    if not is_cloud_request and data.get("cache_prompt") is False:
+                        background_tasks.add_task(flush_llama_slots, current_target_port)
 
                 body = json.dumps(data).encode("utf-8")
             except Exception as json_err:

@@ -22,9 +22,9 @@ class TestContextPruner(unittest.TestCase):
 
     def test_default_settings(self):
         self.assertEqual(get_max_user_turns(), DEFAULT_MAX_USER_TURNS)
-        self.assertEqual(get_max_user_turns(), 18)
+        self.assertEqual(get_max_user_turns(), 6)
         self.assertEqual(get_max_context_tokens(), DEFAULT_MAX_CONTEXT_TOKENS)
-        self.assertEqual(get_max_context_tokens(), 52000)
+        self.assertEqual(get_max_context_tokens(), 32000)
         self.assertEqual(get_keep_tool_turns(), DEFAULT_KEEP_TOOL_TURNS)
         self.assertEqual(get_keep_tool_turns(), 2)
 
@@ -165,6 +165,36 @@ class TestContextPruner(unittest.TestCase):
             self.assertIn(long_legal_text, tool_msgs[idx]["content"])
             self.assertEqual(tool_msgs[idx]["tool_call_id"], f"call_{idx+1}")
 
+    def test_assistant_output_compaction_for_older_turns(self):
+        # 5 turnos de usuario, cada uno con una respuesta de asistente extensa (> 600 caracteres)
+        # Con keep_tool_turns=2, los turnos 1, 2, 3 deben compactar sus respuestas de asistente,
+        # mientras que los turnos 4 y 5 deben conservar el texto original completo.
+        messages = [{"role": "system", "content": "System prompt"}]
+        long_assistant_text = "Síntesis inicial del tema.\n\n| Tabla | Detalle |\n|---|---|\n" + ("| Norma | Contenido extenso |\n" * 30)
+
+        for i in range(1, 6):
+            messages.append({"role": "user", "content": f"Turno {i}"})
+            messages.append({"role": "assistant", "content": f"Turno {i}: {long_assistant_text}"})
+
+        pruned, dropped = prune_chat_history(
+            messages,
+            max_user_turns=10,
+            keep_tool_turns=2
+        )
+        self.assertEqual(dropped, 0)
+        asst_msgs = [m for m in pruned if m.get("role") == "assistant"]
+        self.assertEqual(len(asst_msgs), 5)
+
+        # Turnos 1, 2 y 3 (índices 0, 1, 2): compactados
+        for idx in [0, 1, 2]:
+            self.assertIn("[Detalle normativo extenso y tablas archivadas para optimizar contexto:", asst_msgs[idx]["content"])
+            self.assertTrue(asst_msgs[idx]["content"].startswith(f"Turno {idx+1}: Síntesis inicial del tema."))
+
+        # Turnos 4 y 5 (índices 3, 4): intactos
+        for idx in [3, 4]:
+            self.assertNotIn("[Detalle normativo extenso y tablas archivadas", asst_msgs[idx]["content"])
+            self.assertIn(long_assistant_text, asst_msgs[idx]["content"])
+
     def test_token_budget_cap_enforcement(self):
         # Conversación dentro del límite de 18 turnos (ej. 4 turnos),
         # pero donde cada mensaje contiene un texto tan largo que excede el max_context_tokens
@@ -203,10 +233,55 @@ class TestContextPruner(unittest.TestCase):
         self.assertEqual(pruned[2]["content"], "Hola 2")
         self.assertEqual(pruned[3]["content"], "Resp 2")
 
-    def test_empty_or_single_message(self):
-        self.assertEqual(pruned := prune_chat_history([]), ([], 0))
-        single = [{"role": "system", "content": "Hola"}]
-        self.assertEqual(prune_chat_history(single), (single, 0))
+    def test_default_6_turns_pruning(self):
+        # 15 turnos de usuario -> deben conservarse 6 y descartarse 9 con defaults
+        messages = [{"role": "system", "content": "Sys"}]
+        for i in range(1, 16):
+            messages.append({"role": "user", "content": f"Turno {i}"})
+            messages.append({"role": "assistant", "content": f"Resp {i}"})
+
+        pruned, dropped = prune_chat_history(messages)
+        self.assertEqual(dropped, 9)
+        user_msgs = [m for m in pruned if m.get("role") == "user"]
+        self.assertEqual(len(user_msgs), 6)
+        self.assertEqual(user_msgs[0]["content"], "Turno 10")
+        self.assertEqual(user_msgs[-1]["content"], "Turno 15")
+
+    def test_cache_prompt_injection_on_pruning(self):
+        import asyncio
+        from gateway.core.alignment_engine import enrich_chat_payload
+
+        # Conversación con 15 turnos (supera el default de 10)
+        messages = [{"role": "system", "content": "Sys"}]
+        for i in range(1, 16):
+            messages.append({"role": "user", "content": f"Turno {i}"})
+            messages.append({"role": "assistant", "content": f"Resp {i}"})
+
+        payload = {"messages": messages, "tools": []}
+        enriched = asyncio.run(enrich_chat_payload(payload, actual_model="gpt-oss-20b", is_cloud_request=False))
+        self.assertFalse(enriched.get("cache_prompt"))
+
+    def test_slot_flusher_mocked(self):
+        import asyncio
+        from unittest.mock import AsyncMock, patch, MagicMock
+        from gateway.core.slot_flusher import flush_llama_slots
+
+        # Simular respuestas HTTP exitosas para /slots y /slots/{id}?action=erase
+        mock_get_resp = MagicMock()
+        mock_get_resp.status_code = 200
+        mock_get_resp.json.return_value = [{"id": 0}, {"id": 1}]
+
+        mock_post_resp = MagicMock()
+        mock_post_resp.status_code = 200
+
+        with patch("httpx.AsyncClient.get", new_callable=AsyncMock) as mock_get:
+            with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
+                mock_get.return_value = mock_get_resp
+                mock_post.return_value = mock_post_resp
+
+                success = asyncio.run(flush_llama_slots(target_port=18100))
+                self.assertTrue(success)
+                self.assertEqual(mock_post.call_count, 2)
 
 
 if __name__ == "__main__":

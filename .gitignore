@@ -40,3 +40,6 @@ outputs/
 # Salidas generadas por scripts de extracción
 scripts/output/
 
+# Archivos temporales y scratch
+scratch/
+temp_*/
