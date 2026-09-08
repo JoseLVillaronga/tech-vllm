@@ -363,6 +363,42 @@ class TestGatewayCore(unittest.TestCase):
         self.assertIn("¿Qué reformas introdujo la Ley 27.742 laboral?", last_tool["content"])
         self.assertIn("ESTRICTAMENTE PROHIBIDO desviar tu respuesta o tus próximas herramientas hacia temas de turnos anteriores", last_tool["content"])
 
+        # 11. Modo Agentic (Puerto 8010 para Deepseek Harness / Benchmarks):
+        # - System prompt virgen (sin invariantes MEA)
+        # - Mensaje de usuario virgen (sin prefijo [CONSULTA ACTUAL DEL USUARIO])
+        # - Foco activo inyectado en herramientas (en inglés para tareas en inglés)
+        from gateway.core.alignment_engine import is_english_query
+        self.assertTrue(is_english_query("Fix the KeyError in session_manager.py line 42"))
+        self.assertTrue(is_english_query("Implement binary search in C++ and test it"))
+        self.assertFalse(is_english_query("¿Qué reformas introdujo la Ley 27.742 laboral?"))
+        self.assertFalse(is_english_query("Analizar el artículo 15 de la Constitución Nacional"))
+
+        data_agentic_en = {
+            "messages": [
+                {"role": "system", "content": "You are an autonomous coding agent."},
+                {"role": "user", "content": "Fix the NullPointerException in AuthController.java"},
+                {"role": "assistant", "content": None, "tool_calls": [{"id": "t1", "type": "function", "function": {"name": "run_bash"}}]},
+                {"role": "tool", "tool_call_id": "t1", "content": "Compilation error logs and warnings."}
+            ],
+            "tools": [{"type": "function", "function": {"name": "run_bash"}}]
+        }
+        res_agentic = asyncio.run(enrich_chat_payload(data_agentic_en, actual_model="gemma", is_cloud_request=False, alignment_mode="agentic"))
+        
+        # System prompt no debe tener invariantes MEA
+        sys_msg = res_agentic["messages"][0]["content"]
+        self.assertNotIn("[DIRECTIVAS FUNDAMENTALES (MEA)]", sys_msg)
+        self.assertNotIn("Principio de No-Daño", sys_msg)
+        
+        # User prompt no debe tener tags impuestos
+        user_msg = res_agentic["messages"][1]["content"]
+        self.assertEqual(user_msg, "Fix the NullPointerException in AuthController.java")
+        self.assertNotIn("[CONSULTA ACTUAL DEL USUARIO]:", user_msg)
+        
+        # Tool output debe tener el recordatorio en inglés
+        tool_out = res_agentic["messages"][-1]["content"]
+        self.assertIn("[ACTIVE TASK FOCUS & RELEVANCE REMINDER (ANTI-CROSSTALK)]", tool_out)
+        self.assertIn("Fix the NullPointerException in AuthController.java", tool_out)
+        self.assertIn("You are executing tools to solve EXCLUSIVELY the current user task", tool_out)
 
 
 if __name__ == "__main__":

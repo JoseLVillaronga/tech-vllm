@@ -44,8 +44,8 @@ async def run_servers():
     tts_fallback_port = int(os.getenv("TTS_FALLBACK_PORT", "18012"))
     raw_gateway_port = int(os.getenv("LLM_RAW_GATEWAY_PORT", "8010"))
 
-    gemma_app = create_proxy_app("gemma", gemma_port)
-    gemma_raw_app = create_proxy_app("gemma_raw", gemma_port, include_alignment=False)
+    gemma_app = create_proxy_app("gemma", gemma_port, alignment_mode="full")
+    gemma_raw_app = create_proxy_app("gemma_raw", gemma_port, include_alignment=False, alignment_mode="agentic")
     whisper_app = create_proxy_app("whisper", whisper_port, fallback_port=whisper_fallback_port)
     tts_app = create_proxy_app("tts", tts_port, fallback_port=tts_fallback_port)
     diarization_app = create_proxy_app("diarization", diarization_port)
@@ -73,8 +73,8 @@ async def run_servers():
 
     print("=" * 60)
     print("🛡️ Iniciando Gateway Modular de Autenticación y Proxy...")
-    print(f"🟢 LLM Proxy (MEA):   8000 -> {gemma_port}")
-    print(f"🟢 LLM Raw Proxy:     {raw_gateway_port} -> {gemma_port} (Sin Alineación / Temporal OK)")
+    print(f"🟢 LLM Proxy (MEA):         8000 -> {gemma_port}")
+    print(f"🟢 LLM Agentic/Raw Proxy:   {raw_gateway_port} -> {gemma_port} (Modo Agentic: Foco en Tools + Sin Invariantes)")
     print(f"🟢 Whisper Proxy:     8001 -> {whisper_port} (Fallback CPU: {whisper_fallback_port})")
     print(f"🟢 F5-TTS Proxy:       8002 -> {tts_port} (Fallback CPU: {tts_fallback_port})")
     print(f"🟢 Diarización Proxy: 8003 -> {diarization_port}")

@@ -234,7 +234,24 @@ def get_invariants_system_prompt(settings: Dict[str, Any], has_pdf_tool: bool = 
     if custom_prompt:
         blocks.append(f"\n[DIRECTIVAS ADICIONALES]:\n{custom_prompt}")
 
-    return "\n\n".join(blocks).strip()
+def is_english_query(text: str) -> bool:
+    """Heurística rápida y liviana para detectar si la consulta o tarea está redactada en inglés."""
+    if not text:
+        return False
+    words = set(re.findall(r'\b[a-zA-Z]{2,}\b', text.lower()))
+    en_markers = {
+        "the", "is", "in", "to", "for", "with", "and", "you", "your", "this", "that",
+        "how", "what", "why", "implement", "fix", "issue", "def", "return", "error",
+        "test", "file", "class", "patch", "function", "write", "create", "find", "code"
+    }
+    es_markers = {
+        "el", "la", "los", "las", "de", "en", "para", "con", "por", "un", "una",
+        "este", "esta", "que", "como", "cual", "ley", "decreto", "articulo", "reforma",
+        "laboral", "buscar", "dame", "mostrame", "explicame", "hola"
+    }
+    en_score = len(words & en_markers)
+    es_score = len(words & es_markers)
+    return en_score > es_score
 
 
 async def enrich_chat_payload(
@@ -242,10 +259,25 @@ async def enrich_chat_payload(
     actual_model: str,
     is_cloud_request: bool = False,
     apply_rag_injection: bool = False,
-    include_alignment: bool = True
+    include_alignment: bool = True,
+    alignment_mode: Optional[str] = None
 ) -> Dict[str, Any]:
-    """Enriquece el payload de chat completions usando la configuración dinámica de MongoDB."""
+    """
+    Enriquece el payload de chat completions según el modo de alineación:
+    - 'full': Invariantes MEA, directivas de control y grounding, foco activo en tools, poda de contexto (Puerto 8000).
+    - 'agentic': System prompt virgen, sin directivas doctrinales, pero con foco activo en tools (anti-decay/crosstalk),
+      poda de contexto y KV slot flusher para benchmarks y agentes como Deepseek Harness (Puerto 8010).
+    - 'off': Pass-through sin enriquecimiento.
+    """
     if "messages" not in data or not isinstance(data["messages"], list):
+        return data
+
+    if alignment_mode:
+        mode = alignment_mode.lower().strip()
+    else:
+        mode = "full" if include_alignment else "agentic"
+
+    if mode == "off":
         return data
 
     settings = get_alignment_settings()
@@ -290,8 +322,8 @@ async def enrich_chat_payload(
     if settings.get("inject_temporal", True):
         system_parts.append(get_current_time_str())
 
-    # Bloque de invariantes éticos, protocolos y guías (omitido si include_alignment=False)
-    if include_alignment:
+    # Bloque de invariantes éticos, protocolos y guías (sólo en modo 'full')
+    if mode == "full":
         invariants_block = get_invariants_system_prompt(settings, has_pdf_tool=has_pdf_tool, has_doc_tool=has_doc_tool, has_vision_attachment=has_vision_attachment)
         if invariants_block:
             system_parts.append(invariants_block)
@@ -318,8 +350,8 @@ async def enrich_chat_payload(
             text_parts = [p.get("text", "") for p in content_val if isinstance(p, dict) and p.get("type") == "text"]
             user_query = " ".join(text_parts)
 
-        # Anclaje explícito del target actual para prevenir atención errática / crosstalk hacia turnos anteriores
-        if include_alignment:
+        # Anclaje explícito del target actual para prevenir atención errática / crosstalk hacia turnos anteriores (sólo en 'full')
+        if mode == "full":
             if isinstance(content_val, str):
                 if not content_val.startswith("[CONSULTA ACTUAL DEL USUARIO]:"):
                     last_user_msg["content"] = f"[CONSULTA ACTUAL DEL USUARIO]:\n{content_val}"
@@ -330,12 +362,9 @@ async def enrich_chat_payload(
                     if not txt.startswith("[CONSULTA ACTUAL DEL USUARIO]:"):
                         first_part["text"] = f"[CONSULTA ACTUAL DEL USUARIO]:\n{txt}"
 
-    # 2. Refuerzo Dinámico de Grounding Anti-Decay (MEA) en Consultas Sensibles y Repreguntas Contextuales
-    # Si la consulta versa sobre normativa, procedimientos, contratos, políticas o documentación interna,
-    # O si es una repregunta de seguimiento (ej: "dame más detalles", "amplía") en un chat donde previamente
-    # hubo grounding documental, inyectamos el recordatorio perentorio para neutralizar el attention decay.
+    # 2. Refuerzo Dinámico de Grounding Anti-Decay (MEA) en Consultas Sensibles y Repreguntas Contextuales (sólo en 'full')
     has_rag_tools = any(t in tool_names for t in ["buscar_en_base_de_conocimiento", "obtener_estructura_documento", "leer_documento_completo", "rag_search"])
-    if include_alignment and has_rag_tools and user_query and last_user_msg:
+    if mode == "full" and has_rag_tools and user_query and last_user_msg:
         is_direct_grounding = bool(GROUNDING_TRIGGERS_PATTERN.search(user_query))
         
         is_followup_candidate = (
@@ -395,10 +424,9 @@ async def enrich_chat_payload(
                     content_val.append({"type": "text", "text": reminder_text})
 
     # 2.1 Refuerzo de Foco Activo en Salidas de Herramientas (Anti-Attention Decay & Anti-Crosstalk)
-    # Durante bucles de múltiples llamadas a herramientas consecutivas, el objetivo de la pregunta del usuario
-    # puede diluirse ante el volumen de texto devuelto. Si el último mensaje es un resultado de herramienta ('tool'),
+    # Activo en 'full' y 'agentic': si el último mensaje es un resultado de herramienta ('tool'),
     # inyectamos un pie de anclaje perentorio que recuerda el objetivo excluyente de la consulta actual.
-    if include_alignment and messages and messages[-1].get("role") == "tool" and last_user_msg:
+    if mode in ["full", "agentic"] and messages and messages[-1].get("role") == "tool" and last_user_msg:
         clean_query = user_query
         if "[DIRECTIVA DE CONTROL" in clean_query:
             clean_query = clean_query.split("[DIRECTIVA DE CONTROL")[0]
@@ -407,22 +435,37 @@ async def enrich_chat_payload(
         clean_query = clean_query.strip()
 
         if clean_query:
-            footer_tag = "[RECORDATORIO DE FOCO ACTIVO Y REGLA DE PERTINENCIA (ANTI-CROSSTALK)]"
             last_tool_msg = messages[-1]
             t_content = last_tool_msg.get("content")
-            if isinstance(t_content, str) and footer_tag not in t_content:
-                focus_reminder = (
-                    f"\n\n📌 {footer_tag}:\n"
-                    f"Estás procesando información para responder EXCLUSIVAMENTE a la consulta actual del usuario:\n"
-                    f"\"{clean_query}\"\n"
-                    f"1. Si este resultado de herramienta contiene citas accidentales, decretos u otros temas que no regulen directamente dicha consulta, descártalos de inmediato.\n"
-                    f"2. Está ESTRICTAMENTE PROHIBIDO desviar tu respuesta o tus próximas herramientas hacia temas de turnos anteriores.\n"
-                    f"3. Mantén el foco perentorio en resolver: \"{clean_query}\"."
-                )
+            is_en = is_english_query(clean_query)
+            footer_tag = (
+                "[ACTIVE TASK FOCUS & RELEVANCE REMINDER (ANTI-CROSSTALK)]"
+                if is_en else
+                "[RECORDATORIO DE FOCO ACTIVO Y REGLA DE PERTINENCIA (ANTI-CROSSTALK)]"
+            )
+            if isinstance(t_content, str) and footer_tag not in t_content and "[RECORDATORIO DE FOCO ACTIVO" not in t_content:
+                if is_en:
+                    focus_reminder = (
+                        f"\n\n📌 {footer_tag}:\n"
+                        f"You are executing tools to solve EXCLUSIVELY the current user task:\n"
+                        f"\"{clean_query}\"\n"
+                        f"1. Evaluate this tool output critically: use only information directly relevant to the task above and discard extraneous or accidental details.\n"
+                        f"2. Está ESTRICTAMENTE PROHIBIDO desviar tu respuesta o tus próximas herramientas hacia temas de turnos anteriores / It is strictly prohibited to drift.\n"
+                        f"3. Maintain strict, persistent focus on completing: \"{clean_query}\"."
+                    )
+                else:
+                    focus_reminder = (
+                        f"\n\n📌 {footer_tag}:\n"
+                        f"Estás ejecutando herramientas para responder EXCLUSIVAMENTE a la consulta actual del usuario:\n"
+                        f"\"{clean_query}\"\n"
+                        f"1. Evalúa críticamente esta salida de herramienta: utiliza únicamente la información directamente relevante y descarta datos accidentales o tangenciales.\n"
+                        f"2. Está ESTRICTAMENTE PROHIBIDO desviar tu respuesta o tus próximas herramientas hacia temas de turnos anteriores.\n"
+                        f"3. Mantén el foco perentorio en resolver: \"{clean_query}\"."
+                    )
                 last_tool_msg["content"] = f"{t_content}{focus_reminder}"
 
-    # 3. Inyección de Búsqueda Web (si es modelo web)
-    if not is_cloud_request and actual_model == "gemma-4-web" and user_query:
+    # 3. Inyección de Búsqueda Web (si es modelo web - sólo en 'full')
+    if mode == "full" and not is_cloud_request and actual_model == "gemma-4-web" and user_query:
         try:
             max_res = int(os.getenv("OLLAMA_SEARCH_MAX_RESULTS", "3"))
             web_results = await perform_ollama_web_search(user_query, max_results=max_res)
@@ -444,8 +487,8 @@ async def enrich_chat_payload(
         except Exception as we:
             print(f"⚠️ Error en búsqueda web Gateway: {we}", file=sys.stderr, flush=True)
 
-    # 3. Inyección RAG Documental (LanceDB - Teccam)
-    if (apply_rag_injection or actual_model == "gemma-4-rag") and user_query:
+    # 3. Inyección RAG Documental (LanceDB - Teccam - sólo en 'full')
+    if mode == "full" and (apply_rag_injection or actual_model == "gemma-4-rag") and user_query:
         try:
             from rag_engine import (
                 search_knowledge_base,
