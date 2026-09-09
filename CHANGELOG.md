@@ -21,6 +21,10 @@ El formato está basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1
   - Inyección contextual de RAG y enrutamiento de herramientas (`/v1/rag/search`, `obtener_estructura_documento`, `leer_documento_completo`) a la base aislada del tenant.
 - **Interfaz Gráfica Multi-Tenant en Dashboard (`templates/tabs/tab_rag.html`, `templates/tabs/tab_keys.html`, `static/js/dashboard_rag.js`, `static/js/dashboard_keys.js`):**
   - Barra superior con selector dinámico de base activa, badges de estado, modal de creación de empresa con selector de dominios a clonar, modal de clonación en caliente y vinculación directa de tablas LanceDB a API Keys.
+- **Extractor de Normativa InfoLEG en la GUI (`app_dashboard.py`, `templates/tabs/tab_tests.html`, `static/js/dashboard_tests.js`):**
+  - Integración del motor de extracción oficial de InfoLEG en la pestaña «Laboratorio / Test» vía endpoint `POST /api/test/infoleg`.
+  - Visor enriquecido de lectura jurídica con detección y estilizado automático de articulado (`ARTÍCULO X°.-`), epígrafes, incisos alfanuméricos, tablas GFM y metadatos oficiales unificados (sanción, publicación en B.O., rama).
+  - Exportación instantánea mediante descarga de `.md` puro en navegador y botón de copiado al portapapeles.
 
 ### Changed
 - **Defensa en Profundidad y Auto-Inferencia de Empresa (`app_dashboard.py`, `app_rag_sync.py`, `static/js/dashboard_rag.js`):**
