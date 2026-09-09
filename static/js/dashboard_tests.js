@@ -305,8 +305,8 @@
                     resultsPanel.classList.remove('hidden');
                 }
 
-                // Activar vista Raw por defecto
-                toggleInfolegView('raw');
+                // Activar vista formateada por defecto para máxima legibilidad visual
+                toggleInfolegView('preview');
 
             } catch (err) {
                 alert(`❌ Error al extraer de InfoLEG:\n${err.message}`);
@@ -398,7 +398,7 @@
             }
         }
 
-        // Renderizador simple y seguro de Markdown a HTML para previsualización
+        // Renderizador enriquecido de Markdown legal a HTML para máxima legibilidad visual
         function renderMarkdownToHtml(md) {
             if (!md) return "";
             const lines = md.split("\n");
@@ -408,15 +408,15 @@
 
             function flushTable() {
                 if (!inTable || tableRows.length === 0) return;
-                let tableHtml = '<div class="overflow-x-auto my-3"><table class="w-full text-xs text-slate-200 border border-slate-800 divide-y divide-slate-800 rounded-lg overflow-hidden">';
+                let tableHtml = '<div class="overflow-x-auto my-4 rounded-xl border border-slate-800 bg-slate-900/50 shadow-sm"><table class="w-full text-xs text-slate-200 divide-y divide-slate-800">';
                 tableRows.forEach((row, idx) => {
                     const cols = row.split('|').map(c => c.trim()).filter((_, i, arr) => i > 0 && i < arr.length - 1);
                     if (idx === 0) {
-                        tableHtml += '<thead class="bg-slate-900/80 font-bold text-purple-300"><tr>' + cols.map(c => `<th class="px-3 py-2 text-left border-r border-slate-800 last:border-r-0">${c}</th>`).join('') + '</tr></thead><tbody class="divide-y divide-slate-800/50">';
+                        tableHtml += '<thead class="bg-slate-900/90 font-bold text-purple-300"><tr>' + cols.map(c => `<th class="px-3.5 py-2.5 text-left border-r border-slate-800/80 last:border-r-0">${c}</th>`).join('') + '</tr></thead><tbody class="divide-y divide-slate-800/50">';
                     } else if (idx === 1 && cols.some(c => c.includes('---'))) {
                         // Divisor de cabecera ignorado
                     } else {
-                        tableHtml += '<tr class="hover:bg-slate-900/40">' + cols.map(c => `<td class="px-3 py-2 border-r border-slate-800/50 last:border-r-0">${c}</td>`).join('') + '</tr>';
+                        tableHtml += '<tr class="hover:bg-purple-950/20 transition-colors">' + cols.map(c => `<td class="px-3.5 py-2 border-r border-slate-800/40 last:border-r-0">${c}</td>`).join('') + '</tr>';
                     }
                 });
                 tableHtml += '</tbody></table></div>';
@@ -443,30 +443,58 @@
                     .replace(/</g, '&lt;')
                     .replace(/>/g, '&gt;');
 
-                // Encabezados
+                // Enlaces Markdown [texto](url)
+                safe = safe.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="text-cyan-400 hover:text-cyan-300 underline font-mono">$1</a>');
+
+                // Encabezado Principal del Documento (# ...)
                 if (safe.startsWith('# ')) {
-                    html.push(`<h1 class="text-xl font-extrabold text-purple-300 border-b border-purple-500/30 pb-2 mb-3 mt-1">${safe.slice(2)}</h1>`);
+                    html.push(`<div class="bg-gradient-to-r from-purple-900/40 via-indigo-900/25 to-transparent p-5 rounded-2xl border border-purple-500/30 mb-5 shadow-lg"><h1 class="text-lg md:text-xl font-black text-purple-200 tracking-tight leading-snug flex items-center gap-2"><span>🏛️</span> ${safe.slice(2)}</h1></div>`);
                 } else if (safe.startsWith('## ')) {
-                    html.push(`<h2 class="text-lg font-bold text-indigo-300 mt-5 mb-2">${safe.slice(3)}</h2>`);
+                    // Macro-divisiones (Libros, Títulos Preliminares)
+                    html.push(`<div class="bg-gradient-to-r from-slate-900 to-indigo-950/40 border-l-4 border-indigo-500 p-3 rounded-r-xl mt-6 mb-3 shadow-sm"><h2 class="text-sm font-extrabold text-indigo-200 uppercase tracking-wide flex items-center gap-2"><span>📘</span> ${safe.slice(3)}</h2></div>`);
                 } else if (safe.startsWith('### ')) {
-                    html.push(`<h3 class="text-base font-semibold text-slate-100 mt-4 mb-2">${safe.slice(4)}</h3>`);
+                    // Fórmulas dispositivas o Títulos
+                    const titleText = safe.slice(4).trim();
+                    if (/^(VISTO|CONSIDERANDO|DECRETA|RESUELVE|DISPONE)$/i.test(titleText)) {
+                        html.push(`<div class="mt-5 mb-2"><span class="px-2.5 py-1 rounded-md text-xs font-black tracking-wider uppercase bg-amber-500/10 text-amber-300 border border-amber-500/30">${titleText}</span></div>`);
+                    } else {
+                        html.push(`<h3 class="text-sm font-bold text-purple-300 uppercase tracking-wide mt-5 mb-2 pb-1 border-b border-purple-500/20 flex items-center gap-1.5"><span class="text-purple-400">§</span> ${titleText}</h3>`);
+                    }
                 } else if (safe.startsWith('#### ')) {
-                    html.push(`<h4 class="text-sm font-semibold text-purple-200 mt-3 mb-1">${safe.slice(5)}</h4>`);
+                    // Capítulos
+                    html.push(`<h4 class="text-xs font-bold text-indigo-300 uppercase tracking-wider mt-4 mb-2 pl-2 border-l-2 border-indigo-500/40">${safe.slice(5)}</h4>`);
                 } else if (safe.startsWith('##### ')) {
-                    html.push(`<h5 class="text-xs font-semibold text-slate-300 uppercase tracking-wider mt-2 mb-1">${safe.slice(6)}</h5>`);
+                    // Secciones
+                    html.push(`<h5 class="text-xs font-semibold text-slate-300 uppercase tracking-wider mt-3 mb-1 pl-3 text-[11px] text-slate-400">${safe.slice(6)}</h5>`);
                 } else if (safe.startsWith('&gt; ')) {
-                    // Blockquotes (metadatos)
-                    html.push(`<blockquote class="border-l-2 border-purple-500/50 pl-3 py-0.5 text-xs text-slate-300 italic bg-purple-950/20 rounded-r my-1">${safe.slice(5).replace(/\*\*([^*]+)\*\*/g, '<b class="text-purple-200 not-italic">$1</b>')}</blockquote>`);
+                    // Blockquotes (metadatos oficiales)
+                    const content = safe.slice(5).replace(/\*\*([^*]+)\*\*/g, '<b class="text-purple-200 font-semibold not-italic">$1</b>');
+                    html.push(`<blockquote class="border-l-2 border-purple-500/50 pl-3 py-1 text-xs text-slate-300 italic bg-purple-950/20 rounded-r my-1 leading-relaxed">${content}</blockquote>`);
                 } else if (safe.trim() === '---') {
-                    html.push('<hr class="border-slate-800 my-4">');
+                    html.push('<hr class="border-slate-800 my-5">');
                 } else if (safe.startsWith('* ')) {
-                    // Viñetas o incisos
-                    const item = safe.slice(2).replace(/\*\*([^*]+)\*\*/g, '<b class="text-purple-300">$1</b>');
-                    html.push(`<div class="flex items-start gap-2 text-xs text-slate-300 ml-4 my-1"><span class="text-purple-400">•</span><div>${item}</div></div>`);
+                    // Viñetas o incisos formateados con pill alfanumérico
+                    const incisoMatch = safe.match(/^\*\s+\*\*([a-zñ\d]+)\)\*\*\s*(.*)$/i);
+                    if (incisoMatch) {
+                        const [, badge, body] = incisoMatch;
+                        const formattedBody = body.replace(/\*\*([^*]+)\*\*/g, '<b class="text-purple-300">$1</b>');
+                        html.push(`<div class="flex items-start gap-2.5 text-xs text-slate-200 pl-4 py-1 hover:text-white transition-colors"><span class="px-1.5 py-0.5 rounded bg-slate-800 text-indigo-300 font-bold font-mono text-[11px] border border-slate-700 shrink-0">${badge})</span><div class="leading-relaxed">${formattedBody}</div></div>`);
+                    } else {
+                        const item = safe.slice(2).replace(/\*\*([^*]+)\*\*/g, '<b class="text-purple-300">$1</b>');
+                        html.push(`<div class="flex items-start gap-2 text-xs text-slate-300 ml-4 my-1"><span class="text-purple-400">•</span><div>${item}</div></div>`);
+                    }
                 } else if (safe.trim().length > 0) {
-                    // Párrafos regulares con detección de artículos en negrita
-                    const formatted = safe.replace(/\*\*([^*]+)\*\*/g, '<strong class="font-bold text-purple-300">$1</strong>');
-                    html.push(`<p class="text-xs text-slate-200 leading-relaxed my-2">${formatted}</p>`);
+                    // Artículos Normativos destacados en tarjeta visual
+                    const artMatch = safe.match(/^\*\*(ART[IÍ]CULO\s+[^*]+)\*\*\s*(.*)$/i);
+                    if (artMatch) {
+                        const [, artBadge, artBody] = artMatch;
+                        const formattedBody = artBody.replace(/\*\*([^*]+)\*\*/g, '<strong class="font-bold text-slate-100">$1</strong>');
+                        html.push(`<div class="my-3 p-3.5 rounded-xl bg-slate-900/50 hover:bg-slate-900/80 border border-slate-800/80 transition-colors shadow-sm"><span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-black bg-purple-600/30 text-purple-200 border border-purple-500/40 font-mono mr-2">${artBadge}</span><span class="text-xs text-slate-200 leading-relaxed">${formattedBody}</span></div>`);
+                    } else {
+                        // Párrafos regulares con soporte para negrita
+                        const formatted = safe.replace(/\*\*([^*]+)\*\*/g, '<strong class="font-bold text-purple-300">$1</strong>');
+                        html.push(`<p class="text-xs text-slate-200 leading-relaxed my-2">${formatted}</p>`);
+                    }
                 }
             }
 
