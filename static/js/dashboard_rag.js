@@ -4,10 +4,80 @@
         let availableRagTopics = [];
         let selectedRagTopics = []; // Vacío significa TODOS los temas activos
         let isRagGloballyEnabled = true;
+        let currentRagBase = 'teccam_knowledge_base';
+        let availableRagBases = [];
+
+        async function loadRagBases() {
+            try {
+                const res = await fetch('/api/rag/bases');
+                const data = await res.json();
+                if (data.success && data.bases) {
+                    availableRagBases = data.bases;
+                    const select = document.getElementById('rag-base-select');
+
+                    if (select) {
+                        const prevVal = currentRagBase;
+                        select.innerHTML = data.bases.map(b => {
+                            return `<option value="${escapeHtml(b.table_name)}">${escapeHtml(b.display_name)} [${(b.chunks_count || 0).toLocaleString()} chunks, ${b.docs_count || 0} docs]</option>`;
+                        }).join('');
+
+                        if (data.bases.some(b => b.table_name === prevVal)) {
+                            select.value = prevVal;
+                        } else {
+                            select.value = 'teccam_knowledge_base';
+                            currentRagBase = 'teccam_knowledge_base';
+                        }
+                    }
+
+                    updateRagBaseControls();
+                }
+            } catch (err) {
+                console.error("Error cargando bases RAG:", err);
+            }
+        }
+
+        function updateRagBaseControls() {
+            const badge = document.getElementById('rag-base-badge');
+            const btnDelete = document.getElementById('btn-delete-rag-base');
+            const selectedBase = availableRagBases.find(b => b.table_name === currentRagBase);
+
+            if (currentRagBase === 'teccam_knowledge_base' || (selectedBase && selectedBase.is_default)) {
+                if (badge) {
+                    badge.className = "px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-300 border border-emerald-500/30";
+                    badge.innerText = "Predeterminada";
+                }
+                if (btnDelete) {
+                    btnDelete.disabled = true;
+                    btnDelete.title = "La base predeterminada de TECCAM S.R.L. está protegida.";
+                }
+            } else {
+                if (badge) {
+                    badge.className = "px-2 py-0.5 rounded-full text-[10px] font-semibold bg-purple-500/10 text-purple-300 border border-purple-500/30";
+                    badge.innerText = "Empresa Tenant";
+                }
+                if (btnDelete) {
+                    btnDelete.disabled = false;
+                    btnDelete.title = `Eliminar la base '${currentRagBase}' de LanceDB`;
+                }
+            }
+        }
+
+        async function onRagBaseSelectChange() {
+            const select = document.getElementById('rag-base-select');
+            if (select) {
+                currentRagBase = select.value;
+                updateRagBaseControls();
+                await loadRagStats();
+            }
+        }
 
         async function loadRagStats() {
             try {
-                const res = await fetch('/api/rag/stats');
+                if (!availableRagBases || availableRagBases.length === 0) {
+                    await loadRagBases();
+                }
+
+                const res = await fetch(`/api/rag/stats?table_name=${encodeURIComponent(currentRagBase)}`);
                 const data = await res.json();
                 
                 const docsEl = document.getElementById('rag-stat-docs');
@@ -273,16 +343,17 @@
         }
 
         async function deleteRagDocument(docId, docTitle) {
-            if (!confirm(`¿Estás seguro de que deseas eliminar "${docTitle}" de la base vectorial LanceDB?`)) {
+            if (!confirm(`¿Estás seguro de que deseas eliminar "${docTitle}" de la base [${currentRagBase}] en LanceDB?`)) {
                 return;
             }
             try {
-                const res = await fetch(`/api/rag/documents/${encodeURIComponent(docId)}`, {
+                const res = await fetch(`/api/rag/documents/${encodeURIComponent(docId)}?table_name=${encodeURIComponent(currentRagBase)}`, {
                     method: 'DELETE'
                 });
                 const data = await res.json();
                 if (data.success) {
                     await loadRagStats();
+                    await loadRagBases();
                 } else {
                     alert("Error eliminando documento: " + (data.error || "Desconocido"));
                 }
@@ -297,11 +368,18 @@
             
             if (btn) btn.disabled = true;
             if (text) text.innerText = "Actualizando metadata...";
+
+            const baseObj = availableRagBases.find(b => b.table_name === currentRagBase);
+            const empresaName = baseObj ? (baseObj.empresa || (baseObj.is_default ? 'TECCAM S.R.L.' : '')) : '';
             
             try {
                 const res = await fetch('/api/rag/sync-metadata', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        table_name: currentRagBase,
+                        empresa: empresaName
+                    })
                 });
                 const data = await res.json();
                 
@@ -321,15 +399,19 @@
 
         async function triggerRagSync(force = false) {
             const pauseLlm = document.getElementById('chk-pause-llm')?.checked || false;
+            const baseObj = availableRagBases.find(b => b.table_name === currentRagBase);
+            const empresaName = baseObj ? (baseObj.empresa || (baseObj.is_default ? 'TECCAM S.R.L.' : '')) : '';
+            const baseLabel = baseObj ? baseObj.display_name : currentRagBase;
+
             let confirmMsg = "";
             if (pauseLlm) {
                 confirmMsg = force 
-                    ? "⚠️ Aviso de Memoria GPU (Re-indexación Completa con Pausa):\n\nPara garantizar máxima aceleración CUDA y proteger la VRAM, el servicio del LLM se pausará temporalmente durante la sincronización (~1-2 min) y se reactivará automáticamente al finalizar.\n\n¿Deseas iniciar la re-indexación forzada ahora?"
-                    : "⚠️ Aviso de Memoria GPU (Con Pausa):\n\nEl servicio del LLM se pausará brevemente durante la sincronización (~15-45s) y se reactivará automáticamente al terminar.\n\n¿Deseas iniciar la sincronización ahora?";
+                    ? `⚠️ Aviso de Memoria GPU (Re-indexación Completa con Pausa - ${baseLabel}):\n\nPara garantizar máxima aceleración CUDA y proteger la VRAM, el servicio del LLM se pausará temporalmente durante la sincronización (~1-2 min) y se reactivará automáticamente al finalizar.\n\n¿Deseas iniciar la re-indexación forzada ahora?`
+                    : `⚠️ Aviso de Memoria GPU (Con Pausa - ${baseLabel}):\n\nEl servicio del LLM se pausará brevemente durante la sincronización (~15-45s) y se reactivará automáticamente al terminar.\n\n¿Deseas iniciar la sincronización ahora?`;
             } else {
                 confirmMsg = force
-                    ? "🔄 Re-indexación Completa en Caliente (Cero Downtime):\n\nSe re-indexarán los documentos manteniendo el LLM activo y respondiendo consultas en paralelo.\n\n¿Deseas iniciar la sincronización forzada ahora?"
-                    : "🔄 Sincronización RAG en Caliente (Cero Downtime):\n\nLa sincronización se ejecutará en paralelo manteniendo el LLM activo y respondiendo consultas.\n\n¿Deseas iniciar la sincronización ahora?";
+                    ? `🔄 Re-indexación Completa en Caliente (Cero Downtime - ${baseLabel}):\n\nSe re-indexarán los documentos manteniendo el LLM activo y respondiendo consultas en paralelo.\n\n¿Deseas iniciar la sincronización forzada ahora?`
+                    : `🔄 Sincronización RAG en Caliente (Cero Downtime - ${baseLabel}):\n\nLa sincronización se ejecutará en paralelo manteniendo el LLM activo y respondiendo consultas.\n\n¿Deseas iniciar la sincronización ahora?`;
             }
                 
             if (!confirm(confirmMsg)) {
@@ -348,7 +430,12 @@
                 const res = await fetch('/api/rag/sync', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ force: force, pause_llm: pauseLlm })
+                    body: JSON.stringify({
+                        force: force,
+                        pause_llm: pauseLlm,
+                        table_name: currentRagBase,
+                        empresa: empresaName
+                    })
                 });
                 const data = await res.json();
                 
@@ -357,6 +444,7 @@
                 const interval = setInterval(async () => {
                     attempts++;
                     await loadRagStats();
+                    await loadRagBases();
                     if (attempts >= 15) {
                         clearInterval(interval);
                         btn.disabled = false;
@@ -399,7 +487,8 @@
                     body: JSON.stringify({
                         query: query,
                         temas: filterTemas,
-                        top_k: 4
+                        top_k: 4,
+                        table_name: currentRagBase
                     })
                 });
                 const data = await res.json();
@@ -621,7 +710,7 @@
             modal.classList.remove('hidden');
 
             try {
-                const res = await fetch(`/api/rag/structure/${encodeURIComponent(docId)}`);
+                const res = await fetch(`/api/rag/structure/${encodeURIComponent(docId)}?table_name=${encodeURIComponent(currentRagBase)}`);
                 const data = await res.json();
 
                 if (!res.ok || !data.success) {
@@ -701,7 +790,7 @@
             body.innerHTML = `<div class="py-12 text-center text-purple-400 font-mono text-sm animate-pulse">Cargando mapa ontológico global de la biblioteca...</div>`;
 
             try {
-                const resp = await fetch('/api/rag/library-index');
+                const resp = await fetch(`/api/rag/library-index?table_name=${encodeURIComponent(currentRagBase)}`);
                 const data = await resp.json();
 
                 if (!data.success) {
@@ -788,5 +877,268 @@
             const modal = document.getElementById('modal-rag-library-index');
             if (modal) modal.classList.add('hidden');
         }
+
+        // ==============================================================================
+        // Controladores de Modales Multi-Tenant y Clonación de Dominios
+        // ==============================================================================
+        function openNewRagBaseModal() {
+            const modal = document.getElementById('modal-new-rag-base');
+            const empInput = document.getElementById('new-base-empresa');
+            const tblInput = document.getElementById('new-base-table-name');
+            const srcSelect = document.getElementById('new-base-clone-source');
+            const container = document.getElementById('new-base-themes-container');
+
+            if (!modal) return;
+            if (empInput) empInput.value = '';
+            if (tblInput) tblInput.value = '';
+            if (container) container.classList.add('hidden');
+
+            if (srcSelect) {
+                srcSelect.innerHTML = '<option value="">-- No clonar (base vacía, esperar sincronización) --</option>' +
+                    availableRagBases.map(b => `<option value="${escapeHtml(b.table_name)}">${escapeHtml(b.display_name)} (${(b.chunks_count || 0).toLocaleString()} chunks)</option>`).join('');
+                srcSelect.value = 'teccam_knowledge_base';
+                onNewBaseCloneSourceChange();
+            }
+
+            modal.classList.remove('hidden');
+        }
+
+        function closeNewRagBaseModal() {
+            const modal = document.getElementById('modal-new-rag-base');
+            if (modal) modal.classList.add('hidden');
+        }
+
+        function onNewBaseEmpresaInput(val) {
+            const tblInput = document.getElementById('new-base-table-name');
+            if (!tblInput) return;
+            let slug = val.toLowerCase().trim()
+                .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+                .replace(/[^a-z0-9]+/g, '_')
+                .replace(/^_+|_+$/g, '');
+            tblInput.value = slug ? `kb_${slug}` : '';
+        }
+
+        function onNewBaseCloneSourceChange() {
+            const srcSelect = document.getElementById('new-base-clone-source');
+            const container = document.getElementById('new-base-themes-container');
+            const list = document.getElementById('new-base-themes-list');
+            if (!srcSelect || !container || !list) return;
+
+            const selSource = srcSelect.value;
+            if (!selSource) {
+                container.classList.add('hidden');
+                list.innerHTML = '';
+                return;
+            }
+
+            const baseObj = availableRagBases.find(b => b.table_name === selSource);
+            const topics = (baseObj && baseObj.topics) ? baseObj.topics : [];
+
+            if (topics.length === 0) {
+                container.classList.remove('hidden');
+                list.innerHTML = '<span class="text-slate-500 text-[11px]">Esta base no tiene dominios disponibles.</span>';
+                return;
+            }
+
+            container.classList.remove('hidden');
+            list.innerHTML = topics.map(t => {
+                const isDerecho = t.toLowerCase().includes('derecho');
+                const checked = isDerecho ? 'checked' : '';
+                return `
+                    <label class="flex items-center gap-2 text-[11px] text-slate-300 hover:text-white cursor-pointer select-none">
+                        <input type="checkbox" name="new-base-themes" value="${escapeHtml(t)}" ${checked} class="rounded bg-slate-900 border-slate-700 text-purple-600 focus:ring-purple-500/20">
+                        <span>${escapeHtml(t)}</span>
+                    </label>
+                `;
+            }).join('');
+        }
+
+        async function submitNewRagBase() {
+            const empInput = document.getElementById('new-base-empresa');
+            const tblInput = document.getElementById('new-base-table-name');
+            const srcSelect = document.getElementById('new-base-clone-source');
+            const btn = document.getElementById('btn-submit-new-base');
+
+            const empresa = (empInput?.value || '').trim();
+            const tableName = (tblInput?.value || '').trim();
+            const cloneFrom = srcSelect?.value || null;
+
+            if (!empresa) {
+                alert("Debes ingresar el nombre de la empresa.");
+                return;
+            }
+
+            const checkedThemes = [];
+            document.querySelectorAll('input[name="new-base-themes"]:checked').forEach(cb => {
+                checkedThemes.push(cb.value);
+            });
+
+            const origHtml = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<span>⏳</span> Creando Base...';
+
+            try {
+                const res = await fetch('/api/rag/bases', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        empresa: empresa,
+                        table_name: tableName,
+                        clone_from: cloneFrom,
+                        clone_themes: checkedThemes
+                    })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    closeNewRagBaseModal();
+                    await loadRagBases();
+                    currentRagBase = data.table_name || tableName;
+                    const select = document.getElementById('rag-base-select');
+                    if (select) select.value = currentRagBase;
+                    updateRagBaseControls();
+                    await loadRagStats();
+                    alert(`✅ Base de conocimiento '${data.table_name}' creada exitosamente (${data.cloned_chunks || 0} fragmentos clonados).`);
+                } else {
+                    alert("❌ Error: " + (data.error || "No se pudo crear la base."));
+                }
+            } catch (err) {
+                alert("Error de conexión: " + err.message);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = origHtml;
+            }
+        }
+
+        function openCloneDomainModal() {
+            const modal = document.getElementById('modal-clone-domain');
+            const srcSelect = document.getElementById('clone-domain-source');
+            const tgtSelect = document.getElementById('clone-domain-target');
+
+            if (!modal || !srcSelect || !tgtSelect) return;
+
+            srcSelect.innerHTML = availableRagBases.map(b => `<option value="${escapeHtml(b.table_name)}">${escapeHtml(b.display_name)}</option>`).join('');
+            tgtSelect.innerHTML = availableRagBases.map(b => `<option value="${escapeHtml(b.table_name)}">${escapeHtml(b.display_name)}</option>`).join('');
+
+            // Poner destino como la base actualmente seleccionada
+            tgtSelect.value = currentRagBase;
+            // Si el origen coincide con el destino, cambiar el origen a teccam_knowledge_base
+            if (currentRagBase === 'teccam_knowledge_base' && availableRagBases.length > 1) {
+                const other = availableRagBases.find(b => b.table_name !== 'teccam_knowledge_base');
+                if (other) tgtSelect.value = other.table_name;
+                srcSelect.value = 'teccam_knowledge_base';
+            } else {
+                srcSelect.value = 'teccam_knowledge_base';
+            }
+
+            onCloneDomainSourceChange();
+            modal.classList.remove('hidden');
+        }
+
+        function closeCloneDomainModal() {
+            const modal = document.getElementById('modal-clone-domain');
+            if (modal) modal.classList.add('hidden');
+        }
+
+        function onCloneDomainSourceChange() {
+            const srcSelect = document.getElementById('clone-domain-source');
+            const themeSelect = document.getElementById('clone-domain-theme');
+            if (!srcSelect || !themeSelect) return;
+
+            const baseObj = availableRagBases.find(b => b.table_name === srcSelect.value);
+            const topics = (baseObj && baseObj.topics) ? baseObj.topics : [];
+
+            if (topics.length === 0) {
+                themeSelect.innerHTML = '<option value="">(Sin dominios disponibles)</option>';
+                return;
+            }
+
+            themeSelect.innerHTML = topics.map(t => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join('');
+        }
+
+        async function submitCloneDomain() {
+            const srcSelect = document.getElementById('clone-domain-source');
+            const tgtSelect = document.getElementById('clone-domain-target');
+            const themeSelect = document.getElementById('clone-domain-theme');
+            const btn = document.getElementById('btn-submit-clone-domain');
+
+            const sourceTable = srcSelect?.value;
+            const targetTable = tgtSelect?.value;
+            const theme = themeSelect?.value;
+
+            if (!sourceTable || !targetTable || !theme) {
+                alert("Debes seleccionar base de origen, base de destino y tema a clonar.");
+                return;
+            }
+
+            if (sourceTable === targetTable) {
+                alert("La base de origen y la base de destino no pueden ser la misma.");
+                return;
+            }
+
+            const origHtml = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<span>⏳</span> Clonando...';
+
+            try {
+                const res = await fetch('/api/rag/bases/clone-domain', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        source_table: sourceTable,
+                        target_table: targetTable,
+                        theme: theme
+                    })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    closeCloneDomainModal();
+                    await loadRagBases();
+                    await loadRagStats();
+                    alert(`✅ Clonados ${data.cloned_chunks || 0} fragmentos del dominio '${theme}' a '${targetTable}' en ${data.latency_ms || 0}ms.`);
+                } else {
+                    alert("❌ Error: " + (data.error || "No se pudo clonar el dominio."));
+                }
+            } catch (err) {
+                alert("Error de conexión: " + err.message);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = origHtml;
+            }
+        }
+
+        async function deleteCurrentRagBase() {
+            if (currentRagBase === 'teccam_knowledge_base') {
+                alert("La base predeterminada de TECCAM S.R.L. está protegida y no puede ser eliminada.");
+                return;
+            }
+
+            const baseObj = availableRagBases.find(b => b.table_name === currentRagBase);
+            const baseName = baseObj ? baseObj.display_name : currentRagBase;
+
+            if (!confirm(`⚠️ ¿Estás seguro de que deseas eliminar la base de conocimiento '${baseName}' (${currentRagBase})?\n\nEsta acción eliminará todos sus fragmentos en LanceDB de forma permanente.`)) {
+                return;
+            }
+
+            try {
+                const res = await fetch(`/api/rag/bases/${encodeURIComponent(currentRagBase)}`, {
+                    method: 'DELETE'
+                });
+                const data = await res.json();
+                if (data.success) {
+                    currentRagBase = 'teccam_knowledge_base';
+                    await loadRagBases();
+                    const select = document.getElementById('rag-base-select');
+                    if (select) select.value = currentRagBase;
+                    updateRagBaseControls();
+                    await loadRagStats();
+                    alert(`✅ Base '${data.deleted_table}' eliminada exitosamente.`);
+                } else {
+                    alert("❌ Error: " + (data.error || "No se pudo eliminar la base."));
+                }
+            } catch (err) {
+                alert("Error de red: " + err.message);
+            }
+        }
+
 
 

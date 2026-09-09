@@ -540,8 +540,81 @@ class TestGatewayCore(unittest.TestCase):
             _, kwargs = mock_create_pdf.call_args
             self.assertEqual(kwargs.get("company_name"), "Empresa Especial")
 
+    def test_enrich_chat_payload_multi_tenant_rag(self):
+        import asyncio
+        from unittest.mock import patch, MagicMock
+        from gateway.core.alignment_engine import enrich_chat_payload
+
+        payload = {
+            "messages": [
+                {"role": "user", "content": "¿Cuáles son las normas internas de soporte?"}
+            ]
+        }
+
+        with patch("rag_engine.get_rag_settings") as mock_settings, \
+             patch("rag_engine.find_documents_by_fuzzy_title") as mock_fuzzy, \
+             patch("rag_engine.search_knowledge_base") as mock_search, \
+             patch("rag_engine.format_rag_context_for_llm") as mock_format:
+
+            mock_settings.return_value = {"enabled": True}
+            mock_fuzzy.return_value = []
+            mock_search.return_value = [{"text": "Fragmento de soporte", "doc_title": "Manual", "score": 0.8}]
+            mock_format.return_value = "Fragmento de soporte para Tech Support"
+
+            res = asyncio.run(enrich_chat_payload(
+                payload,
+                actual_model="gemma",
+                is_cloud_request=False,
+                apply_rag_injection=True,
+                company_profile={"rag_table": "kb_tech_support_argentina"}
+            ))
+
+            mock_fuzzy.assert_called_once_with(
+                "¿Cuáles son las normas internas de soporte?",
+                table_name="kb_tech_support_argentina"
+            )
+            mock_search.assert_called_once()
+            _, kwargs = mock_search.call_args
+            self.assertEqual(kwargs.get("table_name"), "kb_tech_support_argentina")
+
+            sys_msg = next((m for m in res["messages"] if m.get("role") == "system"), None)
+            self.assertIsNotNone(sys_msg)
+            self.assertIn("LANCEDB - KB_TECH_SUPPORT_ARGENTINA", sys_msg["content"])
+
+    def test_handle_rag_endpoints_multi_tenant(self):
+        import asyncio
+        from unittest.mock import patch, MagicMock
+        from gateway.tools.rag_endpoints import handle_rag_search
+
+        mock_request = MagicMock()
+        mock_request.query_params = {}
+        body = b'{"query": "procedimiento operativo"}'
+        key_doc = {
+            "name": "Tech Support Key",
+            "company_profile": {"rag_table": "kb_tech_support_argentina"}
+        }
+
+        with patch("rag_engine.get_rag_settings") as mock_sett, \
+             patch("rag_engine.search_knowledge_base") as mock_search, \
+             patch("rag_engine.format_rag_context_for_llm") as mock_fmt:
+
+            mock_sett.return_value = {"enabled": True}
+            mock_search.return_value = [{"text": "Procedimiento ABC", "score": 0.9}]
+            mock_fmt.return_value = "Contexto ABC"
+
+            res = asyncio.run(handle_rag_search(mock_request, body, key_doc=key_doc))
+            self.assertEqual(res.status_code, 200)
+            mock_search.assert_called_once()
+            _, kwargs = mock_search.call_args
+            self.assertEqual(kwargs.get("table_name"), "kb_tech_support_argentina")
+
+            import json
+            data = json.loads(res.body.decode("utf-8"))
+            self.assertEqual(data.get("table_name"), "kb_tech_support_argentina")
+
 
 if __name__ == "__main__":
     unittest.main()
+
 
 

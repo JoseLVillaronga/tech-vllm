@@ -439,14 +439,15 @@ def hierarchical_chunk_markdown(
         
     return final_chunks
 
-def fetch_teccam_documents_index() -> List[Dict[str, Any]]:
-    """Consulta la API de Teccam PDF y retorna el listado completo de documentos disponibles."""
+def fetch_teccam_documents_index(desde: Optional[str] = None, empresa: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Consulta la API de Teccam PDF y retorna el listado completo de documentos disponibles (opcionalmente filtrado por empresa)."""
     if not TECCAM_PDF_URL_BASE:
         raise ValueError("TECCAM_PDF_URL_BASE no está configurada en .env")
         
     url = f"{TECCAM_PDF_URL_BASE}/api/v1/rag/documentos"
     headers = {}
     if TECCAM_PDF_API_KEY:
+        headers["x-api-key"] = TECCAM_PDF_API_KEY
         headers["Authorization"] = f"Bearer {TECCAM_PDF_API_KEY}"
         
     all_docs = []
@@ -456,6 +457,10 @@ def fetch_teccam_documents_index() -> List[Dict[str, Any]]:
     with httpx.Client(timeout=30.0) as client:
         while True:
             params = {"pagina": page, "limite": limit}
+            if desde:
+                params["desde"] = desde
+            if empresa:
+                params["empresa"] = empresa
             resp = client.get(url, headers=headers, params=params)
             if resp.status_code != 200:
                 raise RuntimeError(f"Error HTTP {resp.status_code} al consultar índice Teccam PDF: {resp.text}")
@@ -478,6 +483,7 @@ def fetch_teccam_document_detail(doc_id: str) -> Dict[str, Any]:
     url = f"{TECCAM_PDF_URL_BASE}/api/v1/rag/documentos/{doc_id}"
     headers = {}
     if TECCAM_PDF_API_KEY:
+        headers["x-api-key"] = TECCAM_PDF_API_KEY
         headers["Authorization"] = f"Bearer {TECCAM_PDF_API_KEY}"
         
     with httpx.Client(timeout=60.0) as client:
@@ -491,10 +497,12 @@ def sync_knowledge_base(
     doc_id_filter: Optional[str] = None,
     max_chars: int = 1100,
     min_chars: int = 100,
-    overlap_chars: int = 180
+    overlap_chars: int = 180,
+    empresa: Optional[str] = None,
+    table_name: Optional[str] = None
 ) -> Dict[str, Any]:
     """
-    Ejecuta el ciclo de sincronización diferencial contra Teccam PDF.
+    Ejecuta el ciclo de sincronización diferencial contra Teccam PDF (predeterminada o por empresa).
     
     Args:
         force: Si es True, re-indexa todos los documentos ignorando el estado previo.
@@ -502,6 +510,8 @@ def sync_knowledge_base(
         max_chars: Límite superior de caracteres por chunk (~220 tokens).
         min_chars: Límite inferior para fusionar micro-chunks.
         overlap_chars: Solapamiento deslizante de oraciones entre chunks contiguos.
+        empresa: Filtro opcional de empresa en Teccam PDF (ej. 'Tech Support Argentina').
+        table_name: Nombre opcional de tabla destino en LanceDB (ej. 'kb_tech_support_argentina').
         
     Returns:
         Diccionario con el resumen de la operación.
@@ -509,20 +519,31 @@ def sync_knowledge_base(
     start_time = time.time()
     sync_date = datetime.utcnow()
     
+    target_table_name = table_name
+    if not target_table_name:
+        if empresa and empresa.strip() and empresa.strip().upper() != "TECCAM S.R.L.":
+            clean_slug = re.sub(r'[^a-zA-Z0-9_]', '_', empresa.strip().lower()).strip('_')
+            target_table_name = f"kb_{clean_slug}"
+        else:
+            target_table_name = TABLE_NAME
+    
     print("=" * 70)
     print(f"🔄 [RAG Sync] Iniciando Sincronizador Teccam PDF -> LanceDB")
     print(f"🌐 Servidor Teccam: {TECCAM_PDF_URL_BASE}")
     print(f"📁 Directorio LanceDB: {LANCEDB_DIR}")
+    print(f"📊 Tabla Destino: {target_table_name}")
+    if empresa:
+        print(f"🏢 Filtro Empresa: '{empresa}'")
     print(f"⚙️ Modo: {'Forzado (Re-indexación completa)' if force else 'Diferencial / Incremental'}")
     print(f"✂️ Parámetros Chunking: Max {max_chars}c | Min {min_chars}c | Overlap {overlap_chars}c (Sentence-Boundary Aware)")
     print("=" * 70)
     
     db = get_lancedb()
-    table = get_table()
+    table = get_table(target_table_name)
     
     # 1. Obtener índice de documentos remotos
     try:
-        remote_docs = fetch_teccam_documents_index()
+        remote_docs = fetch_teccam_documents_index(empresa=empresa)
         print(f"📚 Documentos remotos encontrados en Teccam PDF: {len(remote_docs)}")
     except Exception as e:
         err_msg = f"No se pudo consultar la API de Teccam PDF: {e}"
@@ -560,7 +581,7 @@ def sync_knowledge_base(
                 print(f"🛠️ [RAG Sync] Extendiendo esquema de LanceDB con nuevas columnas: {list(cols_to_add.keys())}...")
                 table.add_columns(cols_to_add)
                 # Re-obtener tabla con esquema actualizado
-                table = get_table()
+                table = get_table(target_table_name)
 
             if not force:
                 df = table.to_arrow()
@@ -724,8 +745,8 @@ def sync_knowledge_base(
                 
             # Si la tabla aún no existe o estamos forzando re-indexación completa desde cero
             if table is None or (force and idx == 1 and not doc_id_filter):
-                table = db.create_table(TABLE_NAME, data=chunk_records, mode="overwrite")
-                print(f"   💾 Tabla '{TABLE_NAME}' creada e inicializada con nuevo esquema.")
+                table = db.create_table(target_table_name, data=chunk_records, mode="overwrite")
+                print(f"   💾 Tabla '{target_table_name}' creada e inicializada con nuevo esquema.")
             else:
                 # Siempre purgar versiones anteriores de este documento para evitar duplicados
                 try:
@@ -733,7 +754,7 @@ def sync_knowledge_base(
                 except Exception as del_err:
                     pass
                 table.add(chunk_records)
-                print(f"   💾 {len(chunk_records)} fragmentos guardados en LanceDB.")
+                print(f"   💾 {len(chunk_records)} fragmentos guardados en LanceDB ({target_table_name}).")
                     
             total_new_chunks += len(chunk_records)
             synced_details.append({
@@ -756,19 +777,21 @@ def sync_knowledge_base(
             print(f"⚠️ Nota sobre índice FTS: {fts_err}")
 
     duration_sec = round(time.time() - start_time, 2)
-    current_table = get_table()
+    current_table = get_table(target_table_name)
     total_chunks_in_db = len(current_table) if current_table else 0
     
     print("=" * 70)
     print(f"🎉 Sincronización finalizada en {duration_sec} segundos!")
     print(f"📊 Documentos sincronizados en esta ejecución: {len(synced_details)}")
-    print(f"📦 Total de fragmentos indexados en LanceDB:   {total_chunks_in_db}")
+    print(f"📦 Total de fragmentos indexados en LanceDB ({target_table_name}): {total_chunks_in_db}")
     print("=" * 70)
     
     result_summary = {
         "success": True,
         "timestamp": sync_date.isoformat(),
         "duration_sec": duration_sec,
+        "table_name": target_table_name,
+        "empresa": empresa,
         "docs_synced_count": len(synced_details),
         "docs_synced": synced_details,
         "docs_purged_count": len(docs_to_delete),
@@ -798,6 +821,8 @@ if __name__ == "__main__":
     parser.add_argument("--max-chars", type=int, default=1100, help="Tamaño máximo por fragmento (default: 1100 chars ~ 220 tokens)")
     parser.add_argument("--min-chars", type=int, default=100, help="Tamaño mínimo para fusionar micro-fragmentos (default: 100 chars)")
     parser.add_argument("--overlap-chars", type=int, default=180, help="Solapamiento deslizante entre fragmentos de la misma sección (default: 180 chars)")
+    parser.add_argument("--empresa", type=str, default=None, help="Filtrar por empresa en Teccam PDF")
+    parser.add_argument("--table-name", type=str, default=None, help="Nombre de la tabla destino en LanceDB")
     args = parser.parse_args()
     
     sync_knowledge_base(
@@ -805,5 +830,7 @@ if __name__ == "__main__":
         doc_id_filter=args.doc_id,
         max_chars=args.max_chars,
         min_chars=args.min_chars,
-        overlap_chars=args.overlap_chars
+        overlap_chars=args.overlap_chars,
+        empresa=args.empresa,
+        table_name=args.table_name
     )

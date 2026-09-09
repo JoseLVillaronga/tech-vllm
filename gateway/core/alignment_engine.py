@@ -304,7 +304,8 @@ async def enrich_chat_payload(
     apply_rag_injection: bool = False,
     include_alignment: bool = True,
     alignment_mode: Optional[str] = None,
-    company_profile: Optional[Dict[str, Any]] = None
+    company_profile: Optional[Dict[str, Any]] = None,
+    rag_table: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Enriquece el payload de chat completions según el modo de alineación:
@@ -541,7 +542,7 @@ async def enrich_chat_payload(
         except Exception as we:
             print(f"⚠️ Error en búsqueda web Gateway: {we}", file=sys.stderr, flush=True)
 
-    # 3. Inyección RAG Documental (LanceDB - Teccam - sólo en 'full')
+    # 3. Inyección RAG Documental (LanceDB - Teccam o Multi-Tenant - sólo en 'full')
     if mode == "full" and (apply_rag_injection or actual_model == "gemma-4-rag") and user_query:
         try:
             from rag_engine import (
@@ -553,13 +554,17 @@ async def enrich_chat_payload(
             )
             rag_sett = get_rag_settings()
             if rag_sett.get("enabled", True):
+                target_table = rag_table
+                if not target_table and company_profile and isinstance(company_profile, dict):
+                    target_table = company_profile.get("rag_table")
+
                 rag_context_str = ""
-                matched_docs = find_documents_by_fuzzy_title(user_query)
+                matched_docs = find_documents_by_fuzzy_title(user_query, table_name=target_table)
 
                 # Si la consulta menciona un documento específico
                 if matched_docs and matched_docs[0].get("score", 0) >= 0.5:
                     top_doc = matched_docs[0]
-                    full_res = get_document_full_content(top_doc["doc_id"], token_threshold=30000)
+                    full_res = get_document_full_content(top_doc["doc_id"], token_threshold=30000, table_name=target_table)
                     total_tokens = full_res.get("total_doc_tokens", 0)
 
                     if total_tokens <= 30000 and full_res.get("content"):
@@ -573,19 +578,21 @@ async def enrich_chat_payload(
                         rag_results = search_knowledge_base(
                             query=user_query,
                             temas=[top_doc.get("topic")] if top_doc.get("topic") else None,
-                            top_k=8
+                            top_k=8,
+                            table_name=target_table
                         )
                         if rag_results:
                             rag_context_str = format_rag_context_for_llm(rag_results)
 
                 if not rag_context_str:
-                    rag_results = search_knowledge_base(query=user_query, top_k=8)
+                    rag_results = search_knowledge_base(query=user_query, top_k=8, table_name=target_table)
                     if rag_results:
                         rag_context_str = format_rag_context_for_llm(rag_results)
 
                 if rag_context_str:
+                    table_label = f"LANCEDB - {target_table.upper()}" if target_table else "LANCEDB - TECCAM"
                     rag_prompt = (
-                        f"\n\n[CONTEXTO DE LA BASE DE CONOCIMIENTO DOCUMENTAL (LANCEDB - TECCAM)]:\n"
+                        f"\n\n[CONTEXTO DE LA BASE DE CONOCIMIENTO DOCUMENTAL ({table_label})]:\n"
                         f"{rag_context_str}\n"
                         f"--------------------------------------------------\n"
                         f"Instrucciones de Grounding y Pertinencia: Evalúa críticamente la aplicabilidad causal directa de las fuentes anteriores. "

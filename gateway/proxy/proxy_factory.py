@@ -241,19 +241,19 @@ def create_proxy_app(
 
         # Interceptar búsqueda RAG directa en LanceDB
         if path.strip("/") in ["v1/rag/search", "rag/search", "api/tools/rag-search"] and request.method == "POST":
-            return await handle_rag_search(request, body)
+            return await handle_rag_search(request, body, key_doc=key_doc)
 
         # Interceptar síntesis y lectura de documento RAG
         if path.strip("/") in ["v1/rag/document", "rag/document", "api/tools/rag-document", "api/tools/read-document"] and request.method == "POST":
-            return await handle_rag_document(request, body)
+            return await handle_rag_document(request, body, key_doc=key_doc)
 
         # Interceptar consulta de estructura y GPS Documental RAG
         if path.strip("/") in ["v1/rag/structure", "rag/structure", "api/tools/rag-structure", "api/tools/document-structure"] and request.method == "POST":
-            return await handle_rag_structure(request, body)
+            return await handle_rag_structure(request, body, key_doc=key_doc)
 
         # Interceptar consulta de índice jerárquico macro de biblioteca RAG
         if path.strip("/") in ["v1/rag/library-index", "rag/library-index", "api/tools/rag-library-index", "api/tools/library-index"] and request.method in ["GET", "POST"]:
-            return await handle_rag_library_index(request, body)
+            return await handle_rag_library_index(request, body, key_doc=key_doc)
 
         # Resolución de modelos y enrutamiento inteligente (Cloud vs Local)
         is_cloud_request = False
@@ -280,6 +280,10 @@ def create_proxy_app(
                         except Exception as bridge_err:
                             print(f"⚠️ Error en Vision Bridge: {bridge_err}", file=sys.stderr, flush=True)
 
+                    target_rag_table = None
+                    if key_doc and isinstance(key_doc, dict):
+                        target_rag_table = key_doc.get("rag_table") or key_doc.get("company_profile", {}).get("rag_table")
+
                     data = await enrich_chat_payload(
                         data=data,
                         actual_model=actual_model,
@@ -287,7 +291,8 @@ def create_proxy_app(
                         apply_rag_injection=apply_rag_injection,
                         include_alignment=include_alignment,
                         alignment_mode=alignment_mode,
-                        company_profile=key_doc.get("company_profile") if key_doc and isinstance(key_doc, dict) else None
+                        company_profile=key_doc.get("company_profile") if key_doc and isinstance(key_doc, dict) else None,
+                        rag_table=target_rag_table
                     )
 
                     # Tier 2: Si se podó el contexto (data["cache_prompt"] == False), programar vaciado físico de slots en llama-server

@@ -118,6 +118,12 @@
                                         <label class="block text-[11px] font-medium text-slate-400 mb-1">Directrices Específicas / Instrucciones:</label>
                                         <textarea id="key-company-instructions" rows="2" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-sky-500 resize-y" placeholder="Ej: Tratar al cliente de 'Usted', derivar presupuestos al correo oficial."></textarea>
                                     </div>
+                                    <div>
+                                        <label class="block text-[11px] font-medium text-purple-300 mb-1">Base de Conocimiento RAG Asignada:</label>
+                                        <select id="key-company-rag-table" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-purple-500">
+                                            <option value="">Predeterminada (teccam_knowledge_base)</option>
+                                        </select>
+                                    </div>
                                 </div>
                             </div>
                             <button onclick="createApiKey()" class="w-full mt-2 py-2 bg-gradient-to-r from-cyan-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 rounded-lg text-sm font-semibold transition-all">
@@ -496,6 +502,12 @@
                                 <div>
                                     <label class="block text-[11px] font-medium text-slate-400 mb-1">Directrices Específicas / Instrucciones:</label>
                                     <textarea id="edit-key-company-instructions" rows="2" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-sky-500 resize-y" placeholder="Ej: Tratar al cliente de 'Usted', derivar presupuestos al correo oficial."></textarea>
+                                </div>
+                                <div>
+                                    <label class="block text-[11px] font-medium text-purple-300 mb-1">Base de Conocimiento RAG Asignada:</label>
+                                    <select id="edit-key-company-rag-table" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-purple-500">
+                                        <option value="">Predeterminada (teccam_knowledge_base)</option>
+                                    </select>
                                 </div>
                             </div>
                         </div>

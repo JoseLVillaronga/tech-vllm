@@ -236,6 +236,28 @@
             }
         }
 
+        async function populateRagBaseOptionsForKeySelects() {
+            try {
+                const res = await fetch('/api/rag/bases');
+                const data = await res.json();
+                if (data.success && data.bases) {
+                    const selects = [
+                        document.getElementById('key-company-rag-table'),
+                        document.getElementById('edit-key-company-rag-table')
+                    ];
+                    selects.forEach(sel => {
+                        if (!sel) return;
+                        const currentVal = sel.value;
+                        sel.innerHTML = '<option value="">Predeterminada (teccam_knowledge_base)</option>' +
+                            data.bases.map(b => `<option value="${escapeHtml(b.table_name)}">${escapeHtml(b.display_name)} (${(b.chunks_count || 0).toLocaleString()} chunks)</option>`).join('');
+                        if (currentVal) sel.value = currentVal;
+                    });
+                }
+            } catch (e) {
+                // Silencioso
+            }
+        }
+
         async function loadApiKeys(isSilent = false) {
             const container = document.getElementById('keys-list-container');
             if (!container) return;
@@ -253,6 +275,9 @@
                         renderCloudProviderCheckboxes();
                     } catch(e) {}
                 }
+
+                // Cargar lista de bases RAG para los selects de perfil corporativo
+                populateRagBaseOptionsForKeySelects();
 
                 const res = await fetch('/api/keys');
                 const keys = await res.json();
@@ -412,7 +437,9 @@
                     let companyBadge = '';
                     if (k.company_profile && k.company_profile.enabled) {
                         const cName = escapeHtml(k.company_profile.company_name || 'Perfil Corporativo');
-                        companyBadge = `<span class="text-[9px] px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-300 font-semibold border border-sky-500/30 flex items-center gap-1" title="Perfil corporativo activo: ${cName}">🏢 ${cName}</span>`;
+                        const ragT = k.company_profile.rag_table || k.rag_table;
+                        const ragBadge = ragT ? ` <span class="font-mono text-purple-300 font-normal text-[8px] bg-purple-950/60 px-1.5 py-0.5 rounded border border-purple-800/40">RAG: ${escapeHtml(ragT)}</span>` : '';
+                        companyBadge = `<span class="text-[9px] px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-300 font-semibold border border-sky-500/30 flex items-center gap-1" title="Perfil corporativo activo: ${cName}">🏢 ${cName}${ragBadge}</span>`;
                     }
 
                     html += `
@@ -485,6 +512,7 @@
             }
 
             const cpEnabled = document.getElementById('key-company-enabled') ? document.getElementById('key-company-enabled').checked : false;
+            const cpRagTable = document.getElementById('key-company-rag-table')?.value || '';
             const company_profile = {
                 enabled: cpEnabled,
                 company_name: (document.getElementById('key-company-name')?.value || '').trim(),
@@ -492,7 +520,8 @@
                 contact_info: (document.getElementById('key-company-contact')?.value || '').trim(),
                 business_hours: (document.getElementById('key-company-hours')?.value || '').trim(),
                 address: (document.getElementById('key-company-address')?.value || '').trim(),
-                custom_instructions: (document.getElementById('key-company-instructions')?.value || '').trim()
+                custom_instructions: (document.getElementById('key-company-instructions')?.value || '').trim(),
+                rag_table: cpRagTable.trim() || null
             };
 
             try {
@@ -634,6 +663,8 @@
             if (cpAddrEl) cpAddrEl.value = cp.address || '';
             const cpInstEl = document.getElementById('edit-key-company-instructions');
             if (cpInstEl) cpInstEl.value = cp.custom_instructions || '';
+            const cpRagTableEl = document.getElementById('edit-key-company-rag-table');
+            if (cpRagTableEl) cpRagTableEl.value = cp.rag_table || cachedKey.rag_table || '';
             
             document.getElementById('edit-key-modal').classList.remove('hidden');
         }
@@ -683,6 +714,7 @@
             }
 
             const cpEnabled = document.getElementById('edit-key-company-enabled') ? document.getElementById('edit-key-company-enabled').checked : false;
+            const cpRagTable = document.getElementById('edit-key-company-rag-table')?.value || '';
             const company_profile = {
                 enabled: cpEnabled,
                 company_name: (document.getElementById('edit-key-company-name')?.value || '').trim(),
@@ -690,7 +722,8 @@
                 contact_info: (document.getElementById('edit-key-company-contact')?.value || '').trim(),
                 business_hours: (document.getElementById('edit-key-company-hours')?.value || '').trim(),
                 address: (document.getElementById('edit-key-company-address')?.value || '').trim(),
-                custom_instructions: (document.getElementById('edit-key-company-instructions')?.value || '').trim()
+                custom_instructions: (document.getElementById('edit-key-company-instructions')?.value || '').trim(),
+                rag_table: cpRagTable.trim() || null
             };
 
             try {

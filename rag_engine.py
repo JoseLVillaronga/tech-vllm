@@ -38,17 +38,155 @@ def get_lancedb():
         _db_instance = lancedb.connect(LANCEDB_DIR)
     return _db_instance
 
-def get_table():
-    """Obtiene la tabla de base de conocimiento o None si no existe aún."""
+def get_table(table_name: Optional[str] = None):
+    """Obtiene la tabla de base de conocimiento (por defecto o específica por empresa) o None si no existe aún."""
     db = get_lancedb()
+    target_name = table_name or TABLE_NAME
     try:
         res = db.list_tables()
         tables = res.tables if hasattr(res, "tables") else (res if isinstance(res, (list, set)) else db.table_names())
     except Exception:
         tables = db.table_names()
-    if TABLE_NAME in tables:
-        return db.open_table(TABLE_NAME)
+    if target_name in tables:
+        return db.open_table(target_name)
     return None
+
+def list_knowledge_bases() -> List[Dict[str, Any]]:
+    """Lista todas las bases / tablas de conocimiento en LanceDB con sus metadatos y conteos."""
+    db = get_lancedb()
+    try:
+        res = db.list_tables()
+        table_names = res.tables if hasattr(res, "tables") else (res if isinstance(res, (list, set)) else db.table_names())
+    except Exception:
+        table_names = db.table_names()
+    
+    bases = []
+    for name in sorted(table_names):
+        try:
+            tbl = db.open_table(name)
+            count = len(tbl)
+            df = tbl.to_arrow()
+            doc_ids = set(df["doc_id"].to_pylist()) if "doc_id" in df.schema.names else set()
+            topics = set(df["doc_topic"].to_pylist()) if "doc_topic" in df.schema.names else set()
+            
+            display_name = "TECCAM S.R.L. (Predeterminada)" if name == TABLE_NAME else name.replace("kb_", "").replace("_", " ").title()
+            bases.append({
+                "table_name": name,
+                "display_name": display_name,
+                "is_default": name == TABLE_NAME,
+                "chunks_count": count,
+                "docs_count": len(doc_ids),
+                "topics": sorted([t for t in topics if t])
+            })
+        except Exception as e:
+            print(f"⚠️ [RAG Engine] Error leyendo tabla {name}: {e}", file=sys.stderr)
+            bases.append({
+                "table_name": name,
+                "display_name": name,
+                "is_default": name == TABLE_NAME,
+                "chunks_count": 0,
+                "docs_count": 0,
+                "topics": [],
+                "error": str(e)
+            })
+    return bases
+
+def create_knowledge_base(table_name: str, clone_from: Optional[str] = None, clone_themes: Optional[List[str]] = None) -> Dict[str, Any]:
+    """
+    Crea una nueva tabla de conocimiento en LanceDB.
+    Si se especifica clone_from y clone_themes, clona instantáneamente los fragmentos correspondientes
+    desde la tabla origen en memoria (Apache Arrow), sin consumo de GPU ni reprocesamiento.
+    """
+    db = get_lancedb()
+    clean_name = re.sub(r'[^a-zA-Z0-9_]', '_', table_name.strip().lower()).strip('_')
+    if not clean_name:
+        raise ValueError("El nombre de la tabla no es válido.")
+    
+    res = db.list_tables()
+    existing_tables = res.tables if hasattr(res, "tables") else (res if isinstance(res, (list, set)) else db.table_names())
+    if clean_name in existing_tables:
+        raise ValueError(f"La base de conocimiento '{clean_name}' ya existe.")
+        
+    source_tbl = None
+    if clone_from:
+        source_tbl = get_table(clone_from)
+        if source_tbl is None:
+            raise ValueError(f"La base origen '{clone_from}' no existe.")
+            
+    if source_tbl is not None:
+        if clone_themes and len(clone_themes) > 0:
+            clean_t_list = [t.replace("'", "''") for t in clone_themes]
+            theme_conditions = " OR ".join([f"doc_topic = '{ct}'" for ct in clean_t_list])
+            arrow_data = source_tbl.search().where(theme_conditions).limit(100000).to_arrow()
+            if len(arrow_data) > 0:
+                new_tbl = db.create_table(clean_name, data=arrow_data)
+                return {
+                    "success": True,
+                    "table_name": clean_name,
+                    "chunks_cloned": len(arrow_data),
+                    "cloned_from": clone_from,
+                    "themes_cloned": clone_themes
+                }
+        schema = source_tbl.to_arrow().schema
+        new_tbl = db.create_table(clean_name, schema=schema)
+        return {
+            "success": True,
+            "table_name": clean_name,
+            "chunks_cloned": 0,
+            "cloned_from": clone_from,
+            "themes_cloned": []
+        }
+    else:
+        default_tbl = get_table(TABLE_NAME)
+        if default_tbl is not None:
+            schema = default_tbl.to_arrow().schema
+            new_tbl = db.create_table(clean_name, schema=schema)
+            return {"success": True, "table_name": clean_name, "chunks_cloned": 0}
+        else:
+            raise RuntimeError("No se encontró la tabla base predeterminada para replicar el esquema.")
+
+def clone_knowledge_domain(source_table: str, target_table: str, theme: str) -> Dict[str, Any]:
+    """Clona un dominio de conocimiento desde una base a otra existente sin duplicar cómputo."""
+    src = get_table(source_table)
+    dst = get_table(target_table)
+    if src is None:
+        raise ValueError(f"Base origen '{source_table}' no encontrada.")
+    if dst is None:
+        raise ValueError(f"Base destino '{target_table}' no encontrada.")
+        
+    clean_theme = theme.replace("'", "''")
+    arrow_data = src.search().where(f"doc_topic = '{clean_theme}'").limit(100000).to_arrow()
+    if len(arrow_data) == 0:
+        return {"success": True, "chunks_cloned": 0, "message": "No se encontraron fragmentos para este tema."}
+        
+    try:
+        dst.delete(f"doc_topic = '{clean_theme}'")
+    except Exception:
+        pass
+        
+    dst.add(arrow_data)
+    return {
+        "success": True,
+        "source_table": source_table,
+        "target_table": target_table,
+        "theme": theme,
+        "chunks_cloned": len(arrow_data)
+    }
+
+def delete_knowledge_base(table_name: str) -> Dict[str, Any]:
+    """Elimina una base de conocimiento en LanceDB, protegiendo siempre la base predeterminada de TECCAM S.R.L."""
+    if table_name == TABLE_NAME:
+        raise ValueError("No está permitido eliminar la base de conocimiento predeterminada (TECCAM S.R.L.).")
+    db = get_lancedb()
+    try:
+        res = db.list_tables()
+        tables = res.tables if hasattr(res, "tables") else (res if isinstance(res, (list, set)) else db.table_names())
+        if table_name not in tables:
+            raise ValueError(f"La base '{table_name}' no existe.")
+        db.drop_table(table_name)
+        return {"success": True, "deleted_table": table_name}
+    except Exception as e:
+        raise RuntimeError(f"Error al eliminar la base '{table_name}': {e}")
 
 def generate_embedding(text: str, timeout: float = 15.0) -> List[float]:
     """Genera un vector embedding de 1024 dimensiones llamando al microservicio vllm-embeddings."""
@@ -190,10 +328,11 @@ def search_knowledge_base(
     vigencia: Optional[str] = None,
     solo_vigentes: bool = False,
     top_k: int = 5,
-    min_score: float = 0.25
+    min_score: float = 0.25,
+    table_name: Optional[str] = None
 ) -> List[Dict[str, Any]]:
     """
-    Ejecuta una búsqueda híbrida (Vectorial 1024D + FTS BM25) sobre LanceDB.
+    Ejecuta una búsqueda híbrida (Vectorial 1024D + FTS BM25) sobre LanceDB (por defecto o específica por empresa).
     
     Args:
         query: Consulta del usuario en lenguaje natural o palabras clave.
@@ -205,12 +344,13 @@ def search_knowledge_base(
         solo_vigentes: Si es True, restringe exclusivamente a normas con doc_vigencia = 'vigente'.
         top_k: Cantidad de fragmentos más relevantes a retornar.
         min_score: Umbral mínimo de similitud/relevancia.
+        table_name: Nombre opcional de la tabla/base de la empresa.
         
     Returns:
         Lista de diccionarios con fragmentos, metadatos, citas y puntuación.
     """
     t0 = time.time()
-    table = get_table()
+    table = get_table(table_name)
     if table is None or len(table) == 0:
         return []
 
@@ -466,9 +606,10 @@ def format_rag_context_for_llm(results: List[Dict[str, Any]]) -> str:
         
     return "\n\n".join(snippets)
 
-def get_rag_stats() -> Dict[str, Any]:
-    """Obtiene métricas y estadísticas globales de la base de conocimiento en LanceDB."""
-    table = get_table()
+def get_rag_stats(table_name: Optional[str] = None) -> Dict[str, Any]:
+    """Obtiene métricas y estadísticas globales de la base de conocimiento en LanceDB (predeterminada o por empresa)."""
+    target_name = table_name or TABLE_NAME
+    table = get_table(target_name)
     if table is None:
         return {
             "is_initialized": False,
@@ -477,7 +618,7 @@ def get_rag_stats() -> Dict[str, Any]:
             "documents": [],
             "topics": [],
             "lancedb_path": LANCEDB_DIR,
-            "table_name": TABLE_NAME
+            "table_name": target_name
         }
         
     try:
@@ -526,7 +667,7 @@ def get_rag_stats() -> Dict[str, Any]:
             "vigencias_summary": vigencias_count,
             "active_topics": rag_sett.get("active_topics", []),
             "lancedb_path": LANCEDB_DIR,
-            "table_name": TABLE_NAME
+            "table_name": target_name
         }
     except Exception as e:
         print(f"⚠️ [RAG Engine] Error obteniendo estadísticas de LanceDB: {e}", file=sys.stderr)
@@ -616,12 +757,12 @@ def match_section_query(query: str, target: str) -> bool:
     return False
 
 
-def find_documents_by_fuzzy_title(query: str) -> List[Dict[str, Any]]:
+def find_documents_by_fuzzy_title(query: str, table_name: Optional[str] = None) -> List[Dict[str, Any]]:
     """
     Busca documentos en LanceDB que coincidan con la consulta por título, palabras clave o substring (estilo SQL LIKE %...%).
     Tolera diferencias de acentos, mayúsculas, signos de puntuación y orden de palabras.
     """
-    table = get_table()
+    table = get_table(table_name)
     if table is None or len(table) == 0:
         return []
         
@@ -694,7 +835,7 @@ def fetch_teccam_document_raw(doc_id: str) -> Optional[Dict[str, Any]]:
         print(f"⚠️ [RAG Engine] Error al consultar API de Teccam PDF ({url}): {e}", file=sys.stderr)
     return None
 
-def get_document_structure(doc_id: str, filtro: Optional[str] = None) -> Dict[str, Any]:
+def get_document_structure(doc_id: str, filtro: Optional[str] = None, table_name: Optional[str] = None) -> Dict[str, Any]:
     """
     Construye el 'GPS Documental' (Árbol y Mapa de Estructura de Secciones) de una obra desde LanceDB.
     
@@ -702,7 +843,7 @@ def get_document_structure(doc_id: str, filtro: Optional[str] = None) -> Dict[st
     antes de solicitar la lectura de capítulos, títulos o partes específicas.
     """
     clean_doc_id = doc_id.strip()
-    table = get_table()
+    table = get_table(table_name)
     if table is None or len(table) == 0:
         return {
             "success": False,
@@ -717,7 +858,7 @@ def get_document_structure(doc_id: str, filtro: Optional[str] = None) -> Dict[st
     # 2. Búsqueda difusa si no se encontró por ID
     candidates = []
     if len(results) == 0:
-        candidates = find_documents_by_fuzzy_title(clean_doc_id)
+        candidates = find_documents_by_fuzzy_title(clean_doc_id, table_name=table_name)
         if candidates:
             best_match = candidates[0]
             clean_doc_id = best_match["doc_id"]
@@ -725,7 +866,7 @@ def get_document_structure(doc_id: str, filtro: Optional[str] = None) -> Dict[st
             results = table.search().where(f"doc_id = '{clean_sql_id}'").limit(10000).to_arrow()
 
     if len(results) == 0:
-        stats = get_rag_stats()
+        stats = get_rag_stats(table_name=table_name)
         avail = [f"- '{d['title']}' [doc_id: {d['id']}]" for d in stats.get("documents", [])[:10]]
         return {
             "success": False,
@@ -929,7 +1070,8 @@ def get_document_full_content(
     parte: int = 1,
     token_threshold: int = 60000,
     chunk_threshold: Optional[int] = None,
-    seccion: Optional[str] = None
+    seccion: Optional[str] = None,
+    table_name: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Obtiene el contenido completo, por sección temática o paginado con tolerancia dinámica (±5%-8%) de un documento.
@@ -940,7 +1082,7 @@ def get_document_full_content(
     - Particionado inteligente con alineación a límites naturales de sección dentro del rango de tolerancia (±5%-8%).
     """
     clean_doc_id = doc_id.strip()
-    table = get_table()
+    table = get_table(table_name)
     if table is None or len(table) == 0:
         return {
             "success": False,
@@ -961,7 +1103,7 @@ def get_document_full_content(
     # 2. Si no se encontró por ID exacto, buscar con el motor difuso tolerante a acentos y substrings
     candidates = []
     if len(results) == 0:
-        candidates = find_documents_by_fuzzy_title(clean_doc_id)
+        candidates = find_documents_by_fuzzy_title(clean_doc_id, table_name=table_name)
         if candidates:
             best_match = candidates[0]
             clean_doc_id = best_match["doc_id"]
@@ -969,7 +1111,7 @@ def get_document_full_content(
             results = table.search().where(f"doc_id = '{clean_sql_id}'").limit(10000).to_arrow()
     
     if len(results) == 0:
-        stats = get_rag_stats()
+        stats = get_rag_stats(table_name=table_name)
         avail = [f"- '{d['title']}' [doc_id: {d['id']}]" for d in stats.get("documents", [])[:10]]
         return {
             "success": False,
@@ -1210,7 +1352,8 @@ def get_document_full_content(
 
 def get_library_index(
     solo_vigentes: bool = False,
-    tema: Optional[str] = None
+    tema: Optional[str] = None,
+    table_name: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Genera un índice jerárquico macro de la biblioteca de conocimiento (Mapa Ontológico Global).
@@ -1218,7 +1361,7 @@ def get_library_index(
     Permite que modelos compactos (ej. 12B) o usuarios comprendan de inmediato la estructura completa
     de las obras disponibles, organizadas por dominios, con su estado de vigencia, ID y volumen de tokens.
     """
-    table = get_table()
+    table = get_table(table_name)
     if table is None or len(table) == 0:
         return {
             "success": False,
