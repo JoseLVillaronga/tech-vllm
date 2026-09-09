@@ -70,9 +70,11 @@ def list_knowledge_bases() -> List[Dict[str, Any]]:
             topics = set(df["doc_topic"].to_pylist()) if "doc_topic" in df.schema.names else set()
             
             display_name = "TECCAM S.R.L. (Predeterminada)" if name == TABLE_NAME else name.replace("kb_", "").replace("_", " ").title()
+            empresa = "TECCAM S.R.L." if name == TABLE_NAME else name.replace("kb_", "").replace("_", " ").title()
             bases.append({
                 "table_name": name,
                 "display_name": display_name,
+                "empresa": empresa,
                 "is_default": name == TABLE_NAME,
                 "chunks_count": count,
                 "docs_count": len(doc_ids),

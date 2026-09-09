@@ -370,7 +370,7 @@
             if (text) text.innerText = "Actualizando metadata...";
 
             const baseObj = availableRagBases.find(b => b.table_name === currentRagBase);
-            const empresaName = baseObj ? (baseObj.empresa || (baseObj.is_default ? 'TECCAM S.R.L.' : '')) : '';
+            const empresaName = baseObj ? (baseObj.empresa || (baseObj.is_default ? 'TECCAM S.R.L.' : baseObj.display_name)) : (currentRagBase === 'teccam_knowledge_base' ? 'TECCAM S.R.L.' : '');
             
             try {
                 const res = await fetch('/api/rag/sync-metadata', {
@@ -400,7 +400,7 @@
         async function triggerRagSync(force = false) {
             const pauseLlm = document.getElementById('chk-pause-llm')?.checked || false;
             const baseObj = availableRagBases.find(b => b.table_name === currentRagBase);
-            const empresaName = baseObj ? (baseObj.empresa || (baseObj.is_default ? 'TECCAM S.R.L.' : '')) : '';
+            const empresaName = baseObj ? (baseObj.empresa || (baseObj.is_default ? 'TECCAM S.R.L.' : baseObj.display_name)) : (currentRagBase === 'teccam_knowledge_base' ? 'TECCAM S.R.L.' : '');
             const baseLabel = baseObj ? baseObj.display_name : currentRagBase;
 
             let confirmMsg = "";

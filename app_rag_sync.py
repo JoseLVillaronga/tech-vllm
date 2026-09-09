@@ -454,12 +454,15 @@ def fetch_teccam_documents_index(desde: Optional[str] = None, empresa: Optional[
     page = 1
     limit = 100
     
+    is_teccam_srl = bool(empresa and empresa.strip().upper() == "TECCAM S.R.L.")
     with httpx.Client(timeout=30.0) as client:
         while True:
             params = {"pagina": page, "limite": limit}
             if desde:
                 params["desde"] = desde
-            if empresa:
+            # Si no es TECCAM S.R.L., filtramos en la API por el tenant específico (ej. Tech Support Argentina)
+            # Para TECCAM S.R.L., no filtramos en API para traer también los libros generales/públicos sin empresa ('none')
+            if empresa and not is_teccam_srl:
                 params["empresa"] = empresa
             resp = client.get(url, headers=headers, params=params)
             if resp.status_code != 200:
@@ -476,6 +479,9 @@ def fetch_teccam_documents_index(desde: Optional[str] = None, empresa: Optional[
                 break
             page += 1
             
+    if is_teccam_srl:
+        # TECCAM S.R.L. incluye sus documentos propios más libros generales ('none' o sin empresa)
+        return [d for d in all_docs if not d.get("empresa") or d.get("empresa") == "none" or "TECCAM S.R.L." in str(d.get("empresa", ""))]
     return all_docs
 
 def fetch_teccam_document_detail(doc_id: str) -> Dict[str, Any]:
@@ -526,6 +532,13 @@ def sync_knowledge_base(
             target_table_name = f"kb_{clean_slug}"
         else:
             target_table_name = TABLE_NAME
+            
+    # Auto-inferir empresa si no fue provista explícitamente
+    if not empresa:
+        if target_table_name == TABLE_NAME:
+            empresa = "TECCAM S.R.L."
+        elif target_table_name and target_table_name.startswith("kb_"):
+            empresa = target_table_name.replace("kb_", "").replace("_", " ").title()
     
     print("=" * 70)
     print(f"🔄 [RAG Sync] Iniciando Sincronizador Teccam PDF -> LanceDB")

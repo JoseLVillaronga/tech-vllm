@@ -1746,6 +1746,13 @@ def api_rag_sync():
         empresa = data.get("empresa", "").strip() or None
         table_name = data.get("table_name", "").strip() or None
         
+        # Auto-inferir empresa si no fue enviada
+        if not empresa:
+            if table_name == "teccam_knowledge_base" or not table_name:
+                empresa = "TECCAM S.R.L."
+            elif table_name.startswith("kb_"):
+                empresa = table_name.replace("kb_", "").replace("_", " ").title()
+        
         def run_sync():
             try:
                 base_dir = os.path.dirname(os.path.abspath(__file__))
@@ -1791,6 +1798,12 @@ def api_rag_sync_metadata():
         data = request.get_json(silent=True) or {}
         empresa = data.get("empresa", "").strip() or None
         target_table_name = data.get("table_name", "").strip() or TABLE_NAME
+        
+        if not empresa:
+            if target_table_name == TABLE_NAME:
+                empresa = "TECCAM S.R.L."
+            elif target_table_name.startswith("kb_"):
+                empresa = target_table_name.replace("kb_", "").replace("_", " ").title()
 
         remote_docs = fetch_teccam_documents_index(empresa=empresa)
         if not remote_docs:
