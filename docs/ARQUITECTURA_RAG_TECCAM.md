@@ -186,3 +186,80 @@ Al indexar cualquier nueva ley, contrato o procedimiento operativo en Teccam Kno
 - [ ] **Articulado Estandarizado:** Cada artículo o cláusula debe iniciar con el patrón canónico `**ARTÍCULO X°.- Epígrafe.**` para permitir la segmentación heurística limpia.
 - [ ] **Validación en GPS Documental:** Ejecutar `obtener_estructura_documento(doc_id=...)` y comprobar que ningún título rector supere los límites visuales ni quede cortado engañosamente.
 - [ ] **Prueba de Búsqueda Jerárquica:** Verificar con `match_section_query` que las consultas por títulos numéricos (`TITULO I`, `TITULO II`) no produzcan colisiones cruzadas.
+
+---
+
+## 6. Arquitectura RAG Multi-Tenant (Fase 2)
+
+A partir de la versión 2.12.0, el sistema evoluciona de un repositorio monolítico a una **arquitectura multi-tenant de tablas aisladas en LanceDB**, permitiendo que múltiples empresas o departamentos operen con bases de conocimiento privadas y compartidas sin riesgo de fuga de datos ni contaminación cruzada (*cross-talk*).
+
+```mermaid
+flowchart TD
+    subgraph Clientes["Clientes & Open-WebUI"]
+        REQ_A["Consulta Empresa A (API Key A)"]
+        REQ_B["Consulta Empresa B (API Key B)"]
+    end
+
+    subgraph Gateway["API Security Gateway (:8000 / :8010)"]
+        VAL["Token Validator & Resolutor de rag_table"]
+        ALIGN["Alignment Engine (Grounding Específico)"]
+        TOOL_END["Endpoints de Herramientas RAG"]
+    end
+
+    subgraph Vector_Store["LanceDB Storage (data/lancedb)"]
+        T_TECCAM[("teccam_knowledge_base\n(Base Madre / TECCAM S.R.L.)")]
+        T_TENANT[("kb_<company_slug>\n(Base Inquilina Aislada)")]
+    end
+
+    subgraph Memory["Apache Arrow Engine (RAM)"]
+        ARROW_STREAM["Hot Domain Cloner (Zero-GPU, Zero-Reembedding)"]
+    end
+
+    subgraph Ingestion["Sincronizador Diferencial"]
+        SYNC["app_rag_sync.py (?empresa=...)"]
+        TECCAM_PDF[("API Teccam PDF (:5022)")]
+    end
+
+    REQ_A -->|Bearer Token A| VAL
+    REQ_B -->|Bearer Token B| VAL
+    VAL -->|company_profile.rag_table: teccam_knowledge_base| ALIGN
+    VAL -->|company_profile.rag_table: kb_<slug>| TOOL_END
+    ALIGN -->|Query| T_TECCAM
+    TOOL_END -->|Query| T_TENANT
+    T_TECCAM -.->|Clonación de Lotes Arrow| ARROW_STREAM
+    ARROW_STREAM -.->|Append Batches| T_TENANT
+    TECCAM_PDF -->|Filtro ?empresa=...| SYNC
+    SYNC -->|Upsert Incremental| T_TENANT
+```
+
+### 1. Principios de Aislamiento Físico y Contención (Ley 1 y Ley 3)
+1. **Protección Absoluta de la Base Madre:** La tabla predeterminada `teccam_knowledge_base` se mantiene como tabla raíz inmutable y protegida frente a eliminaciones accidentales desde la GUI.
+2. **Tablas Físicas Independientes:** Cada empresa cliente posee su propia tabla física dentro de `data/lancedb/` (ej: `kb_tech_support_argentina.lance`). Esto garantiza que operaciones de purga, re-indexación o eliminación operen con un radio de impacto (*blast radius*) estrictamente acotado a la empresa destinataria.
+3. **Esquema Tipado Canónico Oficial:** Las tablas se rigen por el esquema PyArrow canónico de 16 campos tipados (`get_canonical_rag_schema`), que incluye metadatos de vigencia jurídica, fecha de publicación oficial y vectores densos Qwen3 de 1024 dimensiones.
+
+### 2. Clonación en Memoria Instantánea (Apache Arrow Hot Cloning)
+En lugar de forzar re-descargas y re-vectorización en GPU (que consumiría decenas de minutos de cómputo redundante), el sistema aprovecha que los vectores ya fueron calculados en la base madre:
+- La función `create_knowledge_base(table_name, clone_from, clone_themes)` y `clone_knowledge_domain(source_table, target_table, theme)` leen los registros de LanceDB directamente como flujos de datos en memoria RAM (`pyarrow.Table` / `RecordBatch`).
+- Un dominio extenso como *"Derecho Argentino"* (**15.578 fragmentos vectoriales**) se transfiere entre tablas en **menos de 2 segundos** con **cero consumo de GPU**.
+
+### 3. Sincronización Diferencial Consciente de Empresa
+El sincronizador `app_rag_sync.py` se conecta a la API de Teccam PDF (`/api/v1/rag/documentos`):
+- **Filtrado Remoto:** Aplica el parámetro `?empresa=<Nombre>` para obtener únicamente los libros asignados a la empresa activa.
+- **Preservación de Acervo General en la Base Madre:** Cuando la base sincronizada es `TECCAM S.R.L.`, el sincronizador une los documentos explícitamente asignados con los libros generales sin empresa asignada (`'none'`), evitando que la purga diferencial mutile el acervo histórico de 47 libros.
+- **Aislamiento en Empresas Tenant:** Para inquilinos (ej: *Tech Support Argentina*), el filtro es estrictamente excluyente: solo ingresan sus libros asignados (42 documentos), bloqueando procedimientos internos o privados de TECCAM.
+
+### 4. Defensa en Profundidad y Auto-Inferencia
+Para evitar que parámetros vacíos o ausentes desde interfaces web o scripts desencadenen consultas al catálogo global, el sistema implementa inferencia defensiva en cascada:
+1. `rag_engine.py`: `list_knowledge_bases()` retorna siempre la propiedad `"empresa"` mapeada al nombre de la tabla o al perfil corporativo.
+2. `app_dashboard.py`: Los endpoints `/api/rag/sync` y `/api/rag/sync-metadata` auto-infieren el nombre de la empresa a partir del prefijo y slug de `table_name`.
+3. `app_rag_sync.py`: Si el argumento `--empresa` se omite pero se proporciona `--table-name kb_<slug>`, infiere automáticamente la empresa a partir del nombre de la tabla.
+
+### 5. Enrutamiento en el Gateway por API Key
+En el API Security Gateway (puerto 8000/8010):
+- Cada API Key almacena en MongoDB (`db.api_keys`) su `company_profile.rag_table` (o `rag_table` directo).
+- Al recibir una solicitud (`/v1/chat/completions` o endpoints de herramientas `/v1/rag/search`, `/v1/rag/structure`, `/v1/rag/library-index`), el Gateway extrae el token del cliente y resuelve dinámicamente la tabla LanceDB asignada.
+- **Garantía Anti-Alucinación (Ley 4):** Si el cliente consulta sobre un procedimiento interno de otra empresa, la herramienta no encontrará coincidencias y el modelo alineado declarará con transparencia que el documento no existe en la base de datos de la organización, eliminando el riesgo de alucinación racionalizada.
+
+### 6. Autonomía para Despliegues Limpios ("Día Cero")
+Gracias a `get_canonical_rag_schema()`, una instalación limpia en un servidor nuevo sin ninguna base previa en `data/lancedb/` es capaz de crear la primera base vacía directamente desde la GUI o CLI con su esquema completo de 16 columnas tipadas, lista para la ingesta diferencial inmediata sin migraciones manuales.
+

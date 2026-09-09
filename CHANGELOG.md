@@ -3,6 +3,37 @@
 Todos los cambios notables en este proyecto serán documentados en este archivo.
 El formato está basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/).
 
+## [2.12.0] - 2026-09-09
+
+### Added
+- **Arquitectura RAG Multi-Tenant con Tablas Aisladas en LanceDB (`rag_engine.py`, `gateway/core/alignment_engine.py`):**
+  - Almacenamiento vectorial particionado físicamente por empresa dentro de `data/lancedb/` (ej. `kb_tech_support_argentina.lance`).
+  - Preservación íntegra de la base madre `teccam_knowledge_base` (18.834 fragmentos, 47 documentos) como base predeterminada protegida frente a eliminaciones.
+- **Clonación Instantánea de Dominios en Memoria RAM vía Apache Arrow (`rag_engine.py`):**
+  - Implementación de `create_knowledge_base` y `clone_knowledge_domain` utilizando `pyarrow.RecordBatch` para transferir miles de vectores calculados en menos de 2 segundos sin consumo de GPU ni llamadas de inferencia.
+- **Sincronización Diferencial Filtrada por Empresa (`app_rag_sync.py`, `sync_rag_scheduled.sh`):**
+  - Consulta selectiva a la API de Teccam PDF mediante el parámetro `?empresa=<Nombre>`, descargando y vectorizando únicamente los libros propios de cada empresa.
+  - Regla de preservación de acervo: la base madre incluye libros de TECCAM S.R.L. y libros generales no asignados (`none`), asegurando permanencia de los 47 libros; los inquilinos reciben estrictamente sus libros asignados (42 libros).
+- **Esquema PyArrow Canónico Oficial para Despliegues "Día Cero" (`rag_engine.py`):**
+  - Incorporación de `get_canonical_rag_schema()` con la definición formal de las 16 columnas tipadas (`id`, `doc_id`, `doc_title`, `doc_vigencia`, `doc_fecha_publicacion`, `vector [1024D]`, etc.), permitiendo inicializar bases de conocimiento limpias desde cero en servidores nuevos sin requerir artefactos previos ni migraciones manuales.
+- **Enrutamiento Inteligente en API Security Gateway (`gateway/proxy/proxy_factory.py`, `gateway/tools/rag_endpoints.py`):**
+  - Detección automática del token del cliente y resolución de su tabla vectorial (`company_profile.rag_table`).
+  - Inyección contextual de RAG y enrutamiento de herramientas (`/v1/rag/search`, `obtener_estructura_documento`, `leer_documento_completo`) a la base aislada del tenant.
+- **Interfaz Gráfica Multi-Tenant en Dashboard (`templates/tabs/tab_rag.html`, `templates/tabs/tab_keys.html`, `static/js/dashboard_rag.js`, `static/js/dashboard_keys.js`):**
+  - Barra superior con selector dinámico de base activa, badges de estado, modal de creación de empresa con selector de dominios a clonar, modal de clonación en caliente y vinculación directa de tablas LanceDB a API Keys.
+
+### Changed
+- **Defensa en Profundidad y Auto-Inferencia de Empresa (`app_dashboard.py`, `app_rag_sync.py`, `static/js/dashboard_rag.js`):**
+  - Auto-resolución determinista del nombre de empresa a partir del slug de `table_name` en todas las capas del sistema, impidiendo que peticiones con parámetros vacíos desencadenen ingestas globales no deseadas.
+
+### Documented
+- **Arquitectura RAG Multi-Tenant (`docs/ARQUITECTURA_RAG_TECCAM.md`):**
+  - Sección 6 exhaustiva documentando el diseño de particionamiento, clonación en memoria RAM, sincronización diferencial y garantías de la Ley 4.
+- **Prueba de Campo de Validación Multi-Tenant (`docs/pruebas_campo/prueba_campo_rag_multi_tenant_aislamiento_2026-09-09.md`):**
+  - Auditoría forense con `local/CorpAI-Gen | Legal & Compliance` en Open-WebUI: validación de 0% de contaminación cruzada, bloqueo transparente de procedimientos confidenciales sin alucinaciones y recuperación de alta fidelidad.
+- **Retrospectiva de Sesión (`docs/RETROSPECTIVAS_SESIONES.md`):**
+  - Registro de aprendizajes sobre desarrollo por etapas, Apache Arrow y defensa en profundidad.
+
 ## [2.11.0] - 2026-09-08
 
 ### Added

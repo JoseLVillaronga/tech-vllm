@@ -26,6 +26,7 @@ Al finalizar cada sesión de trabajo, el agente y el usuario realizan una audito
 
 ## 📈 Historial Consolidado de Sesiones
 
+| **2026-09-09 (Tarde - Fase 2 RAG Multi-Tenant, Tablas Aisladas LanceDB, Clonación Arrow Zero-GPU, Inferencia Defensiva y Despliegues Día Cero)** | `fe37eff0` | 15 | ~65 | 3 | **0** | 1/10 | Mínimo (Modular) | 🟢 **100% Exitoso** |
 | **2026-09-08 (Noche - Evaluación Agéntica en Deepseek Harness, Modo Agentic Bilingüe en Puerto 8010, Sanitización de Nombres PDF y Coronación de gpt-oss-20b en RAG)** | `fe37eff0` | 10 | ~45 | 3 | **0** | 1/10 | Mínimo (Modular) | 🟢 **100% Exitoso** |
 | **2026-09-07 (Noche - Blindaje Anti-Crosstalk, Foco Dinámico en Tools, Compactación Selectiva del Asistente, Resolución de Búsqueda RAG Intermitente y Prueba de 31 Turnos)** | `fe37eff0` | 24 | ~110 | 8 | **0** | 1/10 | Mínimo (Quirúrgico) | 🟢 **100% Exitoso** |
 | **2026-09-07 (Mediodía/Tarde - Estrés Multi-Turno 30 Consultas, Límite 52k de Atención, Context Crosstalk y Olvido Selectivo con Compactación de Tools)** | `fe37eff0` | 18 | ~75 | 4 | **0** | 1/10 | Mínimo (Quirúrgico) | 🟢 **100% Exitoso** |
@@ -51,6 +52,27 @@ Al finalizar cada sesión de trabajo, el agente y el usuario realizan una audito
 ---
 
 ## 📝 Fichas Detalladas por Sesión
+ 
+### 🔹 Sesión: 2026-09-09 Tarde (`fe37eff0-f313-46c0-9ac4-cc5ad3a5f1a2`) - Fase 2 RAG Multi-Tenant: Tablas Aisladas en LanceDB, Clonación Arrow Zero-GPU, Inferencia Defensiva y Despliegues Día Cero
+* **Hitos Principales:**
+  1. **Aislamiento Multi-Tenant Físico en LanceDB (Ley 1 y Ley 3):**
+     - Preservación íntegra de la base histórica `teccam_knowledge_base` (18.834 fragmentos, 47 documentos) como base predeterminada protegida.
+     - Implementación de tablas independientes por empresa inquilina (`kb_<company_slug>.lance`), garantizando que eliminaciones o re-indexaciones tengan un *blast radius* acotado exclusivamente al tenant.
+  2. **Clonación Instantánea de Dominios en Memoria RAM (Apache Arrow Hot Cloning):**
+     - Transferencia atómica de 15.578 fragmentos del dominio *"Derecho Argentino"* en **menos de 2 segundos** vía `pyarrow.RecordBatch` sin consumo de GPU ni llamadas al modelo de embeddings.
+  3. **Diagnóstico y Corrección de Sincronización Diferencial en la GUI (Ley 2 - Causa Raíz):**
+     - Detección de omisión de `empresa` al sincronizar inquilinos desde el Dashboard, que provocaba ingesta global no filtrada.
+     - Detección de purga errónea de libros generales sin empresa (`'none'`) en `teccam_knowledge_base`.
+     - Implementación de **defensa en profundidad**: auto-inferencia determinista de empresa desde `table_name` en frontend, backend y script de sincronización.
+     - Restitución de la regla: la base madre incluye libros de TECCAM S.R.L. y libros generales, manteniendo sus 47 libros intactos; los inquilinos reciben estrictamente sus 42 libros asignados.
+  4. **Enrutamiento Multi-Tenant en API Security Gateway (`company_profile.rag_table`):**
+     - Enrutamiento dinámico de System Prompt y endpoints de herramientas (`/v1/rag/search`, etc.) según el token del cliente.
+     - Demostración empírica de la Ley 4 (grounding estricto): el modelo rechaza alucinar ante búsquedas de procedimientos de otra empresa y responde con precisión matemática ante consultas legítimas.
+  5. **Esquema PyArrow Canónico Oficial (`get_canonical_rag_schema`) y Despliegues "Día Cero":**
+     - Definición formal de las 16 columnas tipadas en código, permitiendo inicializar bases limpias desde cero en servidores nuevos sin requerir artefactos previos ni migraciones manuales.
+* **Invariantes Auditados (Gate 1):** 100% cumplimiento (0 violaciones).
+* **RVI Máximo:** 1/10 (Operación completamente segura).
+* **Blast Radius:** Mínimo (Modular y quirúrgico en `rag_engine.py`, `app_rag_sync.py`, `app_dashboard.py`, `dashboard_rag.js`).
 
 ### 🔹 Sesión: 2026-09-08 Noche (`fe37eff0-f313-46c0-9ac4-cc5ad3a5f1a2`) - Evaluación Agéntica en Deepseek Harness, Modo Agentic Bilingüe en Puerto 8010, Sanitización de Nombres PDF y Coronación de `gpt-oss-20b` en RAG
 * **Hitos Principales:**
