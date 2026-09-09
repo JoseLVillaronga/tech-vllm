@@ -26,7 +26,7 @@ Al finalizar cada sesión de trabajo, el agente y el usuario realizan una audito
 
 ## 📈 Historial Consolidado de Sesiones
 
-| Fecha | ID Sesión | Turnos Usuario | Llamadas Agénticas (Tools) | Commits Git | Invariantes Violados | RVI Máx | Blast Radius | Estado Global |
+| **2026-09-08 (Noche - Evaluación Agéntica en Deepseek Harness, Modo Agentic Bilingüe en Puerto 8010, Sanitización de Nombres PDF y Coronación de gpt-oss-20b en RAG)** | `fe37eff0` | 10 | ~45 | 3 | **0** | 1/10 | Mínimo (Modular) | 🟢 **100% Exitoso** |
 | **2026-09-07 (Noche - Blindaje Anti-Crosstalk, Foco Dinámico en Tools, Compactación Selectiva del Asistente, Resolución de Búsqueda RAG Intermitente y Prueba de 31 Turnos)** | `fe37eff0` | 24 | ~110 | 8 | **0** | 1/10 | Mínimo (Quirúrgico) | 🟢 **100% Exitoso** |
 | **2026-09-07 (Mediodía/Tarde - Estrés Multi-Turno 30 Consultas, Límite 52k de Atención, Context Crosstalk y Olvido Selectivo con Compactación de Tools)** | `fe37eff0` | 18 | ~75 | 4 | **0** | 1/10 | Mínimo (Quirúrgico) | 🟢 **100% Exitoso** |
 | **2026-09-07 (Madrugada - Doble Numeración Canónica, Coincidencia Jerárquica de Secciones, Blindaje Anti-Decay & Ley 4 RAG)** | `fe37eff0` | 14 | ~65 | 6 | **0** | 1/10 | Mínimo (Quirúrgico) | 🟢 **100% Exitoso** |
@@ -51,6 +51,27 @@ Al finalizar cada sesión de trabajo, el agente y el usuario realizan una audito
 ---
 
 ## 📝 Fichas Detalladas por Sesión
+
+### 🔹 Sesión: 2026-09-08 Noche (`fe37eff0-f313-46c0-9ac4-cc5ad3a5f1a2`) - Evaluación Agéntica en Deepseek Harness, Modo Agentic Bilingüe en Puerto 8010, Sanitización de Nombres PDF y Coronación de `gpt-oss-20b` en RAG
+* **Hitos Principales:**
+  1. **Evaluación Agéntica Autónoma en Deepseek Harness (`session.jsonl` - 1.406 eventos):**
+     - Puesta a prueba del modelo `gpt-oss-20b-Q4_K_M` en un ciclo de desarrollo autónomo de software: creación de portal empresarial para TECCAM S.R.L. en Flask + Jinja2 + Tailwind CDN + persistencia real en MongoDB con `.env` en puerto `5900`.
+     - Ejecución de 13 turnos, 55 pasos y 42 llamadas a herramientas (`bash`, `read`, `edit`, `glob`) en tan solo **~35 minutos** (>160 tok/s de generación).
+     - **Comparativa con Qwen 35B:** Frente a las 3.5 horas (~210 minutos) que requirió Qwen 35B para un proyecto similar en PHP MVC, `gpt-oss-20b` operó **6 veces más rápido**, entregando un backend 100% funcional.
+     - **Capacidad de Auto-Sanación de Código:** Al recibir excepciones de consola (`ValueError` en `get_flashed_messages` y `TemplateNotFound: team.html`), el modelo diagnosticó la causa raíz y las corrigió en el paso inmediatamente posterior.
+  2. **Implementación de `alignment_mode="agentic"` en Puerto `:8010` (Ley 1 y Ley 2):**
+     - Desacoplamiento de la alineación doctrinal (invariantes MEA y directivas legales argentinas, omitidas para mantener vírgenes los prompts de benchmarks) de la alineación atencional.
+     - System prompt y user prompt 100% limpios sin prefijos invasivos.
+     - Escudo atencional en herramientas (`role: "tool"`) con **detección dinámica de idioma** (`is_english_query`), inyectando recordatorios en inglés para SWE-bench/Deepseek Harness o en español para consultas locales.
+  3. **Sanitización Robusta de Nombres de Archivo PDF (`pdf_engine.py` y `openwebui_pdf_tool.py`):**
+     - Diagnóstico de falla `HTTP 500 - [Errno 2]` cuando títulos contenían barras inclinadas (ej: `"Decreto 1030/2020"`).
+     - Implementación de `sanitize_pdf_filename`: reemplazo de `/` y `\` por `_` (`decreto_1030_2020.pdf`) y protección contra path traversal.
+     - Erradicación de ruta hardcodeada `PDF_STORAGE_DIR = "/home/jose/vllm/outputs/pdfs"`, reemplazada por resolución dinámica relativa al proyecto.
+  4. **Coronación Oficial de `gpt-oss-20b`:**
+     - Con base en la prueba de estrés de 31 turnos de derecho positivo y las 42 llamadas a tools en Deepseek Harness, `gpt-oss-20b` destrona formalmente a `gemma-4-12b-it` como el modelo rector para RAG intensivo, gracias a su velocidad de prefill masivo (~5.000 tok/s en 15k tokens) y profundidad hermenéutica.
+* **Invariantes Auditados (Gate 1):** 100% cumplimiento (0 violaciones).
+* **RVI Máximo:** 1/10 (Operación segura, sin riesgo de fallo en cadena).
+* **Blast Radius:** Mínimo (Intervenciones quirúrgicas en 3 archivos del Gateway y suite de tests unitarios).
 
 ### 🔹 Sesión: 2026-09-07 Noche (`fe37eff0-f313-46c0-9ac4-cc5ad3a5f1a2`) - Blindaje Anti-Crosstalk, Foco Dinámico en Tools, Compactación Selectiva del Asistente, Resolución de Búsqueda RAG Intermitente y Estrés Exitoso de 31 Turnos
 * **Hitos Principales:**

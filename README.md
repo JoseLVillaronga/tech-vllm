@@ -52,11 +52,11 @@ Gracias a la arquitectura desacoplada de la suite, los **Fallbacks automáticos 
 
 ---
 
-### 1. 📚 Perfil A: "RAG Intensivo y Consulta Documental" *(Escenario Actual Recomendado)*
+### 1. 📚 Perfil A: "RAG Intensivo y Consulta Documental" *(Estándar Dorado: `gpt-oss-20b`)*
 
-* **Objetivo:** Velocidad de respuesta instantánea en búsquedas vectoriales híbridas (Dense 1024D + BM25) en LanceDB, con latencia imperceptible respecto a una consulta directa sin RAG.
+* **Objetivo:** Velocidad de respuesta instantánea en búsquedas vectoriales híbridas (Dense 1024D + BM25) en LanceDB, con prefill ultrarrápido de documentos extensos (>5.000 tok/s en 15k tokens) y cero atenuación atencional (*anti-crosstalk*).
 * **Distribución de VRAM (~18.1 GB - 21.0 GB):**
-  - **Gemma 4-E4B-it (vLLM en `:18000`):** `~13.2 GB` (`gpu_memory_utilization=0.55`).
+  - **LLM Principal Recomendado:** **`gpt-oss-20b-Q4_K_M`** en `llama-server` (`:18100`/`:18000`, ~13-14 GB VRAM) con ventana operativa calibrada a 32K tokens, modo MEA en `:8000` y modo agéntico bilingüe en `:8010`. *(Alternativa clásica densa: `Gemma 4-E4B-it` en vLLM)*.
   - **Qwen3-Embedding (CUDA en `:18005`):** `~3.5 GB - 4.5 GB` (`EMBEDDINGS_DEVICE=cuda`, `EMBEDDINGS_CPU_THREADS=0`). *Imprescindible en GPU para absorber los picos de reindexado masivo sin demoras.*
   - **Docling OCR (GPU en `:5020`):** `~800 MB`.
   - **Sistema / Gnome:** `~1.1 GB`.

@@ -3,6 +3,31 @@
 Todos los cambios notables en este proyecto serán documentados en este archivo.
 El formato está basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/).
 
+## [2.11.0] - 2026-09-08
+
+### Added
+- **Modo de Alineación Agéntico en Puerto 8010 (`gateway/core/alignment_engine.py`, `gateway/server.py`):**
+  - Implementación de `alignment_mode="agentic"` para suites de benchmarking y agentes de desarrollo (Deepseek Harness, SWE-bench).
+  - Preservación 100% virgen del System Prompt y de las instrucciones de usuario (sin inyección de directivas doctrinales ni prefijos invasivos), garantizando compatibilidad absoluta con plantillas de evaluación estándar.
+- **Escudo Atencional Bilingüe y Agnóstico al Dominio (`gateway/core/alignment_engine.py`):**
+  - Incorporada heurística léxica (`is_english_query`) para detectar automáticamente el idioma de la tarea.
+  - Inyección perentoria de anclaje contextual al pie de respuestas de herramientas (`role: "tool"`) en inglés o español, enfocado exclusivamente en la tarea activa y libre de menciones sectoriales o legales accidentales.
+- **Sanitización Robusta de Nombres de PDF (`pdf_engine.py`, `tools/openwebui_pdf_tool.py`):**
+  - Implementación de `sanitize_pdf_filename`: convierte barras (`/`, `\`) en guiones bajos (`_`) en títulos normativos o fechas (ej: `Decreto 1030/2020` -> `decreto_1030_2020.pdf`), erradicando errores de sistema de archivos (`[Errno 2] No such file or directory`).
+  - Protección estricta contra secuencias de *path traversal* (`..`) y caracteres inválidos para sistemas de archivos multiplataforma.
+
+### Changed
+- **Resolución Dinámica de Rutas de Almacenamiento PDF (`pdf_engine.py`):**
+  - Erradicación de ruta absoluta hardcodeada (`PDF_STORAGE_DIR = "/home/jose/vllm/outputs/pdfs"`), sustituida por resolución dinámica relativa al directorio raíz del proyecto (`outputs/pdfs`), en cumplimiento del Invariante MEA de Portabilidad y Prohibición de Rutas Absolutas.
+- **Parametrización de Modos en Fábrica de Proxies (`gateway/proxy/proxy_factory.py`):**
+  - `create_proxy_app` ahora admite `alignment_mode: Optional[str] = None` (`full`, `agentic`, `off`), con retrocompatibilidad garantizada con el parámetro booleano `include_alignment`.
+
+### Documented
+- **Prueba de Campo Agéntica en Deepseek Harness (`docs/pruebas_campo/prueba_campo_deepseek_harness_agentic_gpt_oss_20b_2026-09-08.md`):**
+  - Evaluación forense de 13 turnos, 55 pasos y 42 llamadas a herramientas ejecutando el desarrollo autónomo de un portal corporativo en Flask con persistencia real en MongoDB.
+  - Comparativa de rendimiento: `gpt-oss-20b` completó la tarea en **~35 minutos** (6x más rápido) frente a las **3.5 horas** requeridas por `Qwen 35B`.
+  - Documentación de auto-reparación de tracebacks de Python (`ValueError` y `TemplateNotFound`) y coronación formal de `gpt-oss-20b` como el modelo rector para RAG intensivo y flujos agénticos en el cluster local.
+
 ## [2.10.0] - 2026-09-07
 
 ### Added
