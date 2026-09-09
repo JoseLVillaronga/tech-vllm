@@ -1633,6 +1633,72 @@ def api_test_image():
     except Exception as e:
         return jsonify({"error": f"No se pudo conectar al servicio de Generación de Imágenes (puerto {BACKEND_PORTS['image']}): {str(e)}"}), 502
 
+@app.route("/api/test/infoleg", methods=["POST"])
+def api_test_infoleg():
+    """Extrae y convierte normativas oficiales de InfoLEG a Markdown jerárquico."""
+    data = request.get_json() or {}
+    raw_url = data.get("url", "").strip()
+    if not raw_url:
+        return jsonify({"success": False, "error": "Debe especificar una URL o un ID numérico de InfoLEG válido."}), 400
+
+    custom_title = data.get("title", "").strip() or None
+    prefer_updated = bool(data.get("prefer_updated", True))
+    save_to_disk = bool(data.get("save_to_disk", True))
+
+    try:
+        from scripts.fetch_infoleg import InfoLegFetcher, InfoLegParser, sanitize_filename
+        from pathlib import Path
+
+        fetcher = InfoLegFetcher()
+        doc_parser = InfoLegParser()
+
+        html, meta, text_url = fetcher.resolve_full_text(raw_url, prefer_updated=prefer_updated)
+
+        doc_title = custom_title or meta.get("titulo_oficial") or meta.get("tipo_numero") or "Documento_InfoLEG"
+        markdown_content = doc_parser.generate_markdown(html, meta, custom_title=doc_title)
+
+        safe_filename = sanitize_filename(doc_title)
+        if not safe_filename.endswith(".md"):
+            safe_filename += ".md"
+
+        output_path_str = None
+        if save_to_disk:
+            repo_root = Path(__file__).resolve().parent
+            output_dir = repo_root / "scripts" / "output"
+            output_dir.mkdir(parents=True, exist_ok=True)
+            output_path = output_dir / safe_filename
+            with open(output_path, "w", encoding="utf-8") as f:
+                f.write(markdown_content)
+            output_path_str = str(output_path)
+
+        # Estadísticas del documento
+        size_kb = round(len(markdown_content.encode("utf-8")) / 1024, 1)
+        lines_count = len(markdown_content.splitlines())
+        art_count = len(re.findall(r"\*\*ART[IÍ]CULO\s+\d+", markdown_content, re.IGNORECASE))
+
+        return jsonify({
+            "success": True,
+            "filename": safe_filename,
+            "content": markdown_content,
+            "metadata": {
+                "id": meta.get("id"),
+                "tipo_numero": meta.get("tipo_numero"),
+                "fecha": meta.get("fecha"),
+                "boletin_oficial": meta.get("boletin_oficial"),
+                "tema": meta.get("tema"),
+                "resumen": meta.get("resumen"),
+                "texto_url": text_url,
+                "saved_path": output_path_str
+            },
+            "stats": {
+                "articles": art_count,
+                "lines": lines_count,
+                "size_kb": size_kb
+            }
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": f"Error extrayendo de InfoLEG: {str(e)}"}), 500
+
 # ==============================================================================
 # Endpoints de Base de Conocimiento RAG & LanceDB (Teccam PDF)
 # ==============================================================================
