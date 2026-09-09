@@ -67,7 +67,7 @@ if [ ! -f "${MMPROJ_PATH}" ]; then
 fi
 
 # 5. Parámetros de Inferencia en RAM (CPU)
-PORT="${VISION_PORT:-18200}"
+PORT="${VISION_BACKEND_PORT:-${VISION_PORT:-18200}}"
 ALIAS="${VISION_ALIAS:-Qwen2.5-VL-3B-Instruct}"
 CTX_SIZE="${VISION_CTX_SIZE:-8192}"
 BATCH_SIZE="${VISION_BATCH_SIZE:-2048}"

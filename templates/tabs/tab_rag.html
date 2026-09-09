@@ -22,6 +22,11 @@
                             <span>⚡</span>
                             <span id="text-sync-metadata">Actualizar Solo Metadata</span>
                         </button>
+                        <label class="flex items-center gap-2 px-3.5 py-2.5 bg-slate-900/80 hover:bg-slate-800/80 border border-slate-700/60 rounded-xl text-xs text-slate-300 cursor-pointer select-none transition-colors" title="Desmarcado por defecto (Modo Cero Downtime): Con llama.cpp hay más de 6 GB de VRAM libre, por lo que la sincronización convive con el LLM sin interrupciones. Marca esta opción solo si deseas pausar el LLM preventivamente.">
+                            <input type="checkbox" id="chk-pause-llm" class="w-4 h-4 rounded bg-slate-950 border-slate-600 text-purple-600 focus:ring-purple-500/20 cursor-pointer">
+                            <span class="font-medium text-slate-200">🛡️ Pausar LLM</span>
+                            <span class="text-[10px] text-slate-400 font-mono hidden sm:inline">(VRAM &lt; 2.5GB)</span>
+                        </label>
                         <button onclick="triggerRagSync(false)" id="btn-sync-rag" class="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white rounded-xl text-sm font-semibold shadow-lg shadow-purple-900/30 transition-all" title="Sincronización completa con orquestador de VRAM (descarga nuevos PDFs y vectoriza en GPU)">
                             <svg id="icon-sync-rag" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                                 <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />

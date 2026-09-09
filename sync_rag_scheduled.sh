@@ -18,11 +18,36 @@ PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VENV_PYTHON="${PROJECT_DIR}/venv/bin/python"
 SYNC_SCRIPT="${PROJECT_DIR}/app_rag_sync.py"
 LLM_SERVICE="vllm.service"
+export PYTHONPATH="${PROJECT_DIR}:${PYTHONPATH:-}"
+
+# Cargar variables de entorno desde .env si existe
+if [ -f "${PROJECT_DIR}/.env" ]; then
+    set -a
+    source "${PROJECT_DIR}/.env"
+    set +a
+fi
 
 echo "======================================================================"
 echo "🔄 [RAG Scheduled Orchestrator] Iniciando ciclo de sincronización..."
 echo "⏰ Fecha / Hora: $(date '+%Y-%m-%d %H:%M:%S')"
 echo "======================================================================"
+
+# Parsear argumentos de control de LLM vs argumentos para app_rag_sync.py
+PAUSE_LLM="${RAG_SYNC_PAUSE_LLM:-false}"
+APP_ARGS=()
+for arg in "$@"; do
+    case "$arg" in
+        --pause-llm)
+            PAUSE_LLM="true"
+            ;;
+        --no-pause-llm)
+            PAUSE_LLM="false"
+            ;;
+        *)
+            APP_ARGS+=("$arg")
+            ;;
+    esac
+done
 
 ACTIVE_LLM_SERVICE=""
 
@@ -41,6 +66,7 @@ cleanup() {
         chown -R "${TARGET_USER}:${TARGET_GROUP}" "${PROJECT_DIR}/data/lancedb" 2>/dev/null || true
     fi
 
+    # Solo restaurar el servicio si realmente fue pausado en este ciclo
     if [ -n "${ACTIVE_LLM_SERVICE}" ]; then
         echo "🚀 [RAG Scheduled Orchestrator] Restaurando servicio principal del LLM (${ACTIVE_LLM_SERVICE})..."
         systemctl start "${ACTIVE_LLM_SERVICE}" || echo "⚠️ Advertencia: No se pudo iniciar ${ACTIVE_LLM_SERVICE} automáticamente."
@@ -67,42 +93,56 @@ cleanup() {
 
 trap cleanup EXIT INT TERM
 
-# 1. Comprobar cuál motor LLM está corriendo (vllm.service o vllm-llama.service)
-if systemctl is-active --quiet "vllm.service"; then
-    ACTIVE_LLM_SERVICE="vllm.service"
-elif systemctl is-active --quiet "vllm-llama.service"; then
-    ACTIVE_LLM_SERVICE="vllm-llama.service"
+# 1. Evaluar disponibilidad de VRAM en GPU 0
+MIN_FREE_VRAM_MB=2500
+FREE_VRAM_MB=999999
+if command -v nvidia-smi &> /dev/null; then
+    FREE_VRAM_MB=$(nvidia-smi --id=0 --query-gpu=memory.free --format=csv,noheader,nounits 2>/dev/null | tr -d ' ' || echo "999999")
 fi
 
-if [ -n "${ACTIVE_LLM_SERVICE}" ]; then
-    echo "🛑 [RAG Scheduled Orchestrator] Deteniendo ${ACTIVE_LLM_SERVICE} para liberar VRAM..."
-    systemctl stop "${ACTIVE_LLM_SERVICE}"
-    
-    # Esperar hasta 20 segundos para que libere completamente la memoria GPU
-    for i in {1..20}; do
-        if ! systemctl is-active --quiet "${ACTIVE_LLM_SERVICE}"; then
-            echo "   ✔ ${ACTIVE_LLM_SERVICE} detenido correctamente."
-            break
-        fi
-        sleep 1
-    done
-    sleep 2
-else
-    echo "ℹ️ [RAG Scheduled Orchestrator] Ningún motor LLM (vllm o vllm-llama) estaba activo. Omitiendo detención."
+if [ "${PAUSE_LLM}" = "false" ]; then
+    if [ "${FREE_VRAM_MB}" -ge "${MIN_FREE_VRAM_MB}" ]; then
+        echo "🟢 [RAG Scheduled Orchestrator] Modo Cero Downtime Activo (VRAM libre: ${FREE_VRAM_MB} MB >= ${MIN_FREE_VRAM_MB} MB)."
+        echo "   El motor LLM continuará activo y respondiendo consultas durante la sincronización."
+    else
+        echo "⚠️ [RAG Scheduled Orchestrator] VRAM libre insuficiente (${FREE_VRAM_MB} MB < ${MIN_FREE_VRAM_MB} MB)."
+        echo "   Activando salvaguarda preventiva: pausando LLM temporalmente para proteger la GPU."
+        PAUSE_LLM="true"
+    fi
+fi
+
+if [ "${PAUSE_LLM}" = "true" ]; then
+    # Comprobar cuál motor LLM está corriendo (vllm.service o vllm-llama.service)
+    if systemctl is-active --quiet "vllm.service"; then
+        ACTIVE_LLM_SERVICE="vllm.service"
+    elif systemctl is-active --quiet "vllm-llama.service"; then
+        ACTIVE_LLM_SERVICE="vllm-llama.service"
+    fi
+
+    if [ -n "${ACTIVE_LLM_SERVICE}" ]; then
+        echo "🛑 [RAG Scheduled Orchestrator] Deteniendo ${ACTIVE_LLM_SERVICE} para liberar VRAM..."
+        systemctl stop "${ACTIVE_LLM_SERVICE}"
+        
+        # Esperar hasta 20 segundos para que libere completamente la memoria GPU
+        for i in {1..20}; do
+            if ! systemctl is-active --quiet "${ACTIVE_LLM_SERVICE}"; then
+                echo "   ✔ ${ACTIVE_LLM_SERVICE} detenido correctamente."
+                break
+            fi
+            sleep 1
+        done
+        sleep 2
+    else
+        echo "ℹ️ [RAG Scheduled Orchestrator] Ningún motor LLM (vllm o vllm-llama) estaba activo. Omitiendo detención."
+    fi
 fi
 
 # 2. Verificar consumo de VRAM en GPU 0
 if command -v nvidia-smi &> /dev/null; then
     VRAM_USED_MB=$(nvidia-smi --id=0 --query-gpu=memory.used --format=csv,noheader,nounits 2>/dev/null | tr -d ' ' || echo "0")
-    echo "📊 [RAG Scheduled Orchestrator] VRAM en uso en GPU 0: ${VRAM_USED_MB} MB"
-    
-    if [ "${VRAM_USED_MB}" -gt 10240 ]; then
-        echo "⚠️ [RAG Scheduled Orchestrator] Advertencia: El uso de VRAM (${VRAM_USED_MB} MB) supera los 10 GB."
-        echo "   Esperando 5 segundos adicionales..."
-        sleep 5
-    fi
+    echo "📊 [RAG Scheduled Orchestrator] VRAM en uso en GPU 0: ${VRAM_USED_MB} MB (VRAM Libre: ${FREE_VRAM_MB} MB)"
 fi
 
-# 3. Ejecutar sincronizador Teccam -> LanceDB con aceleración CUDA
+# 3. Ejecutar sincronizador Teccam -> LanceDB
 echo "⚡ [RAG Scheduled Orchestrator] Ejecutando app_rag_sync.py..."
-"${VENV_PYTHON}" "${SYNC_SCRIPT}" "$@"
+"${VENV_PYTHON}" "${SYNC_SCRIPT}" "${APP_ARGS[@]}"

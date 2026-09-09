@@ -301,14 +301,23 @@
             }
         }
 
-        // Configuración rápida de parámetros de Llama.cpp (Qwen MoE / Gemma 4 Denso)
-        function selectQuickLlamaModel(alias, ctx, batch, ubatch, gpuLayers, moeCpu, reasoning, loadMode, threads) {
+        // Configuración rápida de parámetros de Llama.cpp (GPT-OSS 20B / Gemma 4 / Qwen MoE)
+        function selectQuickLlamaModel(modelName, ctx, batch, ubatch, gpuLayers, moeCpu, reasoning, loadMode, threads, parallel) {
             const form = document.getElementById('config-form');
             if (!form) return;
-            const cleanAlias = alias.replace(/\.gguf$/, '');
+            const cleanModel = modelName.replace(/\.gguf$/, '');
             if (form.elements['LLAMA_DIR'] && !form.elements['LLAMA_DIR'].value) form.elements['LLAMA_DIR'].value = '$HOME/llama.cpp';
-            if (form.elements['LLAMA_ALIAS']) form.elements['LLAMA_ALIAS'].value = alias;
-            if (form.elements['LLAMA_MODEL']) form.elements['LLAMA_MODEL'].value = `$LLAMA_DIR/models/${cleanAlias}.gguf`;
+            if (form.elements['LLAMA_MODEL']) form.elements['LLAMA_MODEL'].value = `$LLAMA_DIR/models/${cleanModel}.gguf`;
+            
+            // Mantener o asignar el alias funcional genérico aplicable a todos los modelos de llama.cpp
+            const genericAlias = "CorpAI-Gen | Legal & Compliance";
+            if (form.elements['LLAMA_ALIAS']) {
+                const current = (form.elements['LLAMA_ALIAS'].value || '').trim();
+                if (!current || current.endsWith('.gguf')) {
+                    form.elements['LLAMA_ALIAS'].value = genericAlias;
+                }
+            }
+
             if (form.elements['LLAMA_PORT']) form.elements['LLAMA_PORT'].value = 18100;
             if (form.elements['LLAMA_CTX_SIZE']) form.elements['LLAMA_CTX_SIZE'].value = ctx;
             if (form.elements['LLAMA_BATCH_SIZE']) form.elements['LLAMA_BATCH_SIZE'].value = batch;
@@ -318,5 +327,6 @@
             if (form.elements['LLAMA_REASONING']) form.elements['LLAMA_REASONING'].value = reasoning;
             if (form.elements['LLAMA_LOAD_MODE']) form.elements['LLAMA_LOAD_MODE'].value = loadMode;
             if (form.elements['LLAMA_THREADS']) form.elements['LLAMA_THREADS'].value = threads;
+            if (form.elements['LLAMA_PARALLEL']) form.elements['LLAMA_PARALLEL'].value = parallel || 2;
         }
 

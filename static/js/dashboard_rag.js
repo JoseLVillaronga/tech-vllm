@@ -320,9 +320,17 @@
         }
 
         async function triggerRagSync(force = false) {
-            const confirmMsg = force 
-                ? "⚠️ Aviso de Memoria GPU (Re-indexación Completa):\n\nPara garantizar máxima aceleración CUDA y proteger la VRAM, el servicio del LLM se pausará temporalmente durante la sincronización (~1-2 min) y se reactivará automáticamente al finalizar.\n\n¿Deseas iniciar la re-indexación forzada ahora?"
-                : "⚠️ Aviso de Memoria GPU:\n\nPara sincronizar con máxima aceleración CUDA y proteger la VRAM, el servicio del LLM se pausará brevemente durante la sincronización (~15-45s) y se reactivará automáticamente al terminar.\n\n¿Deseas iniciar la sincronización ahora?";
+            const pauseLlm = document.getElementById('chk-pause-llm')?.checked || false;
+            let confirmMsg = "";
+            if (pauseLlm) {
+                confirmMsg = force 
+                    ? "⚠️ Aviso de Memoria GPU (Re-indexación Completa con Pausa):\n\nPara garantizar máxima aceleración CUDA y proteger la VRAM, el servicio del LLM se pausará temporalmente durante la sincronización (~1-2 min) y se reactivará automáticamente al finalizar.\n\n¿Deseas iniciar la re-indexación forzada ahora?"
+                    : "⚠️ Aviso de Memoria GPU (Con Pausa):\n\nEl servicio del LLM se pausará brevemente durante la sincronización (~15-45s) y se reactivará automáticamente al terminar.\n\n¿Deseas iniciar la sincronización ahora?";
+            } else {
+                confirmMsg = force
+                    ? "🔄 Re-indexación Completa en Caliente (Cero Downtime):\n\nSe re-indexarán los documentos manteniendo el LLM activo y respondiendo consultas en paralelo.\n\n¿Deseas iniciar la sincronización forzada ahora?"
+                    : "🔄 Sincronización RAG en Caliente (Cero Downtime):\n\nLa sincronización se ejecutará en paralelo manteniendo el LLM activo y respondiendo consultas.\n\n¿Deseas iniciar la sincronización ahora?";
+            }
                 
             if (!confirm(confirmMsg)) {
                 return;
@@ -334,13 +342,13 @@
             
             btn.disabled = true;
             if (icon) icon.classList.add('animate-spin');
-            if (text) text.innerText = "Sincronizando (LLM pausado temporalmente)...";
+            if (text) text.innerText = pauseLlm ? "Sincronizando (LLM pausado)..." : "Sincronizando en caliente (LLM activo)...";
             
             try {
                 const res = await fetch('/api/rag/sync', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ force: force })
+                    body: JSON.stringify({ force: force, pause_llm: pauseLlm })
                 });
                 const data = await res.json();
                 
@@ -353,7 +361,7 @@
                         clearInterval(interval);
                         btn.disabled = false;
                         if (icon) icon.classList.remove('animate-spin');
-                        if (text) text.innerText = "Sincronizar Base RAG Ahora";
+                        if (text) text.innerText = "Sincronización Completa";
                     }
                 }, 3000);
                 
@@ -361,7 +369,7 @@
                 alert("Error al iniciar sincronización: " + err.message);
                 btn.disabled = false;
                 if (icon) icon.classList.remove('animate-spin');
-                if (text) text.innerText = "Sincronizar Base RAG Ahora";
+                if (text) text.innerText = "Sincronización Completa";
             }
         }
 
