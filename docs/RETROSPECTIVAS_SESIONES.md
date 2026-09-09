@@ -26,7 +26,7 @@ Al finalizar cada sesión de trabajo, el agente y el usuario realizan una audito
 
 ## 📈 Historial Consolidado de Sesiones
 
-| **2026-09-09 (Tarde - Fase 2 RAG Multi-Tenant, Tablas Aisladas LanceDB, Clonación Arrow Zero-GPU, Inferencia Defensiva y Despliegues Día Cero)** | `fe37eff0` | 15 | ~65 | 3 | **0** | 1/10 | Mínimo (Modular) | 🟢 **100% Exitoso** |
+| **2026-09-09 (Tarde - RAG Multi-Tenant, Tablas Aisladas LanceDB, Clonación Arrow Zero-GPU, Despliegues Día Cero & Extractor InfoLEG en GUI)** | `fe37eff0` | 20 | ~95 | 6 | **0** | 1/10 | Mínimo (Modular) | 🟢 **100% Exitoso** |
 | **2026-09-08 (Noche - Evaluación Agéntica en Deepseek Harness, Modo Agentic Bilingüe en Puerto 8010, Sanitización de Nombres PDF y Coronación de gpt-oss-20b en RAG)** | `fe37eff0` | 10 | ~45 | 3 | **0** | 1/10 | Mínimo (Modular) | 🟢 **100% Exitoso** |
 | **2026-09-07 (Noche - Blindaje Anti-Crosstalk, Foco Dinámico en Tools, Compactación Selectiva del Asistente, Resolución de Búsqueda RAG Intermitente y Prueba de 31 Turnos)** | `fe37eff0` | 24 | ~110 | 8 | **0** | 1/10 | Mínimo (Quirúrgico) | 🟢 **100% Exitoso** |
 | **2026-09-07 (Mediodía/Tarde - Estrés Multi-Turno 30 Consultas, Límite 52k de Atención, Context Crosstalk y Olvido Selectivo con Compactación de Tools)** | `fe37eff0` | 18 | ~75 | 4 | **0** | 1/10 | Mínimo (Quirúrgico) | 🟢 **100% Exitoso** |
@@ -53,7 +53,7 @@ Al finalizar cada sesión de trabajo, el agente y el usuario realizan una audito
 
 ## 📝 Fichas Detalladas por Sesión
  
-### 🔹 Sesión: 2026-09-09 Tarde (`fe37eff0-f313-46c0-9ac4-cc5ad3a5f1a2`) - Fase 2 RAG Multi-Tenant: Tablas Aisladas en LanceDB, Clonación Arrow Zero-GPU, Inferencia Defensiva y Despliegues Día Cero
+### 🔹 Sesión: 2026-09-09 Tarde (`fe37eff0-f313-46c0-9ac4-cc5ad3a5f1a2`) - RAG Multi-Tenant: Tablas Aisladas en LanceDB, Clonación Arrow Zero-GPU, Despliegues Día Cero & Extractor InfoLEG en GUI
 * **Hitos Principales:**
   1. **Aislamiento Multi-Tenant Físico en LanceDB (Ley 1 y Ley 3):**
      - Preservación íntegra de la base histórica `teccam_knowledge_base` (18.834 fragmentos, 47 documentos) como base predeterminada protegida.
@@ -70,9 +70,13 @@ Al finalizar cada sesión de trabajo, el agente y el usuario realizan una audito
      - Demostración empírica de la Ley 4 (grounding estricto): el modelo rechaza alucinar ante búsquedas de procedimientos de otra empresa y responde con precisión matemática ante consultas legítimas.
   5. **Esquema PyArrow Canónico Oficial (`get_canonical_rag_schema`) y Despliegues "Día Cero":**
      - Definición formal de las 16 columnas tipadas en código, permitiendo inicializar bases limpias desde cero en servidores nuevos sin requerir artefactos previos ni migraciones manuales.
+  6. **Extractor de Normativa InfoLEG en GUI con Visor Jurídico Formateado (`app_dashboard.py`, `templates/tabs/tab_tests.html`, `static/js/dashboard_tests.js`):**
+     - Integración del motor canónico de `scripts/fetch_infoleg.py` en la pestaña «Laboratorio / Test» vía endpoint `POST /api/test/infoleg`.
+     - Visor enriquecido con apertura en modo formateado por defecto para operadores no técnicos: renderizado estilizado de títulos, metadatos unificados (sanción y publicación en B.O.), tarjetas acolchadas por cada artículo (`ARTÍCULO X°.-`) con badges púrpuras, e incisos alfanuméricos tabulados.
+     - Descarga directa en un clic de archivos `.md` puros en el navegador para ingesta inmediata en TECCAM_PDF o RAG, y botón de copiado al portapapeles.
 * **Invariantes Auditados (Gate 1):** 100% cumplimiento (0 violaciones).
 * **RVI Máximo:** 1/10 (Operación completamente segura).
-* **Blast Radius:** Mínimo (Modular y quirúrgico en `rag_engine.py`, `app_rag_sync.py`, `app_dashboard.py`, `dashboard_rag.js`).
+* **Blast Radius:** Mínimo (Modular y quirúrgico en `rag_engine.py`, `app_rag_sync.py`, `app_dashboard.py`, `tab_rag.html`, `tab_tests.html`, `dashboard_rag.js`, `dashboard_tests.js`).
 
 ### 🔹 Sesión: 2026-09-08 Noche (`fe37eff0-f313-46c0-9ac4-cc5ad3a5f1a2`) - Evaluación Agéntica en Deepseek Harness, Modo Agentic Bilingüe en Puerto 8010, Sanitización de Nombres PDF y Coronación de `gpt-oss-20b` en RAG
 * **Hitos Principales:**
