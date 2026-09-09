@@ -169,7 +169,7 @@ def create_proxy_app(
             return await handle_web_search(request)
 
         if current_service == "gemma" and path.strip("/") in ["api/tools/generate-pdf", "v1/tools/generate-pdf", "api/tools/pdf", "v1/tools/pdf"] and request.method == "POST":
-            return await handle_pdf_generation(request, gateway_port=8000)
+            return await handle_pdf_generation(request, gateway_port=8000, key_doc=key_doc)
 
         if current_service == "gemma" and path.strip("/") in ["api/tools/read-file", "v1/tools/read_file", "v1/tools/read-file", "api/tools/extract-document", "api/tools/docling"] and request.method == "POST":
             return await handle_doc_reader(request)
@@ -286,7 +286,8 @@ def create_proxy_app(
                         is_cloud_request=is_cloud_request,
                         apply_rag_injection=apply_rag_injection,
                         include_alignment=include_alignment,
-                        alignment_mode=alignment_mode
+                        alignment_mode=alignment_mode,
+                        company_profile=key_doc.get("company_profile") if key_doc and isinstance(key_doc, dict) else None
                     )
 
                     # Tier 2: Si se podó el contexto (data["cache_prompt"] == False), programar vaciado físico de slots en llama-server

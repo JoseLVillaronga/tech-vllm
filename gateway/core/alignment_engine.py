@@ -29,7 +29,7 @@ DEFAULT_INVARIANTS_PROMPT = """🏛️ [DIRECTIVAS FUNDAMENTALES Y DEBER DE VERA
      * Paso 3 [Quirúrgico / Literal]: leer_documento_completo (solicitando la sección o capítulo puntual identificado en el Paso 2) para extraer el texto normativo, procedimental o contractual literal e íntegro de los artículos o cláusulas necesarias.
    - Si existen versiones múltiples de un documento (ej: v1 vs v2.1) o reformas legislativas (normas derogadas vs vigentes), identifica siempre la versión vigente más reciente o realiza la lectura en cadena de ambas para contextualizar la evolución.
 5. DEBER DE VERIFICACIÓN ACTIVA, GROUNDING DOCUMENTAL Y PROHIBICIÓN DE SIMULACIÓN O ADIVINACIÓN:
-   - ÁMBITO DE APLICACIÓN UNIVERSAL: Rige para derecho positivo y constitucional (artículos, mecanismos, facultades, DNU, actos administrativos), procedimientos operativos e instructivos (SOPs, flujogramas, pasos, protocolos), contratos (cláusulas, acuerdos, obligaciones, términos), políticas corporativas (seguridad, calidad, compliance) y documentación técnica interna (manuales, especificaciones de Teccam).
+   - ÁMBITO DE APLICACIÓN UNIVERSAL: Rige para derecho positivo y constitucional (artículos, mecanismos, facultades, DNU, actos administrativos), procedimientos operativos e instructivos (SOPs, flujogramas, pasos, protocolos), contratos (cláusulas, acuerdos, obligaciones, términos), políticas corporativas (seguridad, calidad, compliance) y documentación técnica interna (manuales, especificaciones corporativas).
    - Cuando el usuario consulte o pida mostrar/citar cualquier artículo, cláusula, paso procedimental, política, definición o mecanismo (ej: "mostrame el artículo X", "¿cuál es el mecanismo...", "¿qué es un DNU y sus límites?", "¿qué condiciones deben cumplirse?", "definición vigente", "¿cómo se ejecuta el procedimiento Y?"), o en REPREGUNTAS Y TURNOS DE CONTINUACIÓN CONVERSACIONAL:
      ESTÁ ESTRICTAMENTE PROHIBIDO RESPONDER DE MEMORIA PARAMÉTRICA O INVENTAR CONTENIDO, PASOS, REQUISITOS, LÍMITES O NÚMEROS DE ARTÍCULOS. La inercia conversacional NO exime de la obligación de invocar herramientas.
    - Para definir una institución, explicar un mecanismo o citar normas, procedimientos, contratos o políticas en cuerpos documentales extensos, es OBLIGATORIO COMBINAR las herramientas:
@@ -254,13 +254,57 @@ def is_english_query(text: str) -> bool:
     return en_score > es_score
 
 
+def format_company_profile_block(profile: Optional[Dict[str, Any]]) -> str:
+    """
+    Formatea de forma estructurada y canónica el bloque de identidad corporativa
+    asociado a la API Key para su inyección en el prompt del sistema.
+    """
+    if not profile or not isinstance(profile, dict) or not profile.get("enabled"):
+        return ""
+
+    lines = ["[PERFIL E IDENTIDAD CORPORATIVA DE LA ORGANIZACIÓN]:"]
+    c_name = (profile.get("company_name") or "").strip()
+    if c_name:
+        lines.append(f"- Empresa / Razón Social: {c_name}")
+
+    activity = (profile.get("activity") or "").strip()
+    if activity:
+        lines.append(f"- Actividad Principal: {activity}")
+
+    contact = (profile.get("contact_info") or "").strip()
+    if contact:
+        lines.append(f"- Canales de Contacto: {contact}")
+
+    hours = (profile.get("business_hours") or "").strip()
+    if hours:
+        lines.append(f"- Horario de Atención: {hours}")
+
+    address = (profile.get("address") or "").strip()
+    if address:
+        lines.append(f"- Dirección / Ubicación: {address}")
+
+    custom_inst = (profile.get("custom_instructions") or "").strip()
+    if custom_inst:
+        lines.append(f"- Directrices Corporativas Específicas: {custom_inst}")
+
+    lines.append("--------------------------------------------------")
+    lines.append(
+        "Directiva de Identidad Institucional: Actúas como asistente oficial de esta organización. "
+        "Toda respuesta sobre identidad corporativa, medios de contacto, horarios y servicios debe alinearse "
+        "estrictamente a los datos institucionales expuestos precedentemente."
+    )
+
+    return "\n".join(lines)
+
+
 async def enrich_chat_payload(
     data: Dict[str, Any],
     actual_model: str,
     is_cloud_request: bool = False,
     apply_rag_injection: bool = False,
     include_alignment: bool = True,
-    alignment_mode: Optional[str] = None
+    alignment_mode: Optional[str] = None,
+    company_profile: Optional[Dict[str, Any]] = None
 ) -> Dict[str, Any]:
     """
     Enriquece el payload de chat completions según el modo de alineación:
@@ -322,6 +366,12 @@ async def enrich_chat_payload(
     if settings.get("inject_temporal", True):
         system_parts.append(get_current_time_str())
 
+    # Inyección de Perfil Corporativo (si está configurado y habilitado en la API Key)
+    if company_profile:
+        corp_block = format_company_profile_block(company_profile)
+        if corp_block:
+            system_parts.append(corp_block)
+
     # Bloque de invariantes éticos, protocolos y guías (sólo en modo 'full')
     if mode == "full":
         invariants_block = get_invariants_system_prompt(settings, has_pdf_tool=has_pdf_tool, has_doc_tool=has_doc_tool, has_vision_attachment=has_vision_attachment)
@@ -334,7 +384,11 @@ async def enrich_chat_payload(
         system_msg = next((m for m in messages if m.get("role") == "system"), None)
         if system_msg:
             orig_content = system_msg.get("content", "")
-            if "[DIRECTIVAS FUNDAMENTALES" not in orig_content and "Fecha y hora actual:" not in orig_content:
+            if (
+                "[DIRECTIVAS FUNDAMENTALES" not in orig_content
+                and "Fecha y hora actual:" not in orig_content
+                and "[PERFIL E IDENTIDAD CORPORATIVA" not in orig_content
+            ):
                 system_msg["content"] = f"{full_system_header}\n\n{orig_content}".strip()
         else:
             messages.insert(0, {"role": "system", "content": full_system_header})

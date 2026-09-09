@@ -566,7 +566,7 @@ def create_pdf_from_markdown(
     title: str,
     markdown_content: str,
     filename: Optional[str] = None,
-    company_name: str = "Teccam S.R.L.",
+    company_name: str = "Documento Oficial",
     base_url: str = "http://127.0.0.1:8000"
 ) -> Dict[str, Any]:
     """Genera un archivo PDF, lo guarda en disco para descarga directa y devuelve metadata + URL."""

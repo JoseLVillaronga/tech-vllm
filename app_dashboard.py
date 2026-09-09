@@ -572,7 +572,8 @@ def api_get_keys():
                 "quota_reset": k.get("quota_reset", "none"),
                 "last_reset_at": str(k.get("last_reset_at") or ""),
                 "expires_at": k.get("expires_at", ""),
-                "is_active": k.get("is_active", True)
+                "is_active": k.get("is_active", True),
+                "company_profile": k.get("company_profile", {})
             })
         return jsonify(result)
     except Exception as e:
@@ -612,6 +613,9 @@ def api_create_key():
         if quota_reset not in ["none", "daily", "monthly"]:
             quota_reset = "none"
         expires_at = data.get("expires_at", "").strip()
+        company_profile = data.get("company_profile", {})
+        if not isinstance(company_profile, dict):
+            company_profile = {}
         
         if not name:
             return jsonify({"error": "El nombre es obligatorio"}), 400
@@ -638,7 +642,8 @@ def api_create_key():
             "quota_reset": quota_reset,
             "last_reset_at": datetime.utcnow(),
             "expires_at": expires_val,
-            "is_active": True
+            "is_active": True,
+            "company_profile": company_profile
         }).inserted_id
         
         # Persistir modelos granulares seleccionados en db.api_key_models
@@ -690,6 +695,9 @@ def api_update_key(key_id):
             quota_reset = "none"
         expires_at = data.get("expires_at", "").strip()
         is_active = data.get("is_active", True)
+        company_profile = data.get("company_profile", None)
+        if company_profile is not None and not isinstance(company_profile, dict):
+            company_profile = {}
         
         if not name:
             return jsonify({"error": "El nombre es obligatorio"}), 400
@@ -701,19 +709,23 @@ def api_update_key(key_id):
         if expires_at:
             expires_val = expires_at
             
+        update_fields = {
+            "name": name,
+            "description": description,
+            "services": services,
+            "allowed_providers": allowed_providers,
+            "max_tokens": max_tokens,
+            "quota_reset": quota_reset,
+            "expires_at": expires_val,
+            "is_active": is_active
+        }
+        if company_profile is not None:
+            update_fields["company_profile"] = company_profile
+
         db = get_db()
         res = db.api_keys.update_one(
             {"_id": ObjectId(key_id)},
-            {"$set": {
-                "name": name,
-                "description": description,
-                "services": services,
-                "allowed_providers": allowed_providers,
-                "max_tokens": max_tokens,
-                "quota_reset": quota_reset,
-                "expires_at": expires_val,
-                "is_active": is_active
-            }}
+            {"$set": update_fields}
         )
         
         if res.matched_count == 0:
@@ -1661,13 +1673,21 @@ def api_rag_sync():
         import threading
         import subprocess
         
-        force = request.json.get("force", False) if request.is_json else False
+        data = request.get_json(silent=True) or {}
+        force = data.get("force", False)
+        pause_llm = data.get("pause_llm", None)
         
         def run_sync():
             try:
-                cmd = ["sudo", "/bin/bash", "/home/jose/vllm/sync_rag_scheduled.sh"]
+                base_dir = os.path.dirname(os.path.abspath(__file__))
+                sync_script = os.path.join(base_dir, "sync_rag_scheduled.sh")
+                cmd = ["sudo", "/bin/bash", sync_script]
                 if force:
                     cmd.append("--force")
+                if pause_llm is True:
+                    cmd.append("--pause-llm")
+                elif pause_llm is False:
+                    cmd.append("--no-pause-llm")
                 subprocess.run(cmd, check=True)
             except Exception as se:
                 print(f"❌ Error en background sync con orquestador: {se}", file=sys.stderr)
@@ -1675,9 +1695,14 @@ def api_rag_sync():
         thread = threading.Thread(target=run_sync, daemon=True)
         thread.start()
         
+        if pause_llm is True:
+            msg = "Sincronización RAG iniciada. El LLM se pausará temporalmente para proteger la VRAM y se reactivará al terminar."
+        else:
+            msg = "Sincronización RAG iniciada en caliente con cero downtime (LLM activo)."
+            
         return jsonify({
             "status": "started",
-            "message": "Sincronización RAG iniciada. El LLM se pausará brevemente para proteger la VRAM y se reanudará automáticamente."
+            "message": msg
         })
     except Exception as e:
         return jsonify({"error": f"Error al iniciar sincronización: {str(e)}"}), 500

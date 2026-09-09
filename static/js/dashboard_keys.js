@@ -1,6 +1,7 @@
         // --- Gestión de Claves API Específicas (MongoDB) ---
         window.cachedCloudProviders = [];
         window.cachedProviderModels = {};
+        window.cachedApiKeys = {};
 
         async function getProviderModels(providerId) {
             if (window.cachedProviderModels[providerId]) {
@@ -315,7 +316,9 @@
                 }
                 
                 let html = '';
+                window.cachedApiKeys = {};
                 keys.forEach(k => {
+                    window.cachedApiKeys[k.id] = k;
                     const activeClass = k.is_active 
                         ? 'border-emerald-500/30 bg-emerald-950/5' 
                         : 'border-red-950/30 bg-red-950/5 opacity-60';
@@ -406,12 +409,19 @@
                     const svcJson = JSON.stringify(k.services || []).replace(/"/g, '&quot;');
                     const provJson = JSON.stringify(k.allowed_providers || []).replace(/"/g, '&quot;');
 
+                    let companyBadge = '';
+                    if (k.company_profile && k.company_profile.enabled) {
+                        const cName = escapeHtml(k.company_profile.company_name || 'Perfil Corporativo');
+                        companyBadge = `<span class="text-[9px] px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-300 font-semibold border border-sky-500/30 flex items-center gap-1" title="Perfil corporativo activo: ${cName}">🏢 ${cName}</span>`;
+                    }
+
                     html += `
                         <div data-key-card-id="${k.id}" class="glass-panel p-4 rounded-xl border flex flex-col md:flex-row justify-between items-start md:items-center gap-4 transition-all ${activeClass}">
                             <div class="flex-1 flex flex-col gap-1 min-w-[200px]">
-                                <div class="flex items-center gap-2">
+                                <div class="flex items-center gap-2 flex-wrap">
                                     <span class="text-xs font-bold text-slate-200">${escapeHtml(k.name)}</span>
                                     ${activePill}
+                                    ${companyBadge}
                                 </div>
                                 <span class="text-[10px] text-slate-400 font-medium">${escapeHtml(k.description || 'Sin descripción')}</span>
                                 <div class="flex flex-wrap items-center gap-2 mt-1.5">
@@ -474,6 +484,17 @@
                 return;
             }
 
+            const cpEnabled = document.getElementById('key-company-enabled') ? document.getElementById('key-company-enabled').checked : false;
+            const company_profile = {
+                enabled: cpEnabled,
+                company_name: (document.getElementById('key-company-name')?.value || '').trim(),
+                activity: (document.getElementById('key-company-activity')?.value || '').trim(),
+                contact_info: (document.getElementById('key-company-contact')?.value || '').trim(),
+                business_hours: (document.getElementById('key-company-hours')?.value || '').trim(),
+                address: (document.getElementById('key-company-address')?.value || '').trim(),
+                custom_instructions: (document.getElementById('key-company-instructions')?.value || '').trim()
+            };
+
             try {
                 const res = await fetch('/api/keys', {
                     method: 'POST',
@@ -486,7 +507,8 @@
                         allowed_models: allowed_models,
                         max_tokens: maxTokens,
                         quota_reset: quotaReset,
-                        expires_at: expiry
+                        expires_at: expiry,
+                        company_profile: company_profile
                     })
                 });
                 
@@ -497,6 +519,15 @@
                     document.getElementById('key-max-tokens').value = '';
                     document.getElementById('key-quota-reset').value = 'none';
                     document.getElementById('key-expiry').value = '';
+                    if (document.getElementById('key-company-enabled')) document.getElementById('key-company-enabled').checked = false;
+                    if (document.getElementById('key-company-name')) document.getElementById('key-company-name').value = '';
+                    if (document.getElementById('key-company-activity')) document.getElementById('key-company-activity').value = '';
+                    if (document.getElementById('key-company-contact')) document.getElementById('key-company-contact').value = '';
+                    if (document.getElementById('key-company-hours')) document.getElementById('key-company-hours').value = '';
+                    if (document.getElementById('key-company-address')) document.getElementById('key-company-address').value = '';
+                    if (document.getElementById('key-company-instructions')) document.getElementById('key-company-instructions').value = '';
+                    const cpSec = document.getElementById('key-company-section');
+                    if (cpSec) cpSec.classList.add('hidden');
                     document.querySelectorAll('input[name="key-services"]').forEach(cb => cb.checked = false);
                     document.querySelectorAll('input[name="key-providers"]').forEach(cb => cb.checked = false);
                     renderCloudProviderCheckboxes();
@@ -585,6 +616,24 @@
             }
             
             await renderEditCloudProviderCheckboxes(providers, keyModelsByProv);
+
+            // Poblar campos de perfil corporativo
+            const cachedKey = (window.cachedApiKeys && window.cachedApiKeys[id]) || {};
+            const cp = cachedKey.company_profile || {};
+            const cpEnabledEl = document.getElementById('edit-key-company-enabled');
+            if (cpEnabledEl) cpEnabledEl.checked = Boolean(cp.enabled);
+            const cpNameEl = document.getElementById('edit-key-company-name');
+            if (cpNameEl) cpNameEl.value = cp.company_name || '';
+            const cpActEl = document.getElementById('edit-key-company-activity');
+            if (cpActEl) cpActEl.value = cp.activity || '';
+            const cpContEl = document.getElementById('edit-key-company-contact');
+            if (cpContEl) cpContEl.value = cp.contact_info || '';
+            const cpHoursEl = document.getElementById('edit-key-company-hours');
+            if (cpHoursEl) cpHoursEl.value = cp.business_hours || '';
+            const cpAddrEl = document.getElementById('edit-key-company-address');
+            if (cpAddrEl) cpAddrEl.value = cp.address || '';
+            const cpInstEl = document.getElementById('edit-key-company-instructions');
+            if (cpInstEl) cpInstEl.value = cp.custom_instructions || '';
             
             document.getElementById('edit-key-modal').classList.remove('hidden');
         }
@@ -633,6 +682,17 @@
                 return;
             }
 
+            const cpEnabled = document.getElementById('edit-key-company-enabled') ? document.getElementById('edit-key-company-enabled').checked : false;
+            const company_profile = {
+                enabled: cpEnabled,
+                company_name: (document.getElementById('edit-key-company-name')?.value || '').trim(),
+                activity: (document.getElementById('edit-key-company-activity')?.value || '').trim(),
+                contact_info: (document.getElementById('edit-key-company-contact')?.value || '').trim(),
+                business_hours: (document.getElementById('edit-key-company-hours')?.value || '').trim(),
+                address: (document.getElementById('edit-key-company-address')?.value || '').trim(),
+                custom_instructions: (document.getElementById('edit-key-company-instructions')?.value || '').trim()
+            };
+
             try {
                 const res = await fetch(`/api/keys/${id}`, {
                     method: 'PUT',
@@ -646,7 +706,8 @@
                         max_tokens: maxTokens,
                         quota_reset: quotaReset,
                         expires_at: expiry,
-                        is_active: isActive
+                        is_active: isActive,
+                        company_profile: company_profile
                     })
                 });
                 

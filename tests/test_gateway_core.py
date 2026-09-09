@@ -400,7 +400,148 @@ class TestGatewayCore(unittest.TestCase):
         self.assertIn("Fix the NullPointerException in AuthController.java", tool_out)
         self.assertIn("You are executing tools to solve EXCLUSIVELY the current user task", tool_out)
 
+    def test_format_company_profile_block(self):
+        from gateway.core.alignment_engine import format_company_profile_block
+
+        # 1. Perfil nulo o deshabilitado
+        self.assertEqual(format_company_profile_block(None), "")
+        self.assertEqual(format_company_profile_block({}), "")
+        self.assertEqual(format_company_profile_block({"enabled": False, "company_name": "Test"}), "")
+
+        # 2. Perfil habilitado completo
+        full_profile = {
+            "enabled": True,
+            "company_name": "Logística y Transporte S.A.",
+            "activity": "Transporte de Cargas Internacionales",
+            "contact_info": "operaciones@logistica.com | +54 11 5555-4321",
+            "business_hours": "Lunes a Viernes de 8 a 18 hs",
+            "address": "Puerto Madero, Buenos Aires",
+            "custom_instructions": "Tratar al cliente de Usted y solicitar CUIT para cotizaciones."
+        }
+        block = format_company_profile_block(full_profile)
+        self.assertIn("[PERFIL E IDENTIDAD CORPORATIVA DE LA ORGANIZACIÓN]:", block)
+        self.assertIn("Empresa / Razón Social: Logística y Transporte S.A.", block)
+        self.assertIn("Actividad Principal: Transporte de Cargas Internacionales", block)
+        self.assertIn("Canales de Contacto: operaciones@logistica.com | +54 11 5555-4321", block)
+        self.assertIn("Horario de Atención: Lunes a Viernes de 8 a 18 hs", block)
+        self.assertIn("Dirección / Ubicación: Puerto Madero, Buenos Aires", block)
+        self.assertIn("Directrices Corporativas Específicas: Tratar al cliente de Usted y solicitar CUIT para cotizaciones.", block)
+        self.assertIn("Directiva de Identidad Institucional:", block)
+
+        # 3. Perfil habilitado parcial
+        partial_profile = {
+            "enabled": True,
+            "company_name": "Consultora Alfa",
+            "contact_info": "alfa@consultora.com"
+        }
+        p_block = format_company_profile_block(partial_profile)
+        self.assertIn("Empresa / Razón Social: Consultora Alfa", p_block)
+        self.assertIn("Canales de Contacto: alfa@consultora.com", p_block)
+        self.assertNotIn("Actividad Principal:", p_block)
+        self.assertNotIn("Horario de Atención:", p_block)
+
+    def test_enrich_chat_payload_with_company_profile(self):
+        import asyncio
+        from gateway.core.alignment_engine import enrich_chat_payload
+
+        corp_profile = {
+            "enabled": True,
+            "company_name": "Acme Distribuidora",
+            "activity": "Insumos Eléctricos",
+            "contact_info": "ventas@acme.com",
+            "business_hours": "9 a 17 hs"
+        }
+
+        # Petición básica
+        data = {
+            "messages": [
+                {"role": "user", "content": "Hola, ¿cuál es su horario de atención?"}
+            ]
+        }
+
+        res = asyncio.run(enrich_chat_payload(
+            data,
+            actual_model="gemma",
+            is_cloud_request=False,
+            company_profile=corp_profile
+        ))
+
+        # Debe haberse inyectado el system prompt con el perfil corporativo
+        sys_msg = next((m for m in res["messages"] if m.get("role") == "system"), None)
+        self.assertIsNotNone(sys_msg)
+        self.assertIn("[PERFIL E IDENTIDAD CORPORATIVA DE LA ORGANIZACIÓN]:", sys_msg["content"])
+        self.assertIn("Acme Distribuidora", sys_msg["content"])
+        self.assertIn("Insumos Eléctricos", sys_msg["content"])
+        self.assertIn("ventas@acme.com", sys_msg["content"])
+
+        # No duplicación en re-inyecciones
+        res_dup = asyncio.run(enrich_chat_payload(
+            res,
+            actual_model="gemma",
+            is_cloud_request=False,
+            company_profile=corp_profile
+        ))
+        sys_content = next((m for m in res_dup["messages"] if m.get("role") == "system"), None)["content"]
+        self.assertEqual(sys_content.count("[PERFIL E IDENTIDAD CORPORATIVA"), 1)
+
+        # Si company_profile está deshabilitado
+        disabled_corp = {"enabled": False, "company_name": "NoInyectar"}
+        data_clean = {
+            "messages": [
+                {"role": "user", "content": "Consulta limpia"}
+            ]
+        }
+        res_clean = asyncio.run(enrich_chat_payload(
+            data_clean,
+            actual_model="gemma",
+            is_cloud_request=False,
+            company_profile=disabled_corp
+        ))
+        sys_clean = next((m for m in res_clean["messages"] if m.get("role") == "system"), None)
+        if sys_clean:
+            self.assertNotIn("[PERFIL E IDENTIDAD CORPORATIVA", sys_clean["content"])
+
+    def test_handle_pdf_generation_company_fallback(self):
+        import asyncio
+        from unittest.mock import patch, AsyncMock, MagicMock
+        from gateway.tools.pdf_generator import handle_pdf_generation
+
+        mock_request = MagicMock()
+        mock_request.body = AsyncMock(return_value=b'{"title": "Reporte Anual", "markdown_content": "# Contenido"}')
+        mock_request.headers = {"host": "127.0.0.1:8000"}
+        mock_request.url.scheme = "http"
+
+        key_doc = {
+            "name": "Cliente Clave",
+            "company_profile": {
+                "enabled": True,
+                "company_name": "Acme Industries S.A."
+            }
+        }
+
+        with patch("pdf_engine.create_pdf_from_markdown") as mock_create_pdf:
+            mock_create_pdf.return_value = {"success": True, "download_url": "/api/tools/pdf/123"}
+            res = asyncio.run(handle_pdf_generation(mock_request, gateway_port=8000, key_doc=key_doc))
+            self.assertEqual(res.status_code, 200)
+            mock_create_pdf.assert_called_once()
+            _, kwargs = mock_create_pdf.call_args
+            self.assertEqual(kwargs.get("company_name"), "Acme Industries S.A.")
+
+        # Si viene company_name explícito en tool_data, debe priorizarse el explícito
+        mock_req_explicit = MagicMock()
+        mock_req_explicit.body = AsyncMock(return_value=b'{"title": "Reporte", "markdown_content": "# Contenido", "company_name": "Empresa Especial"}')
+        mock_req_explicit.headers = {"host": "127.0.0.1:8000"}
+        mock_req_explicit.url.scheme = "http"
+
+        with patch("pdf_engine.create_pdf_from_markdown") as mock_create_pdf:
+            mock_create_pdf.return_value = {"success": True, "download_url": "/api/tools/pdf/123"}
+            res = asyncio.run(handle_pdf_generation(mock_req_explicit, gateway_port=8000, key_doc=key_doc))
+            self.assertEqual(res.status_code, 200)
+            _, kwargs = mock_create_pdf.call_args
+            self.assertEqual(kwargs.get("company_name"), "Empresa Especial")
+
 
 if __name__ == "__main__":
     unittest.main()
+
 

@@ -9,6 +9,7 @@ from gateway.core.context_pruner import prune_chat_history, get_max_user_turns, 
 from gateway.core.slot_flusher import flush_llama_slots
 from gateway.core.alignment_engine import (
     enrich_chat_payload,
+    format_company_profile_block,
     get_invariants_system_prompt,
     get_alignment_settings,
     save_alignment_settings,
@@ -29,6 +30,7 @@ __all__ = [
     "extract_token",
     "MASTER_KEY",
     "enrich_chat_payload",
+    "format_company_profile_block",
     "get_invariants_system_prompt",
     "get_alignment_settings",
     "save_alignment_settings",

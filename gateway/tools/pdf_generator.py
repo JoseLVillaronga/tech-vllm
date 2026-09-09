@@ -2,7 +2,7 @@ import os
 import sys
 import json
 import time
-from typing import Optional
+from typing import Optional, Dict, Any
 from fastapi import Request, Response, HTTPException
 from fastapi.responses import FileResponse
 
@@ -63,7 +63,7 @@ def handle_pdf_download(file_id: str, dl_filename: Optional[str] = None):
         raise HTTPException(status_code=500, detail=f"Error al descargar PDF: {dl_err}")
 
 
-async def handle_pdf_generation(request: Request, gateway_port: int = 8000) -> Response:
+async def handle_pdf_generation(request: Request, gateway_port: int = 8000, key_doc: Optional[Dict[str, Any]] = None) -> Response:
     """
     Manejador para el endpoint POST /api/tools/generate-pdf.
     """
@@ -93,7 +93,9 @@ async def handle_pdf_generation(request: Request, gateway_port: int = 8000) -> R
             or ""
         )
         filename = tool_data.get("filename") or tool_data.get("file_name") or None
-        company_name = tool_data.get("company_name") or "Documento Oficial"
+        comp_profile = key_doc.get("company_profile") if key_doc and isinstance(key_doc, dict) else {}
+        comp_fallback = comp_profile.get("company_name") if isinstance(comp_profile, dict) and comp_profile.get("enabled") else None
+        company_name = tool_data.get("company_name") or comp_fallback or "Documento Oficial"
 
         if not markdown_content:
             return Response(
