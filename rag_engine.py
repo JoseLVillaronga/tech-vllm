@@ -93,11 +93,34 @@ def list_knowledge_bases() -> List[Dict[str, Any]]:
             })
     return bases
 
+def get_canonical_rag_schema():
+    """Retorna el esquema PyArrow canónico oficial para las tablas LanceDB de la suite vLLM."""
+    import pyarrow as pa
+    return pa.schema([
+        pa.field("id", pa.string(), nullable=True),
+        pa.field("doc_id", pa.string(), nullable=True),
+        pa.field("doc_title", pa.string(), nullable=True),
+        pa.field("doc_author", pa.string(), nullable=True),
+        pa.field("doc_topic", pa.string(), nullable=True),
+        pa.field("doc_date", pa.string(), nullable=True),
+        pa.field("section_path", pa.string(), nullable=True),
+        pa.field("chunk_index", pa.int64(), nullable=True),
+        pa.field("chunk_tokens", pa.int64(), nullable=True),
+        pa.field("total_chunks", pa.int64(), nullable=True),
+        pa.field("total_doc_tokens", pa.int64(), nullable=True),
+        pa.field("content", pa.string(), nullable=True),
+        pa.field("text", pa.string(), nullable=True),
+        pa.field("vector", pa.list_(pa.float32(), 1024), nullable=True),
+        pa.field("doc_vigencia", pa.string(), nullable=False),
+        pa.field("doc_fecha_publicacion", pa.string(), nullable=True),
+    ])
+
 def create_knowledge_base(table_name: str, clone_from: Optional[str] = None, clone_themes: Optional[List[str]] = None) -> Dict[str, Any]:
     """
     Crea una nueva tabla de conocimiento en LanceDB.
     Si se especifica clone_from y clone_themes, clona instantáneamente los fragmentos correspondientes
     desde la tabla origen en memoria (Apache Arrow), sin consumo de GPU ni reprocesamiento.
+    Si la instalación es limpia desde cero y no hay bases previas, inicializa la tabla con el esquema canónico completo.
     """
     db = get_lancedb()
     clean_name = re.sub(r'[^a-zA-Z0-9_]', '_', table_name.strip().lower()).strip('_')
@@ -113,12 +136,12 @@ def create_knowledge_base(table_name: str, clone_from: Optional[str] = None, clo
     if clone_from:
         source_tbl = get_table(clone_from)
         if source_tbl is None:
-            raise ValueError(f"La base origen '{clone_from}' no existe.")
+            raise ValueError(f"La tabla origen '{clone_from}' no existe.")
             
     if source_tbl is not None:
         if clone_themes and len(clone_themes) > 0:
-            clean_t_list = [t.replace("'", "''") for t in clone_themes]
-            theme_conditions = " OR ".join([f"doc_topic = '{ct}'" for ct in clean_t_list])
+            escaped_themes = [t.replace("'", "''") for t in clone_themes]
+            theme_conditions = " OR ".join([f"doc_topic = '{t}'" for t in escaped_themes])
             arrow_data = source_tbl.search().where(theme_conditions).limit(100000).to_arrow()
             if len(arrow_data) > 0:
                 new_tbl = db.create_table(clean_name, data=arrow_data)
@@ -139,13 +162,15 @@ def create_knowledge_base(table_name: str, clone_from: Optional[str] = None, clo
             "themes_cloned": []
         }
     else:
+        # Si no se pasó tabla origen o no existe tabla previa (ej: instalación desde cero)
         default_tbl = get_table(TABLE_NAME)
         if default_tbl is not None:
             schema = default_tbl.to_arrow().schema
-            new_tbl = db.create_table(clean_name, schema=schema)
-            return {"success": True, "table_name": clean_name, "chunks_cloned": 0}
         else:
-            raise RuntimeError("No se encontró la tabla base predeterminada para replicar el esquema.")
+            schema = get_canonical_rag_schema()
+            
+        new_tbl = db.create_table(clean_name, schema=schema)
+        return {"success": True, "table_name": clean_name, "chunks_cloned": 0}
 
 def clone_knowledge_domain(source_table: str, target_table: str, theme: str) -> Dict[str, Any]:
     """Clona un dominio de conocimiento desde una base a otra existente sin duplicar cómputo."""
