@@ -329,6 +329,37 @@ class TestGatewayCore(unittest.TestCase):
         res_inf = asyncio.run(enrich_chat_payload(data_informal_followup, actual_model="gemma", is_cloud_request=False))
         self.assertNotIn("[DIRECTIVA DE CONTROL Y GROUNDING OBLIGATORIO", res_inf["messages"][-1]["content"])
 
+        # 8b. Consulta amplia / catálogo de tratados con 'obtener_indice_biblioteca' disponible -> Debe ordenar iniciar con 'obtener_indice_biblioteca'
+        tools_with_index = [
+            {"type": "function", "function": {"name": "obtener_indice_biblioteca"}},
+            {"type": "function", "function": {"name": "leer_documento_completo"}}
+        ]
+        data_broad_index = {
+            "messages": [
+                {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "user", "content": "Pasame una lista de tratados internacionales vigentes en Argentina, fundamenta en profundidad."}
+            ],
+            "tools": tools_with_index
+        }
+        res_broad = asyncio.run(enrich_chat_payload(data_broad_index, actual_model="gemma", is_cloud_request=False))
+        last_broad_msg = res_broad["messages"][-1]["content"]
+        self.assertIn("[DIRECTIVA DE CONTROL Y GROUNDING OBLIGATORIO (MEA)]", last_broad_msg)
+        self.assertIn("obtener_indice_biblioteca", last_broad_msg)
+        self.assertIn("mapa ontológico de obras y normas oficiales disponibles", last_broad_msg)
+
+        # 8c. Consulta puntual sobre un artículo específico con 'obtener_indice_biblioteca' disponible -> Directiva estándar
+        data_puntual = {
+            "messages": [
+                {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "user", "content": "¿Qué pena establece el artículo 79 del Código Penal?"}
+            ],
+            "tools": tools_with_index
+        }
+        res_puntual = asyncio.run(enrich_chat_payload(data_puntual, actual_model="gemma", is_cloud_request=False))
+        last_puntual_msg = res_puntual["messages"][-1]["content"]
+        self.assertIn("[DIRECTIVA DE CONTROL Y GROUNDING OBLIGATORIO (MEA)]", last_puntual_msg)
+        self.assertNotIn("mapa ontológico de obras y normas oficiales disponibles", last_puntual_msg)
+
         # 9. Conversación con más de 6 turnos de usuario -> Debe podar a los últimos 6 turnos conservando el system prompt y anclando el último turno
         long_chat_msgs = [{"role": "system", "content": "You are a helpful assistant."}]
         for i in range(1, 23):  # 22 turnos

@@ -15,6 +15,8 @@ class TestToolGovernor(unittest.TestCase):
     def test_broad_or_deep_query_detection(self):
         self.assertTrue(is_broad_or_deep_query("Pasame una lista de tratados internacionales vigentes, fundamenta en profundidad"))
         self.assertTrue(is_broad_or_deep_query("Hacer un análisis comparativo y exhaustivo de todos los contratos"))
+        self.assertTrue(is_broad_or_deep_query("Mostrame las obras disponibles en la biblioteca"))
+        self.assertTrue(is_broad_or_deep_query("¿Cuáles son los convenios de la OIT ratificados?"))
         self.assertFalse(is_broad_or_deep_query("¿Cuál es la pena para el homicidio simple?"))
         self.assertFalse(is_broad_or_deep_query("Hola, cómo estás?"))
 

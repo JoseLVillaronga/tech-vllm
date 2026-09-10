@@ -53,9 +53,10 @@ def is_broad_or_deep_query(user_content: str) -> bool:
         return False
     text = user_content.lower()
     patterns = [
-        r"\blista\b", r"\btodos\b", r"\btodas\b", r"\btratados?\b", r"\bprofundidad\b",
-        r"\bexhaustiv[ao]\b", r"\bcomparativ[ao]\b", r"\bcat[aá]logo\b", r"\bdoctrina\b",
-        r"\bcompleto\b", r"\br[eé]gimen general\b", r"\bmarco legal\b", r"\ban[aá]lisis\b"
+        r"\blista\b", r"\btodos\b", r"\btodas\b", r"\btratados?\b", r"\bconvenios?\b",
+        r"\bprofundidad\b", r"\bexhaustiv[ao]\b", r"\bcomparativ[ao]\b", r"\bcat[aá]logo\b",
+        r"\bdoctrina\b", r"\bcompleto\b", r"\bbiblioteca\b", r"\br[eé]gimen general\b",
+        r"\bmarco legal\b", r"\ban[aá]lisis\b"
     ]
     return any(re.search(pat, text) for pat in patterns)
 
@@ -222,9 +223,9 @@ def apply_tool_budget_governor(data: Dict[str, Any]) -> Tuple[Dict[str, Any], Di
         banner = (
             f"\n\n💡 [GOBERNADOR RAG]: "
             f"Evidencia preliminar: ~{tool_tokens:,} tokens en {tool_count} llamada(s). "
-            f"Para consultas de fondo, catálogos o marcos legales, combine herramientas jerárquicas "
+            f"Para consultas de fondo, catálogos, tratados o marcos legales amplios, utiliza 'obtener_indice_biblioteca' para mapear las obras pertinentes y combina herramientas jerárquicas "
             f"('obtener_estructura_documento' y 'leer_documento_completo') hacia el objetivo de ~{min_tokens:,} tokens. "
-            f"No sintetice prematuramente con un único fragmento aislado si la consulta es amplia."
+            f"No sintetice prematuramente con un único fragmento aislado si la consulta requiere exhaustividad o catálogo."
         )
 
     # Inyectar el banner en el último mensaje 'tool' si se definió una directiva

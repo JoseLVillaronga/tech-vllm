@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import Optional, List, Dict, Any
 from gateway.core.database import get_db
 from gateway.core.context_pruner import prune_chat_history, get_max_user_turns
-from gateway.core.tool_governor import apply_tool_budget_governor
+from gateway.core.tool_governor import apply_tool_budget_governor, is_broad_or_deep_query
 
 
 DEFAULT_INVARIANTS_PROMPT = """🏛️ [DIRECTIVAS FUNDAMENTALES Y DEBER DE VERACIDAD (INVARIANTES NO NEGOCIABLES)]
@@ -82,7 +82,8 @@ GROUNDING_TRIGGERS_PATTERN = re.compile(
     r"[oó]rgano|[oó]rganos|organismo|organismos|ente|entes|autoridad|autoridades|tribunal|tribunales|juzgado|juzgados|c[aá]mara|c[aá]maras|"
     r"defensor|defensor[ií]a|ministerio\s+p[uú]blico|procuraci[oó]n|fiscal[ií]a|magistratura|sindicatura|congreso|senado|diputados|"
     # 6. Documentación institucional y corporativa
-    r"documentaci[oó]n|manual|manuales|empresa|corporativ[ao]s?|organizaci[oó]n|institucional"
+    r"documentaci[oó]n|manual|manuales|empresa|corporativ[ao]s?|organizaci[oó]n|institucional|"
+    r"biblioteca|cat[aá]logo|cat[aá]logos|obras"
     r")\b",
     re.IGNORECASE
 )
@@ -444,7 +445,7 @@ async def enrich_chat_payload(
                         first_part["text"] = f"[CONSULTA ACTUAL DEL USUARIO]:\n{txt}"
 
     # 2. Refuerzo Dinámico de Grounding Anti-Decay (MEA) en Consultas Sensibles y Repreguntas Contextuales (sólo en 'full')
-    has_rag_tools = any(t in tool_names for t in ["buscar_en_base_de_conocimiento", "obtener_estructura_documento", "leer_documento_completo", "rag_search"])
+    has_rag_tools = any(t in tool_names for t in ["buscar_en_base_de_conocimiento", "obtener_estructura_documento", "leer_documento_completo", "obtener_indice_biblioteca", "rag_search"])
     if mode == "full" and has_rag_tools and user_query and last_user_msg:
         is_direct_grounding = bool(GROUNDING_TRIGGERS_PATTERN.search(user_query))
         
@@ -466,7 +467,7 @@ async def enrich_chat_payload(
                         has_prior_grounding = True
                         break
                     m_content = str(m.get("content", ""))
-                    if any(kw in m_content for kw in ["doc_id:", "base_de_conocimiento", "obtener_estructura_documento", "leer_documento_completo"]):
+                    if any(kw in m_content for kw in ["doc_id:", "base_de_conocimiento", "obtener_estructura_documento", "leer_documento_completo", "obtener_indice_biblioteca"]):
                         has_prior_grounding = True
                         break
                 elif m_role == "user":
@@ -478,14 +479,27 @@ async def enrich_chat_payload(
         should_inject = is_direct_grounding or has_prior_grounding
         if should_inject:
             if is_direct_grounding:
+                is_deep = is_broad_or_deep_query(user_query)
+                has_index_tool = "obtener_indice_biblioteca" in tool_names
+
+                if is_deep and has_index_tool:
+                    tool_directive = (
+                        "Al tratarse de una consulta amplia, de catálogo, marco general o tratados, es OBLIGATORIO iniciar tu navegación invocando preferentemente 'obtener_indice_biblioteca' "
+                        "para relevar el mapa ontológico de obras y normas oficiales disponibles antes de profundizar con 'leer_documento_completo' u 'obtener_estructura_documento'."
+                    )
+                else:
+                    tool_directive = (
+                        "Es OBLIGATORIO emitir de inmediato una llamada a tus herramientas ('buscar_en_base_de_conocimiento', 'obtener_estructura_documento' o 'leer_documento_completo') "
+                        "para contrastar los textos oficiales y vigentes antes de emitir tu respuesta."
+                    )
+
                 reminder_text = (
                     "\n\n[DIRECTIVA DE CONTROL Y GROUNDING OBLIGATORIO (MEA)]:\n"
                     "Esta consulta involucra normativa, procedimientos, contratos, políticas o documentación interna. "
                     "Conforme a las Directivas Fundamentales, tienes ESTRICTAMENTE PROHIBIDO responder de memoria paramétrica, deducir o suponer el contenido. "
                     "PROHIBICIÓN ABSOLUTA de emitir texto preliminar, introducciones, preámbulos, razonamientos o saludos antes de invocar la herramienta (ej: NO escribas 'Para responder...', 'Siguiendo el protocolo...', 'Procedo a consultar...'). "
                     "Tu primer token emitido DEBE ser la llamada a la herramienta formal (<tool_call>). "
-                    "Es OBLIGATORIO emitir de inmediato una llamada a tus herramientas ('buscar_en_base_de_conocimiento', 'obtener_estructura_documento' o 'leer_documento_completo') "
-                    "para contrastar los textos oficiales y vigentes antes de emitir tu respuesta. "
+                    f"{tool_directive} "
                     "Si se solicita jurisprudencia y no consta en las fuentes recuperadas, declara con honestidad su ausencia sin inventar fallos, carátulas ni salas."
                 )
             else:
