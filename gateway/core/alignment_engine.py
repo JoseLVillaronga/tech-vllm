@@ -10,6 +10,7 @@ from pymongo import MongoClient
 from config import get_mongo_uri, MONGO_DB
 from gateway.tools.web_search import perform_ollama_web_search
 from gateway.core.context_pruner import prune_chat_history, get_max_user_turns
+from gateway.core.tool_governor import apply_tool_budget_governor
 
 
 DEFAULT_INVARIANTS_PROMPT = """🏛️ [DIRECTIVAS FUNDAMENTALES Y DEBER DE VERACIDAD (INVARIANTES NO NEGOCIABLES)]
@@ -353,6 +354,12 @@ async def enrich_chat_payload(
                 file=sys.stderr,
                 flush=True
             )
+
+    # 0.1 Gobernador de Presupuesto y Suficiencia RAG (Techo 50k, Semáforo 4 llamadas / 5k, Discrecional 5k-10k)
+    try:
+        data, _gov_stats = apply_tool_budget_governor(data)
+    except Exception as gov_err:
+        print(f"⚠️ Error en Gobernador de Tools: {gov_err}", file=sys.stderr, flush=True)
 
     messages: List[Dict[str, Any]] = data["messages"]
     tools: List[Dict[str, Any]] = data.get("tools", [])
