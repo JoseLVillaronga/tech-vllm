@@ -59,7 +59,10 @@ class TestToolGovernor(unittest.TestCase):
             "tools": [{"type": "function", "function": {"name": "leer_documento_completo"}}],
             "tool_choice": "auto",
             "messages": [
-                {"role": "user", "content": "Lista exhaustiva de tratados"},
+                {
+                    "role": "user",
+                    "content": "Lista exhaustiva de tratados\n\n[DIRECTIVA DE CONTROL Y GROUNDING OBLIGATORIO (MEA)]:\nTu primer token emitido DEBE ser la llamada a la herramienta formal (<tool_call>)."
+                },
                 {"role": "assistant", "tool_calls": [{"id": "call_1", "function": {"name": "leer_documento_completo"}}]},
                 {"role": "tool", "tool_call_id": "call_1", "content": massive_tool_content}
             ]
@@ -74,6 +77,12 @@ class TestToolGovernor(unittest.TestCase):
 
         last_tool_msg = modified_data["messages"][2]
         self.assertIn("🛑 [GOBERNADOR RAG - TECHO DE CONTEXTO ALCANZADO]", last_tool_msg["content"])
+
+        # Verificar que la directiva de grounding fue levantada del mensaje del usuario
+        user_msg = modified_data["messages"][0]["content"]
+        self.assertNotIn("[DIRECTIVA DE CONTROL Y GROUNDING OBLIGATORIO", user_msg)
+        self.assertIn("[FASE DE INVESTIGACIÓN CONCLUIDA - SÍNTESIS FINAL OBLIGATORIA (MEA)]", user_msg)
+        self.assertIn("Queda TERMINANTEMENTE LEVANTADA la obligación de invocar herramientas", user_msg)
 
     def test_insufficient_data_cut_after_4_calls(self):
         # 4 llamadas con muy poco texto (< 5000 tokens, por ej: ~500 caracteres totales = ~180 tokens)

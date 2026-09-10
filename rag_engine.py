@@ -1284,7 +1284,7 @@ def get_document_full_content(
             "error": (
                 f"⚠️ AVISO DE SEGURIDAD (OBRA EXTENSA): '{doc_title}' contiene ~{total_doc_tokens:,} tokens ({total_chunks} fragmentos).\n\n"
                 f"Para proteger tu ventana de contexto y evitar desbordamiento de memoria, NO está permitido volcar esta obra completa o secciones masivas a ciegas.\n\n"
-                f"👉 PASO OBLIGATORIO: Invoca primero 'obtener_estructura_documento(doc_id=\"{actual_doc_id}\")' para identificar el capítulo o artículo puntual que buscas, "
+                f"💡 Guía de navegación: Para acotar la lectura de esta obra extensa sin desbordar el contexto, invoca 'obtener_estructura_documento(doc_id=\"{actual_doc_id}\")' para identificar el capítulo o artículo puntual que buscas, "
                 f"o utiliza 'buscar_en_base_de_conocimiento(consulta=\"...\")' para recuperar directamente los fragmentos pertinentes."
             ),
             "doc_id": actual_doc_id,

@@ -168,6 +168,7 @@ def apply_tool_budget_governor(data: Dict[str, Any]) -> Tuple[Dict[str, Any], Di
             f"\n\n🛑 [GOBERNADOR RAG - TECHO DE CONTEXTO ALCANZADO]: "
             f"Se han acumulado ~{tool_tokens:,} tokens de fuentes documentales en esta consulta (límite máximo: {max_tokens:,}). "
             f"El cupo de herramientas queda CERRADO para preservar la estabilidad de la memoria. "
+            f"Queda ESTRICTAMENTE PROHIBIDO emitir etiquetas '<tool_call>', JSON de funciones o simular consultas adicionales. "
             f"Proceda de inmediato a redactar su respuesta final completa, estructurada y fundada con la evidencia disponible."
         )
         print(
@@ -187,7 +188,7 @@ def apply_tool_budget_governor(data: Dict[str, Any]) -> Tuple[Dict[str, Any], Di
             f"Se han completado {tool_count} rondas de búsqueda acumulando solo ~{tool_tokens:,} tokens (< {insufficient_tokens:,}). "
             f"INVARIANTE DE VERACIDAD PERENTORIO: Se corta el bucle de búsqueda y se desalienta continuar. "
             f"Concluya su respuesta declarando formalmente: 'No tengo datos suficientes en las fuentes oficiales de la base documental para responder a esta consulta con certeza.' "
-            f"Queda ESTRICTAMENTE PROHIBIDO inferir o responder desde la memoria paramétrica."
+            f"Queda ESTRICTAMENTE PROHIBIDO inferir o responder desde la memoria paramétrica o emitir etiquetas '<tool_call>'."
         )
         print(
             f"⚠️ [Tool Governor] Insuficiencia detectada: {tool_count} llamadas con solo ~{tool_tokens:,} tokens. "
@@ -195,6 +196,47 @@ def apply_tool_budget_governor(data: Dict[str, Any]) -> Tuple[Dict[str, Any], Di
             file=sys.stderr,
             flush=True
         )
+
+    # Si las herramientas quedan deshabilitadas (hard cap o insuficiencia),
+    # levantar la directiva perentoria de llamar a tools del mensaje del usuario
+    # para evitar contradicciones y eliminar la emisión de etiquetas <tool_call> en texto
+    if governor_action in ["hard_cap", "insufficient_data_cut"]:
+        for m in reversed(messages):
+            if m.get("role") == "user":
+                c = m.get("content")
+                if isinstance(c, str) and "[DIRECTIVA DE CONTROL Y GROUNDING OBLIGATORIO" in c:
+                    base_txt = re.split(r"\n\n\[DIRECTIVA DE CONTROL Y GROUNDING OBLIGATORIO", c)[0].strip()
+                    if governor_action == "hard_cap":
+                        closure_directive = (
+                            "\n\n[FASE DE INVESTIGACIÓN CONCLUIDA - SÍNTESIS FINAL OBLIGATORIA (MEA)]:\n"
+                            f"La fase de recuperación documental ha concluido habiendo alcanzado el techo de evidencia (~{tool_tokens:,} tokens). "
+                            "Queda TERMINANTEMENTE LEVANTADA la obligación de invocar herramientas. "
+                            "Tu objetivo prioritario y excluyente ahora es redactar tu respuesta final completa, fundamentada y estructurada en texto natural, basándote en las fuentes oficiales recopiladas. "
+                            "Está ESTRICTAMENTE PROHIBIDO emitir etiquetas '<tool_call>', funciones simuladas o postergar la respuesta: redacta tu conclusión definitiva de inmediato."
+                        )
+                    else:
+                        closure_directive = (
+                            "\n\n[FASE DE INVESTIGACIÓN CONCLUIDA - INSUFICIENCIA DE FUENTES (MEA)]:\n"
+                            f"Se han completado {tool_count} rondas de búsqueda con evidencia insuficiente (< {insufficient_tokens:,} tokens). "
+                            "Queda TERMINANTEMENTE LEVANTADA la obligación de invocar herramientas. "
+                            "Conforme al Invariante de Veracidad, redacta tu respuesta declarando formalmente la falta de fuentes suficientes sin inventar datos de memoria paramétrica ni emitir etiquetas '<tool_call>'."
+                        )
+                    m["content"] = f"{base_txt}{closure_directive}"
+                elif isinstance(c, list):
+                    for part in c:
+                        if isinstance(part, dict) and part.get("type") == "text":
+                            ptxt = part.get("text", "")
+                            if "[DIRECTIVA DE CONTROL Y GROUNDING OBLIGATORIO" in ptxt:
+                                base_txt = re.split(r"\n\n\[DIRECTIVA DE CONTROL Y GROUNDING OBLIGATORIO", ptxt)[0].strip()
+                                closure_directive = (
+                                    "\n\n[FASE DE INVESTIGACIÓN CONCLUIDA - SÍNTESIS FINAL OBLIGATORIA (MEA)]:\n"
+                                    f"La fase de recuperación documental ha concluido habiendo alcanzado el techo de evidencia (~{tool_tokens:,} tokens). "
+                                    "Queda TERMINANTEMENTE LEVANTADA la obligación de invocar herramientas. "
+                                    "Redacta de inmediato tu respuesta final en texto estructurado basándote en las fuentes oficiales recopiladas. "
+                                    "Está ESTRICTAMENTE PROHIBIDO emitir etiquetas '<tool_call>'."
+                                )
+                                part["text"] = f"{base_txt}{closure_directive}"
+                break
 
     # 3. ZONA DISCRECIONAL TRAS 4 LLAMADAS (5.000 a 10.000 tokens)
     elif tool_count >= max_calls and tool_tokens < min_tokens:
