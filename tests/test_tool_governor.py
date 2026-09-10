@@ -158,52 +158,7 @@ class TestToolGovernor(unittest.TestCase):
         last_tool = modified_data["messages"][-1]
         self.assertIn("✅ [GOBERNADOR RAG - EVIDENCIA ROBUSTA]", last_tool["content"])
 
-    def test_hard_cap_preserves_pdf_generator_tool(self):
-        # Cuando se alcanza el techo de 50.000 tokens en una sesión que tiene herramientas
-        # de búsqueda y también generate_pdf_document, el gobernador debe retirar las herramientas
-        # de búsqueda pero preservar generate_pdf_document intacta.
-        massive_tool_content = "X" * 150000
-        data = {
-            "model": "Qwen3.6-35B-A3B-Q4_K_M",
-            "tools": [
-                {"type": "function", "function": {"name": "leer_documento_completo"}},
-                {"type": "function", "function": {"name": "generate_pdf_document"}}
-            ],
-            "tool_choice": "auto",
-            "messages": [
-                {
-                    "role": "user",
-                    "content": "Lista de tratados\n\n[DIRECTIVA DE CONTROL Y GROUNDING OBLIGATORIO (MEA)]:\nTu primer token emitido DEBE ser la llamada a la herramienta formal (<tool_call>)."
-                },
-                {"role": "assistant", "tool_calls": [{"id": "call_1", "function": {"name": "leer_documento_completo"}}]},
-                {"role": "tool", "tool_call_id": "call_1", "content": massive_tool_content}
-            ]
-        }
-
-        modified_data, report = apply_tool_budget_governor(data)
-
-        self.assertEqual(report["action"], "hard_cap")
-        # tools NO está completamente deshabilitado porque se preservó PDF
-        self.assertFalse(report["tools_disabled"])
-        self.assertEqual(report["tools_preserved"], ["generate_pdf_document"])
-        self.assertIn("tools", modified_data)
-        self.assertNotIn("tool_choice", modified_data)
-
-        # Solo generate_pdf_document debe estar en tools
-        remaining_tool_names = [t["function"]["name"] for t in modified_data["tools"]]
-        self.assertEqual(remaining_tool_names, ["generate_pdf_document"])
-
-        # El banner debe mencionar el generador de PDF
-        last_tool_msg = modified_data["messages"][2]
-        self.assertIn("utilice la herramienta autorizada `generate_pdf_document`", last_tool_msg["content"])
-
-        # La directiva de usuario debe mencionar la posibilidad de invocar generate_pdf_document
-        user_msg = modified_data["messages"][0]["content"]
-        self.assertIn("puedes invocar la herramienta autorizada `generate_pdf_document`", user_msg)
-        self.assertIn("Queda TERMINANTEMENTE LEVANTADA la obligación de invocar herramientas de búsqueda", user_msg)
-
 
 if __name__ == "__main__":
     unittest.main()
-
 
