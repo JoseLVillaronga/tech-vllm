@@ -1494,7 +1494,8 @@ def get_library_index(
             "💡 **Guía de Uso para el LLM:**\n"
             "1. Para ubicar temas específicos dentro de una ley o libro extenso, invoca primero `obtener_estructura_documento(doc_id)`. Nunca adivines la sección.\n"
             "2. Para leer capítulos o artículos específicos, invoca `leer_documento_completo(doc_id, seccion=\"<nombre>\")`.\n"
-            "3. En consultas jurídicas, prioriza fuentes con estado `[VIGENTE]`. Si citas normas `[DEROGADO]`, adviértelo explícitamente al usuario."
+            "3. En consultas jurídicas, prioriza fuentes con estado `[VIGENTE]`. Si citas normas `[DEROGADO]`, adviértelo explícitamente al usuario.\n"
+            "4. Este índice contiene únicamente títulos y metadatos orientativos. Si vas a describir, listar o fundamentar el contenido de estas normas, está ESTRICTAMENTE PROHIBIDO inferir o asumir su materia por el título: es OBLIGATORIO invocar `leer_documento_completo(doc_id)` para consultar el texto oficial antes de responder."
         )
 
         return {
