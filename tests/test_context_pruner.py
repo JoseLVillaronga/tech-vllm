@@ -283,6 +283,57 @@ class TestContextPruner(unittest.TestCase):
                 self.assertTrue(success)
                 self.assertEqual(mock_post.call_count, 2)
 
+    def test_massive_tool_turn_compacts_tools_instead_of_dropping_turn(self):
+        # Simula una consulta jurídica previa con 12 tool calls (~50k tokens de evidencia)
+        # seguida inmediatamente de una repregunta breve ("Pasamelo en PDF").
+        # El podador NO debe descartar el turno 1, sino compactar las tools del turno 1
+        # y preservar 100% íntegra la síntesis del asistente.
+        messages = [{"role": "system", "content": "System prompt"}]
+        messages.append({"role": "user", "content": "Tratados con jerarquía constitucional en la CN"})
+        for i in range(12):
+            messages.append({
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [{"id": f"c_{i}", "function": {"name": "leer_documento_completo", "arguments": "{}"}}]
+            })
+            messages.append({
+                "role": "tool",
+                "tool_call_id": f"c_{i}",
+                "content": "Extracto normativo extenso " * 500  # ~14.000 chars cada uno
+            })
+        full_assistant_synthesis = (
+            "# Tratados Internacionales con Jerarquía Constitucional (Art. 75 inc. 22)\n\n"
+            "A continuación se detallan los 14 instrumentos con jerarquía constitucional:\n"
+            + ("| Instrumento | Jerarquía | Ámbito |\n|---|---|---|\n" + "| Tratado Internacional | Constitucional | DDHH |\n" * 15)
+        )
+        messages.append({"role": "assistant", "content": full_assistant_synthesis})
+        messages.append({"role": "user", "content": "Pasamelo en PDF"})
+
+        pruned, dropped = prune_chat_history(messages, max_context_tokens=32000)
+
+        # 0 turnos descartados
+        self.assertEqual(dropped, 0)
+
+        # Ambos mensajes de usuario deben estar presentes
+        user_msgs = [m for m in pruned if m.get("role") == "user"]
+        self.assertEqual(len(user_msgs), 2)
+        self.assertEqual(user_msgs[0]["content"], "Tratados con jerarquía constitucional en la CN")
+        self.assertEqual(user_msgs[1]["content"], "Pasamelo en PDF")
+
+        # La síntesis final del asistente debe conservarse completa sin mutilación
+        final_asst = [m for m in pruned if m.get("role") == "assistant" and not m.get("tool_calls")][0]
+        self.assertEqual(final_asst["content"], full_assistant_synthesis)
+
+        # Los tool outputs del turno 1 deben haber sido compactados
+        tool_msgs = [m for m in pruned if m.get("role") == "tool"]
+        self.assertEqual(len(tool_msgs), 12)
+        for tm in tool_msgs:
+            self.assertIn("[Contenido de herramienta archivado para optimizar contexto:", tm["content"])
+
+        # El conteo total estimado de tokens debe encajar holgadamente en el límite de 32k
+        total_tokens = estimate_tokens(pruned, base_overhead=5000)
+        self.assertLessEqual(total_tokens, 32000)
+
 
 if __name__ == "__main__":
     unittest.main()

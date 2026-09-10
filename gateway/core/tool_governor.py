@@ -11,6 +11,40 @@ DEFAULT_MIN_TOOL_TOKENS = 10000
 DEFAULT_INSUFFICIENT_TOOL_TOKENS = 5000
 DEFAULT_MAX_EXPLORATION_CALLS = 4
 
+# Herramientas de exportación/utilidad que deben preservarse incluso al alcanzar el techo RAG
+EXPORT_TOOL_NAMES = {"generate_pdf_document", "generate_pdf"}
+
+
+def _filter_and_preserve_export_tools(data: Dict[str, Any]) -> Tuple[bool, List[str]]:
+    """
+    Retira las herramientas de búsqueda y recuperación documental para cortar el bucle RAG,
+    pero preserva las herramientas de exportación (ej: generador de PDF) si estaban presentes.
+    Retorna (has_export_tool, list_of_preserved_names).
+    """
+    tools = data.get("tools")
+    if not tools or not isinstance(tools, list):
+        data.pop("tools", None)
+        data.pop("tool_choice", None)
+        return False, []
+
+    preserved = []
+    preserved_names = []
+    for t in tools:
+        if isinstance(t, dict):
+            fn_name = t.get("function", {}).get("name", "")
+            if fn_name in EXPORT_TOOL_NAMES:
+                preserved.append(t)
+                preserved_names.append(fn_name)
+
+    if preserved:
+        data["tools"] = preserved
+        data.pop("tool_choice", None)
+        return True, preserved_names
+    else:
+        data.pop("tools", None)
+        data.pop("tool_choice", None)
+        return False, []
+
 
 def get_max_tool_tokens() -> int:
     """Techo máximo de tokens de herramientas por turno antes de retirar 'tools' (Hard Circuit Breaker)."""
@@ -158,25 +192,42 @@ def apply_tool_budget_governor(data: Dict[str, Any]) -> Tuple[Dict[str, Any], Di
 
     banner = ""
     governor_action = "none"
+    has_export = False
+    preserved_export_names: List[str] = []
 
     # 1. ZONA DE TECHO MÁXIMO (Circuit Breaker Duro)
     if tool_tokens >= max_tokens:
         governor_action = "hard_cap"
-        data.pop("tools", None)
-        data.pop("tool_choice", None)
-        banner = (
-            f"\n\n🛑 [GOBERNADOR RAG - TECHO DE CONTEXTO ALCANZADO]: "
-            f"Se han acumulado ~{tool_tokens:,} tokens de fuentes documentales en esta consulta (límite máximo: {max_tokens:,}). "
-            f"El cupo de herramientas queda CERRADO para preservar la estabilidad de la memoria. "
-            f"Queda ESTRICTAMENTE PROHIBIDO emitir etiquetas '<tool_call>', JSON de funciones o simular consultas adicionales. "
-            f"Proceda de inmediato a redactar su respuesta final completa, estructurada y fundada con la evidencia disponible."
-        )
-        print(
-            f"🛑 [Tool Governor] Techo alcanzado: ~{tool_tokens:,} tokens en {tool_count} llamadas. "
-            f"Herramientas deshabilitadas para forzar síntesis final.",
-            file=sys.stderr,
-            flush=True
-        )
+        has_export, preserved_export_names = _filter_and_preserve_export_tools(data)
+        if has_export:
+            banner = (
+                f"\n\n🛑 [GOBERNADOR RAG - TECHO DE CONTEXTO ALCANZADO]: "
+                f"Se han acumulado ~{tool_tokens:,} tokens de fuentes documentales en esta consulta (límite máximo: {max_tokens:,}). "
+                f"El cupo de herramientas de búsqueda documental queda CERRADO para preservar la estabilidad de la memoria. "
+                f"Queda ESTRICTAMENTE PROHIBIDO emitir consultas de búsqueda adicionales o etiquetas '<tool_call>' simuladas. "
+                f"Si la solicitud requiere compilar o exportar un documento formal o PDF, utilice la herramienta autorizada `generate_pdf_document`. "
+                f"En caso contrario, proceda de inmediato a redactar su respuesta final completa, estructurada y fundada con la evidencia disponible."
+            )
+            print(
+                f"🛑 [Tool Governor] Techo alcanzado: ~{tool_tokens:,} tokens en {tool_count} llamadas. "
+                f"Búsquedas deshabilitadas; herramientas de exportación preservadas: {preserved_export_names}.",
+                file=sys.stderr,
+                flush=True
+            )
+        else:
+            banner = (
+                f"\n\n🛑 [GOBERNADOR RAG - TECHO DE CONTEXTO ALCANZADO]: "
+                f"Se han acumulado ~{tool_tokens:,} tokens de fuentes documentales en esta consulta (límite máximo: {max_tokens:,}). "
+                f"El cupo de herramientas queda CERRADO para preservar la estabilidad de la memoria. "
+                f"Queda ESTRICTAMENTE PROHIBIDO emitir etiquetas '<tool_call>', JSON de funciones o simular consultas adicionales. "
+                f"Proceda de inmediato a redactar su respuesta final completa, estructurada y fundada con la evidencia disponible."
+            )
+            print(
+                f"🛑 [Tool Governor] Techo alcanzado: ~{tool_tokens:,} tokens en {tool_count} llamadas. "
+                f"Herramientas deshabilitadas para forzar síntesis final.",
+                file=sys.stderr,
+                flush=True
+            )
 
     # 2. ZONA DE INSUFICIENCIA TRAS 4 LLAMADAS (< 5.000 tokens)
     elif tool_count >= max_calls and tool_tokens < insufficient_tokens:
@@ -197,7 +248,7 @@ def apply_tool_budget_governor(data: Dict[str, Any]) -> Tuple[Dict[str, Any], Di
             flush=True
         )
 
-    # Si las herramientas quedan deshabilitadas (hard cap o insuficiencia),
+    # Si las herramientas de búsqueda quedan deshabilitadas (hard cap o insuficiencia),
     # levantar la directiva perentoria de llamar a tools del mensaje del usuario
     # para evitar contradicciones y eliminar la emisión de etiquetas <tool_call> en texto
     if governor_action in ["hard_cap", "insufficient_data_cut"]:
@@ -207,12 +258,16 @@ def apply_tool_budget_governor(data: Dict[str, Any]) -> Tuple[Dict[str, Any], Di
                 if isinstance(c, str) and "[DIRECTIVA DE CONTROL Y GROUNDING OBLIGATORIO" in c:
                     base_txt = re.split(r"\n\n\[DIRECTIVA DE CONTROL Y GROUNDING OBLIGATORIO", c)[0].strip()
                     if governor_action == "hard_cap":
+                        pdf_clause = (
+                            " Si la solicitud incluye exportar o compilar un archivo PDF o informe formal, puedes invocar la herramienta autorizada `generate_pdf_document`."
+                            if has_export else ""
+                        )
                         closure_directive = (
                             "\n\n[FASE DE INVESTIGACIÓN CONCLUIDA - SÍNTESIS FINAL OBLIGATORIA (MEA)]:\n"
                             f"La fase de recuperación documental ha concluido habiendo alcanzado el techo de evidencia (~{tool_tokens:,} tokens). "
-                            "Queda TERMINANTEMENTE LEVANTADA la obligación de invocar herramientas. "
-                            "Tu objetivo prioritario y excluyente ahora es redactar tu respuesta final completa, fundamentada y estructurada en texto natural, basándote en las fuentes oficiales recopiladas. "
-                            "Está ESTRICTAMENTE PROHIBIDO emitir etiquetas '<tool_call>', funciones simuladas o postergar la respuesta: redacta tu conclusión definitiva de inmediato."
+                            "Queda TERMINANTEMENTE LEVANTADA la obligación de invocar herramientas de búsqueda documental. "
+                            f"Tu objetivo prioritario es redactar tu respuesta final completa, fundamentada y estructurada en texto natural basándote en las fuentes oficiales recopiladas.{pdf_clause} "
+                            "Está ESTRICTAMENTE PROHIBIDO emitir consultas de búsqueda adicionales o etiquetas '<tool_call>' de consulta."
                         )
                     else:
                         closure_directive = (
@@ -228,12 +283,16 @@ def apply_tool_budget_governor(data: Dict[str, Any]) -> Tuple[Dict[str, Any], Di
                             ptxt = part.get("text", "")
                             if "[DIRECTIVA DE CONTROL Y GROUNDING OBLIGATORIO" in ptxt:
                                 base_txt = re.split(r"\n\n\[DIRECTIVA DE CONTROL Y GROUNDING OBLIGATORIO", ptxt)[0].strip()
+                                pdf_clause = (
+                                    " Si la solicitud incluye exportar o compilar un archivo PDF, puedes invocar `generate_pdf_document`."
+                                    if has_export else ""
+                                )
                                 closure_directive = (
                                     "\n\n[FASE DE INVESTIGACIÓN CONCLUIDA - SÍNTESIS FINAL OBLIGATORIA (MEA)]:\n"
                                     f"La fase de recuperación documental ha concluido habiendo alcanzado el techo de evidencia (~{tool_tokens:,} tokens). "
-                                    "Queda TERMINANTEMENTE LEVANTADA la obligación de invocar herramientas. "
-                                    "Redacta de inmediato tu respuesta final en texto estructurado basándote en las fuentes oficiales recopiladas. "
-                                    "Está ESTRICTAMENTE PROHIBIDO emitir etiquetas '<tool_call>'."
+                                    "Queda TERMINANTEMENTE LEVANTADA la obligación de invocar herramientas de búsqueda documental. "
+                                    f"Redacta de inmediato tu respuesta final en texto estructurado basándote en las fuentes oficiales recopiladas.{pdf_clause} "
+                                    "Está ESTRICTAMENTE PROHIBIDO emitir búsquedas adicionales o etiquetas '<tool_call>'."
                                 )
                                 part["text"] = f"{base_txt}{closure_directive}"
                 break
@@ -285,5 +344,6 @@ def apply_tool_budget_governor(data: Dict[str, Any]) -> Tuple[Dict[str, Any], Di
         "action": governor_action,
         "tool_call_count": tool_count,
         "accumulated_tool_tokens": tool_tokens,
-        "tools_disabled": "tools" not in data
+        "tools_disabled": "tools" not in data,
+        "tools_preserved": preserved_export_names
     }

@@ -188,7 +188,11 @@ def prune_chat_history(
     kept_blocks = compacted_blocks
 
     # 5. Aplicar Techo de Seguridad de Tokens (32.000 tokens)
-    # Si aun con herramientas compactadas se supera el presupuesto, descartar turnos más viejos
+    # Si aun con herramientas compactadas se supera el presupuesto:
+    # 5.1 Primero: compactar outputs de herramientas en CUALQUIER turno previo completado
+    #     (evita perder la síntesis del asistente y el hilo de la conversación por mero bloat de tools).
+    # 5.2 Segundo: si aún supera el techo, compactar respuestas extensas de asistente en turnos viejos.
+    # 5.3 Tercero: si aun así supera el techo, descartar los turnos más viejos hasta encajar.
     def flatten(blocks: List[List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
         flat: List[Dict[str, Any]] = []
         for b in blocks:
@@ -197,6 +201,50 @@ def prune_chat_history(
 
     overhead = BASE_PROMPT_OVERHEAD_TOKENS if max_context_tokens > (BASE_PROMPT_OVERHEAD_TOKENS * 1.5) else 0
     current_total_tokens = estimate_tokens(system_msgs + flatten(kept_blocks), base_overhead=overhead)
+
+    # 5.1 Compactar tools en turnos completados previos si se supera el techo
+    if current_total_tokens > max_context_tokens and len(kept_blocks) > 1:
+        # Los bloques 0 a len(kept_blocks)-2 son turnos previos ya finalizados
+        for b_idx in range(len(kept_blocks) - 1):
+            block = kept_blocks[b_idx]
+            for m_idx, m in enumerate(block):
+                if m.get("role") == "tool":
+                    content = m.get("content")
+                    if isinstance(content, str) and len(content) > 250 and not content.startswith("[Contenido de herramienta archivado"):
+                        archived_msg = dict(m)
+                        archived_msg["content"] = (
+                            f"[Contenido de herramienta archivado para optimizar contexto: "
+                            f"{len(content)} caracteres previamente sintetizados por el asistente]"
+                        )
+                        block[m_idx] = archived_msg
+        current_total_tokens = estimate_tokens(system_msgs + flatten(kept_blocks), base_overhead=overhead)
+
+    # 5.2 Si aún supera el techo, compactar respuestas extensas de asistente en turnos viejos
+    if current_total_tokens > max_context_tokens and len(kept_blocks) > 1:
+        for b_idx in range(len(kept_blocks) - 1):
+            block = kept_blocks[b_idx]
+            for m_idx, m in enumerate(block):
+                if m.get("role") == "assistant" and not m.get("tool_calls"):
+                    content = m.get("content")
+                    if isinstance(content, str) and len(content) > 600 and "[Detalle normativo extenso" not in content:
+                        archived_asst = dict(m)
+                        cut_idx = content.find("\n|", 100)
+                        if cut_idx == -1 or cut_idx > 350:
+                            cut_idx = content.find("\n\n", 100)
+                        if cut_idx == -1 or cut_idx > 350:
+                            cut_idx = 300
+                        summary_prefix = content[:cut_idx].strip()
+                        archived_asst["content"] = (
+                            f"{summary_prefix}\n\n"
+                            f"[Detalle normativo extenso y tablas archivadas para optimizar contexto: "
+                            f"{len(content) - len(summary_prefix)} caracteres previos]"
+                        )
+                        block[m_idx] = archived_asst
+            current_total_tokens = estimate_tokens(system_msgs + flatten(kept_blocks), base_overhead=overhead)
+            if current_total_tokens <= max_context_tokens:
+                break
+
+    # 5.3 Si aun así supera el techo, descartar los turnos más viejos
     while current_total_tokens > max_context_tokens and len(kept_blocks) > 1:
         discarded = kept_blocks.pop(0)
         if discarded and discarded[0].get("role") == "user":
