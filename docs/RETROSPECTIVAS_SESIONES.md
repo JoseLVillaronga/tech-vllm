@@ -26,6 +26,7 @@ Al finalizar cada sesión de trabajo, el agente y el usuario realizan una audito
 
 ## 📈 Historial Consolidado de Sesiones
 
+| **2026-09-10 (Madrugada - Soporte Dual MoE/Denso en Llama.cpp, KV Cache Quantization, Auditoría GGUF y Despliegue 100% GPU de Qwen 3.8 27B a 33 t/s)** | `fe37eff0` | 14 | ~35 | 1 | **0** | 1/10 | Mínimo (Modular) | 🟢 **100% Exitoso** |
 | **2026-09-09 (Tarde - RAG Multi-Tenant, Tablas Aisladas LanceDB, Clonación Arrow Zero-GPU, Despliegues Día Cero & Extractor InfoLEG en GUI)** | `fe37eff0` | 20 | ~95 | 6 | **0** | 1/10 | Mínimo (Modular) | 🟢 **100% Exitoso** |
 | **2026-09-08 (Noche - Evaluación Agéntica en Deepseek Harness, Modo Agentic Bilingüe en Puerto 8010, Sanitización de Nombres PDF y Coronación de gpt-oss-20b en RAG)** | `fe37eff0` | 10 | ~45 | 3 | **0** | 1/10 | Mínimo (Modular) | 🟢 **100% Exitoso** |
 | **2026-09-07 (Noche - Blindaje Anti-Crosstalk, Foco Dinámico en Tools, Compactación Selectiva del Asistente, Resolución de Búsqueda RAG Intermitente y Prueba de 31 Turnos)** | `fe37eff0` | 24 | ~110 | 8 | **0** | 1/10 | Mínimo (Quirúrgico) | 🟢 **100% Exitoso** |
@@ -53,6 +54,33 @@ Al finalizar cada sesión de trabajo, el agente y el usuario realizan una audito
 
 ## 📝 Fichas Detalladas por Sesión
  
+### 🔹 Sesión: 2026-09-10 Madrugada (`fe37eff0-f313-46c0-9ac4-cc5ad3a5f1a2`) - Soporte Dual MoE/Denso en Llama.cpp, KV Cache Quantization, Auditoría GGUF y Despliegue 100% GPU de Qwen 3.8 27B a 33 t/s
+* **Hitos Principales:**
+  1. **Separación Arquitectónica y Gobernanza Condicional ([`llama-srv.sh`](../llama-srv.sh) - Commit `f83fa60`):**
+     - Introducción de la variable `LLAMA_IS_MOE` en `.env` y `.env.example` para gobernar el comportamiento de `llama-server`.
+     - Desacoplamiento de flags: `--n-cpu-moe` ahora solo se inyecta cuando `LLAMA_IS_MOE=true` y `LLAMA_N_CPU_MOE > 0`, eliminando el envío incondicional de parámetros de expertos a modelos densos (Ley 1 y Ley 2).
+  2. **Cuantización en Caliente del KV Cache para Ventanas de 128K Tokens:**
+     - Soporte en tiempo de ejecución para `LLAMA_CACHE_TYPE_K` y `LLAMA_CACHE_TYPE_V` (`q4_0`, `q8_0`, `f16`), inyectando condicionalmente `--cache-type-k` y `--cache-type-v` en `llama-server`.
+  3. **Auditoría Forense de Metadatos GGUF (Veracidad e Integridad de Ejecución):**
+     - Lectura binaria directa de los encabezados GGUF v3:
+       - `gpt-oss-20b-Q4_K_M.gguf`: Confirmado unívocamente como arquitectura MoE (`gpt-oss`, 32 expertos, 4 activos por token). Se rectificó su etiqueta en el Dashboard y su variable en `.env` (`LLAMA_IS_MOE=true`).
+       - `Qwen3.8-27B-Q4_K_M.gguf`: Identificada arquitectura híbrida SSM / Mamba con atención lineal (`full_attention_interval = 4`), donde solo 16 de sus 65 capas usan atención completa, reduciendo el KV Cache de 128k con `q4_0` a apenas **~2.4 GB**.
+  4. **Benchmarking Empírico y Despliegue 100% GPU de Qwen 3.8 27B en RTX 3090:**
+     - *Modo Híbrido (48 capas GPU / 17 capas CPU):* 4.92 tokens/s en generación, CPU estresada al 54.4%, 203 ms/token.
+     - *Modo 100% GPU (65 capas, `-ngl 999`):* **33.07 tokens/s sostenidos (aceleración real de 6.7x)**, prefill a **1.028,22 tokens/s**, CPU relajada al 8.0%, y consumo de VRAM de **22.1 GB / 24.0 GB (92.3%)** con 1.9 GB de margen seguro.
+  5. **Validación de Razonamiento Doctrinal Superior en LanceDB:**
+     - En consulta de derecho civil argentino (*"Mostrame la definición de contrato"*), ejecutó *multi-hop reasoning* autónomo: ante un primer top-k con normas secundarias, reconoció el vacío y emitió un segundo llamado dirigido recuperando el Art. 957 y Art. 958 reformado por el DNU 70/2023, descartando con precisión doctrinal el Código de 1869 por derogado.
+  6. **Controles y Botones Rápidos en Dashboard Web ([`tab_config.html`](../templates/tabs/tab_config.html) y [`static/js/dashboard_core.js`](../static/js/dashboard_core.js)):**
+     - Selectores visuales reactivos para `LLAMA_IS_MOE`, `LLAMA_CACHE_TYPE_K` y `LLAMA_CACHE_TYPE_V`.
+     - Botón `⚡ Qwen 3.8 27B (100% GPU / 33 t/s / 128K)` para configuración de 1 solo clic en el Dashboard.
+* **Evaluación MEA v2.1 & Leyes de Ingeniería:**
+  * **Invariantes (Gate 1):** **0 violaciones**. Cero secretos expuestos, cero rutas absolutas, veracidad verificada contra los tensores reales del GGUF y telemetría en vivo.
+  * **Ley 1 (Modularización):** Perfiles MoE y Denso desacoplados limpiamente en `.env`, bash y la interfaz web.
+  * **Ley 2 (Causa Raíz):** Se erradicó el traspaso ciego de parámetros MoE a modelos densos y se resolvió el cuello de botella de la inferencia llevando el 100% del grafo a la GPU.
+  * **Ley 3 (Mínimo Blast Radius):** Modificaciones estrictamente focalizadas; servicios activos preservados sin interrupción.
+  * **RVI Máximo:** `1/10`.
+  * **Resultado:** 🟢 **100% Exitoso**.
+
 ### 🔹 Sesión: 2026-09-09 Tarde (`fe37eff0-f313-46c0-9ac4-cc5ad3a5f1a2`) - RAG Multi-Tenant: Tablas Aisladas en LanceDB, Clonación Arrow Zero-GPU, Despliegues Día Cero & Extractor InfoLEG en GUI
 * **Hitos Principales:**
   1. **Aislamiento Multi-Tenant Físico en LanceDB (Ley 1 y Ley 3):**
