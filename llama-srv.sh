@@ -106,6 +106,18 @@ if [ -n "${CACHE_V}" ] && [ "${CACHE_V}" != "f16" ]; then
 fi
 KV_CACHE_DESC="K=${CACHE_K:-f16} / V=${CACHE_V:-f16}"
 
+# 5.4 Control de Razonamiento (Thinking) y Preservación de Trazas
+REASONING_ARGS=(--reasoning "${REASONING}")
+if [ "${REASONING}" = "off" ] || [ "${REASONING}" = "false" ] || [ "${REASONING}" = "0" ]; then
+    REASONING_ARGS+=(--no-reasoning-preserve)
+    REASONING_DESC="${REASONING} (trazas desactivadas: --no-reasoning-preserve)"
+elif [ "${REASONING}" = "on" ] || [ "${REASONING}" = "true" ] || [ "${REASONING}" = "1" ]; then
+    REASONING_ARGS+=(--reasoning-preserve)
+    REASONING_DESC="${REASONING} (trazas preservadas: --reasoning-preserve)"
+else
+    REASONING_DESC="${REASONING}"
+fi
+
 echo "============================================================"
 echo "🦙 Iniciando llama-server para vLLM Suite"
 echo "============================================================"
@@ -121,7 +133,7 @@ echo "🧠 Contexto Máximo:  ${CTX_SIZE} tokens"
 echo "⚡ Batch Lógico:     ${BATCH_SIZE}"
 echo "🚀 Micro-Batch (uB): ${UBATCH_SIZE}"
 echo "🎮 GPU Layers:       ${GPU_LAYERS}"
-echo "💭 Razonamiento:     ${REASONING}"
+echo "💭 Razonamiento:     ${REASONING_DESC}"
 echo "🔒 Modo de Carga:    --load-mode ${LOAD_MODE}"
 echo "🧵 Hilos CPU:        ${THREADS}"
 echo "👥 Slots Paralelos:  ${PARALLEL}"
@@ -141,7 +153,7 @@ exec "${LLAMA_BIN}" \
   --batch-size "${BATCH_SIZE}" \
   --ubatch-size "${UBATCH_SIZE}" \
   --gpu-layers "${GPU_LAYERS}" \
-  --reasoning "${REASONING}" \
+  "${REASONING_ARGS[@]}" \
   --flash-attn on \
   --threads "${THREADS}" \
   --load-mode "${LOAD_MODE}" \
