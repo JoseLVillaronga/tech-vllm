@@ -2,17 +2,11 @@ import re
 import sys
 import asyncio
 import httpx
-from pymongo import MongoClient
-from config import get_mongo_uri, MONGO_DB
+from gateway.core.database import get_db
 
 cached_cloud_models = {}         # Mapeo 'provider_slug/m_id' -> dict de información del proveedor
 cached_cloud_models_by_raw = {}  # Mapeo 'm_id' -> lista de dicts de información de proveedores
 cached_cloud_models_lock = asyncio.Lock()
-
-
-def get_db():
-    client = MongoClient(get_mongo_uri(), serverSelectionTimeoutMS=1000)
-    return client[MONGO_DB]
 
 
 def slugify_provider_name(name: str) -> str:

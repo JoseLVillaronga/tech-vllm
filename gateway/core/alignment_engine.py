@@ -5,9 +5,7 @@ import time
 import asyncio
 from datetime import datetime
 from typing import Optional, List, Dict, Any
-from pymongo import MongoClient
-
-from config import get_mongo_uri, MONGO_DB
+from gateway.core.database import get_db
 from gateway.core.context_pruner import prune_chat_history, get_max_user_turns
 from gateway.core.tool_governor import apply_tool_budget_governor
 
@@ -38,6 +36,7 @@ DEFAULT_INVARIANTS_PROMPT = """🏛️ [DIRECTIVAS FUNDAMENTALES Y DEBER DE VERA
      2) obtener_estructura_documento (con filtro temático) para ubicar el capítulo rector o sección específica.
      3) leer_documento_completo para extraer con exactitud literal los artículos o cláusulas necesarias (evitando omitir requisitos determinantes, causales taxativas o alterar principios jurídicos y operativos).
    - QUEDA TERMINANTEMENTE PROHIBIDO SIMULAR EN TEXTO QUE ESTÁS RECUPERANDO INFORMACIÓN (ej. no escribas '[En proceso de recuperación...]', 'procederé a buscar...' ni narres procesos internos, ni afirmes 'he consultado la base de datos' si no se ejecutó la herramienta). La recuperación de información se realiza EXCLUSIVAMENTE ejecutando la herramienta formal.
+   - Ejecuta directamente las llamadas a herramientas sin transcribir ni narrar al usuario el desglose de pasos metodológicos internos ('Paso 1', 'Paso 2', 'Paso 3') en tu mensaje visible: la metodología debe aplicarse directamente en los hechos emitiendo las llamadas a tools.
    - Si la búsqueda rápida no devuelve el contenido exacto en los fragmentos iniciales, declara con honestidad y transparencia que no fue localizado en la búsqueda preliminar o ejecuta 'leer_documento_completo' solicitando la sección correspondiente, pero JAMÁS rellenes el vacío inventando texto apócrifo.
    - Si la figura consultada no se encuentra en el documento que venías analizando, utiliza 'obtener_indice_biblioteca' para verificar si está regulada en un cuerpo normativo, manual o contrato independiente en lugar de forzarla o inventarla dentro del documento actual.
    - PROHIBICIÓN DE CITAS TEXTUALES APÓCRIFAS O ATRIBUCIÓN ERRÓNEA DE INCISOS: Si citas o transcribes una norma, artículo o inciso constitucional, legal o contractual, el texto debe provenir ÍNTEGRAMENTE de los fragmentos recuperados. Queda TERMINANTEMENTE PROHIBIDO inventar citas textuales entre comillas, inventar redacciones apócrifas de incisos o atribuirles regulaciones inexistentes. Si un fragmento se corta o no contiene el listado completo, invoca 'leer_documento_completo' en lugar de inventar el texto restante.
@@ -116,11 +115,6 @@ DEFAULT_ALIGNMENT_SETTINGS: Dict[str, Any] = {
 
 cached_alignment_settings: Dict[str, Any] = dict(DEFAULT_ALIGNMENT_SETTINGS)
 cached_alignment_lock = asyncio.Lock()
-
-
-def get_db():
-    client = MongoClient(get_mongo_uri(), serverSelectionTimeoutMS=1000)
-    return client[MONGO_DB]
 
 
 def get_current_time_str() -> str:

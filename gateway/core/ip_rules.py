@@ -2,17 +2,11 @@ import os
 import sys
 import asyncio
 import ipaddress
-from pymongo import MongoClient
-from config import get_mongo_uri, MONGO_DB
+from gateway.core.database import get_db
 
 cached_whitelist = []
 cached_blacklist = []
 blacklist_notice_counts: dict[str, int] = {}
-
-
-def get_db():
-    client = MongoClient(get_mongo_uri(), serverSelectionTimeoutMS=1000)
-    return client[MONGO_DB]
 
 
 def get_blacklist_max_notices() -> int:

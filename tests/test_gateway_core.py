@@ -701,6 +701,19 @@ class TestGatewayCore(unittest.TestCase):
         # Debe haber inyectado el grounding perentorio en el user_msg
         self.assertIn("[DIRECTIVA DE CONTROL Y GROUNDING OBLIGATORIO (MEA)]", user_msg)
 
+    def test_database_singleton(self):
+        from gateway.core.database import get_mongo_client, get_db
+        client1 = get_mongo_client()
+        client2 = get_mongo_client()
+        self.assertIs(client1, client2)
+        db = get_db()
+        self.assertIsNotNone(db)
+
+
+def tearDownModule():
+    from gateway.core.database import close_mongo_client
+    close_mongo_client()
+
 
 if __name__ == "__main__":
     unittest.main()

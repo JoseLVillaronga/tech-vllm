@@ -1,12 +1,7 @@
 import sys
 from datetime import datetime, timezone
-from pymongo import MongoClient
-from config import API_KEY as MASTER_KEY, get_mongo_uri, MONGO_DB
-
-
-def get_db():
-    client = MongoClient(get_mongo_uri(), serverSelectionTimeoutMS=1000)
-    return client[MONGO_DB]
+from config import API_KEY as MASTER_KEY
+from gateway.core.database import get_db
 
 
 def save_usage_log(ip: str, token: str, service: str, endpoint: str, model: str,

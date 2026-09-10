@@ -2,18 +2,11 @@ import os
 import sys
 import asyncio
 import uvicorn
-from pymongo import MongoClient
-
-from config import get_mongo_uri, MONGO_DB
+from gateway.core.database import get_db, close_mongo_client
 from gateway.core.ip_rules import sync_ip_rules_loop
 from gateway.core.alignment_engine import sync_alignment_settings_loop
 from gateway.cloud.cloud_sync import sync_cloud_providers_loop
 from gateway.proxy.proxy_factory import create_proxy_app, close_http_client
-
-
-def get_db():
-    client = MongoClient(get_mongo_uri(), serverSelectionTimeoutMS=1000)
-    return client[MONGO_DB]
 
 
 async def run_servers():
@@ -26,7 +19,8 @@ async def run_servers():
         db.ip_rules.create_index("expires_at", expireAfterSeconds=0)
         db.usage_logs.create_index("timestamp", expireAfterSeconds=15552000)
         db.blocked_requests.create_index("timestamp", expireAfterSeconds=15552000)
-        print("💾 MongoDB: Índices TTL verificados en ip_rules, usage_logs y blocked_requests.", flush=True)
+        db.api_keys.create_index("key", unique=True)
+        print("💾 MongoDB: Índices TTL y de claves verificados en ip_rules, usage_logs, blocked_requests y api_keys.", flush=True)
     except Exception as e:
         print(f"⚠️ Error al inicializar índices de MongoDB en Gateway startup: {e}", file=sys.stderr, flush=True)
 
@@ -99,6 +93,7 @@ async def run_servers():
         )
     finally:
         await close_http_client()
+        close_mongo_client()
 
 
 def main():
