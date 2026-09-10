@@ -229,6 +229,28 @@ class TestGatewayToolsAndCloud(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(match_section_query("articulo 79", s_l2_t1))
         self.assertFalse(match_section_query("art. 80", s_l2_t1))
 
+    def test_document_structure_multi_keyword_filtering(self):
+        from rag_engine import get_document_structure
+
+        # 1. Filtro compuesto con comas y términos redundantes (caso real Open-WebUI)
+        res_mult = get_document_structure("6aa2af17a90fa60634db979a", filtro="tratados, derechos, derechos humanos, tratados")
+        self.assertTrue(res_mult["success"])
+        self.assertGreater(res_mult["sections_count"], 0)
+        # Debe contener las secciones clave del Art. 75 y de tratados
+        sec_names = [s["section"] for s in res_mult["sections"]]
+        has_art_75 = any("75" in s for s in sec_names)
+        self.assertTrue(has_art_75, "El filtro de tratados/derechos debe incluir el Artículo 75 de la Constitución")
+
+        # 2. Filtro jerárquico tradicional (Libro II Titulo I) -> No debe romperse
+        res_hier = get_document_structure("6a9e2d4236300fe5f0afb9d8", filtro="Libro II Titulo I")
+        self.assertTrue(res_hier["success"])
+        self.assertEqual(res_hier["sections_count"], 37)
+
+        # 3. Filtro por artículo puntual (art. 79) -> Coincidencia exacta única
+        res_art = get_document_structure("6a9e2d4236300fe5f0afb9d8", filtro="art. 79")
+        self.assertTrue(res_art["success"])
+        self.assertEqual(res_art["sections_count"], 1)
+
     def test_pdf_filename_sanitization_and_slashes(self):
         from pdf_engine import sanitize_pdf_filename, create_pdf_from_markdown
 

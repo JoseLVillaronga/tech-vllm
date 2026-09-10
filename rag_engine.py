@@ -984,6 +984,7 @@ def get_document_structure(doc_id: str, filtro: Optional[str] = None, table_name
     current_sec_name = None
     current_sec_tokens = 0
     current_sec_chunks = 0
+    current_sec_texts = []
     start_chunk_idx = 1
     
     for idx, (ch_id, sec_path, cont, tok_cnt) in enumerate(sorted_items, 1):
@@ -995,9 +996,12 @@ def get_document_structure(doc_id: str, filtro: Optional[str] = None, table_name
             current_sec_tokens = t_c
             current_sec_chunks = 1
             start_chunk_idx = idx
+            current_sec_texts = [cont] if cont else []
         elif sec_name == current_sec_name:
             current_sec_tokens += t_c
             current_sec_chunks += 1
+            if cont:
+                current_sec_texts.append(cont)
         else:
             sections_list.append({
                 "index": len(sections_list) + 1,
@@ -1005,12 +1009,14 @@ def get_document_structure(doc_id: str, filtro: Optional[str] = None, table_name
                 "chunk_start": start_chunk_idx,
                 "chunk_end": idx - 1,
                 "chunks_count": current_sec_chunks,
-                "estimated_tokens": current_sec_tokens
+                "estimated_tokens": current_sec_tokens,
+                "_content_text": " ".join(current_sec_texts)
             })
             current_sec_name = sec_name
             current_sec_tokens = t_c
             current_sec_chunks = 1
             start_chunk_idx = idx
+            current_sec_texts = [cont] if cont else []
             
     if current_sec_name is not None:
         sections_list.append({
@@ -1019,17 +1025,57 @@ def get_document_structure(doc_id: str, filtro: Optional[str] = None, table_name
             "chunk_start": start_chunk_idx,
             "chunk_end": len(sorted_items),
             "chunks_count": current_sec_chunks,
-            "estimated_tokens": current_sec_tokens
+            "estimated_tokens": current_sec_tokens,
+            "_content_text": " ".join(current_sec_texts)
         })
 
     # Filtrar secciones por jerarquía/palabra clave con límites seguros
     clean_filtro = filtro.strip() if filtro and filtro.strip() else ""
     if clean_filtro:
-        filtered = [s for s in sections_list if match_section_query(clean_filtro, s["section"])]
-        if not filtered:
-            f_norm = normalize_text(clean_filtro)
-            filtered = [s for s in sections_list if f_norm in normalize_text(s["section"])]
-        sections_list = filtered
+        # Extraer términos de búsqueda considerando separadores comunes (comas, punto y coma, pipes, 'o', 'or')
+        raw_terms = re.split(r"[,;|]|\b(?:o|or)\b", clean_filtro)
+        terms = []
+        seen = set()
+        for t in raw_terms:
+            tc = t.strip()
+            tn = normalize_text(tc)
+            if tn and tn not in seen:
+                seen.add(tn)
+                terms.append(tc)
+
+        if not terms:
+            terms = [clean_filtro]
+
+        matched_by_title = []
+        matched_by_content = []
+
+        for s in sections_list:
+            sec_name = s["section"]
+            # 1. Coincidencia por título de sección (prioridad máxima)
+            # Evalúa la consulta completa o cualquiera de los términos alternativos si se pasaron múltiples tags
+            if match_section_query(clean_filtro, sec_name) or any(match_section_query(t, sec_name) for t in terms):
+                matched_by_title.append(s)
+                continue
+
+            # 2. Coincidencia secundaria por contenido de la sección
+            cont_text = s.get("_content_text", "")
+            if cont_text:
+                cont_norm = normalize_text(cont_text)
+                for t in terms:
+                    t_norm = normalize_text(t)
+                    if not t_norm or len(t_norm) < 3:
+                        continue
+                    pat = build_boundary_regex(t_norm)
+                    if re.search(pat, cont_norm):
+                        matched_by_content.append(s)
+                        break
+
+        combined = {s["index"]: s for s in (matched_by_title + matched_by_content)}
+        sections_list = [combined[idx] for idx in sorted(combined.keys())]
+
+    # Limpiar campo temporal _content_text para preservar el contrato de salida y no saturar memoria
+    for s in sections_list:
+        s.pop("_content_text", None)
 
     # 4. Formatear la tabla Markdown del GPS Documental con límite seguro de filas
     MAX_GPS_ROWS = 50
