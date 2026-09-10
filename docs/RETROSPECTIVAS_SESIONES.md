@@ -26,6 +26,7 @@ Al finalizar cada sesión de trabajo, el agente y el usuario realizan una audito
 
 ## 📈 Historial Consolidado de Sesiones
 
+| **2026-09-10 (Noche - Resolución de Amnesia Multi-Turno en Podador de Contexto, Guía Positiva Ontológica y Consolidación del Principio Perimetral MEA)** | `59680d91` | 16 | ~70 | 6 | **0** | 2/10 | Mínimo (Quirúrgico) | 🟢 **100% Exitoso** |
 | **2026-09-10 (Tarde - Gobernador de Presupuesto RAG, Circuit Breaker 50k, Semáforo de Suficiencia, Tuning MoE a 52-70 t/s y Trilema de Modelos)** | `fe37eff0` | 18 | ~65 | 4 | **0** | 1/10 | Mínimo (Modular) | 🟢 **100% Exitoso** |
 | **2026-09-10 (Madrugada - Soporte Dual MoE/Denso en Llama.cpp, KV Cache Quantization, Auditoría GGUF y Despliegue 100% GPU de Qwen 3.8 27B a 33 t/s)** | `fe37eff0` | 14 | ~35 | 1 | **0** | 1/10 | Mínimo (Modular) | 🟢 **100% Exitoso** |
 | **2026-09-09 (Tarde - RAG Multi-Tenant, Tablas Aisladas LanceDB, Clonación Arrow Zero-GPU, Despliegues Día Cero & Extractor InfoLEG en GUI)** | `fe37eff0` | 20 | ~95 | 6 | **0** | 1/10 | Mínimo (Modular) | 🟢 **100% Exitoso** |
@@ -55,6 +56,40 @@ Al finalizar cada sesión de trabajo, el agente y el usuario realizan una audito
 
 ## 📝 Fichas Detalladas por Sesión
  
+### 🔹 Sesión: 2026-09-10 Noche (`59680d91-1691-45da-96a7-4b47f72e1539`) - Resolución de Amnesia Multi-Turno en Podador de Contexto, Guía Positiva Ontológica y Consolidación del Principio Perimetral MEA
+* **Hitos Principales:**
+  1. **Auditoría Integral de Imports y Desacoplamiento Arquitectónico (Ley 1):**
+     - Desacoplamiento de `gateway.tools.web_search` en `alignment_engine.py` mediante carga perezosa (`lazy import`).
+     - Restitución del `return` en `get_invariants_system_prompt()` y corrección del filtrado booleano en la inyección de `system_msg`.
+     - Delimitación y neutralidad temática universal en `format_company_profile_block`, erradicando sesgos institucionales indebidos en consultas jurídicas generales.
+     - Ampliación semántica de `GROUNDING_TRIGGERS_PATTERN` (`tratados`, `derechos`, `internacional`, etc.).
+  2. **Persuasión Positiva y Auto-Orientación Ontológica en Consultas Doctrinales:**
+     - Detección de consultas de catálogo, doctrina o marco legal amplio en `tool_governor.py` (`is_broad_or_deep_query`).
+     - Inyección de guía determinista en las primeras etapas de exploración para orientar al LLM hacia `obtener_indice_biblioteca` (41 obras) antes de realizar búsquedas aisladas.
+  3. **Filtro Multi-Criterio OR en el GPS Documental ([`rag_engine.py`](../rag_engine.py)):**
+     - Refactorización de la búsqueda por capítulos/secciones: reemplazo de coincidencia exacta por división por comas y límites de palabra (`\b`), permitiendo filtrar con múltiples términos independientes (`filtro="tratado,derecho,internacional"`).
+  4. **Resolución del Conflicto de Techo de Contexto en MoE (Circuit Breaker vs. Grounding):**
+     - Al activarse el `hard_cap` en el Gobernador, se reemplaza la directiva obligatoria de invocar herramientas en el mensaje del usuario por `[FASE DE INVESTIGACIÓN CONCLUIDA - SÍNTESIS FINAL OBLIGATORIA (MEA)]`.
+     - Erradicación total de la emisión de etiquetas `<tool_call>` en texto plano cuando las tools están deshabilitadas, logrando una síntesis doctoral de 3.014 tokens en Qwen 3.6 35B MoE con 50.245 tokens de contexto previo.
+  5. **Resolución Canónica de la Amnesia Multi-Turno en [`gateway/core/context_pruner.py`](../gateway/core/context_pruner.py) (Leyes 2, 3 y 4):**
+     - *Diagnóstico de Causa Raíz:* Al superar los 32k tokens tras un turno de investigación intensiva (50k tokens de tools), el podador descartaba el bloque completo del turno 1 (`kept_blocks.pop(0)`), borrando la consulta del usuario y los 3.014 tokens de la respuesta del asistente, provocando amnesia total en repreguntas breves (*"Pasamelo en PDF"*).
+     - *Poda Escalonada por Niveles (Fases 5.1, 5.2 y 5.3):* Si se excede `max_context_tokens`, antes de descartar ningún turno, compacta los mensajes `role == "tool"` de los turnos ya completados a stubs de referencia (~100 tokens). Esto recuperó más de 45.000 tokens en un solo paso, preservando **100% íntegra la síntesis del asistente y la pregunta del usuario**.
+  6. **Consolidación del Principio Perimetral Negativo del MEA (Gate 1 vs. Gate 2):**
+     - Comprobación empírica de que la contención ética y operativa debe ser perimetral y negativa (lo estrictamente prohibido), jamás prescriptiva ni micrométrica.
+     - La tentativa de retener preventivamente `generate_pdf_document` en el turno 1 forzó al modelo a generar un PDF no pedido y desbordó el argumento JSON (14.596 caracteres truncados).
+     - Al revertir y permitir que las herramientas se regeneren limpiamente en el turno 2, el modelo enlazó el texto previo intacto y ejecutó `generate_pdf_document` únicamente cuando el usuario lo solicitó (*"Pasamelo e PDF"*), compilando un PDF oficial de 3 páginas de alta fidelidad.
+  7. **Suite de Pruebas Automatizadas:**
+     - 63/63 tests ejecutados y pasando en verde (`test_context_pruner.py`, `test_tool_governor.py`, `test_gateway_core.py`, `test_gateway_tools.py`).
+     - Cero regresiones en los microservicios activos de la suite.
+* **Evaluación MEA v2.1 & Leyes de Ingeniería:**
+  * **Invariantes (Gate 1):** **0 violaciones**. Cero datos inventados, veracidad 100%, cero rutas absolutas, no destructividad.
+  * **Ley 1 (Modularización):** Cumplida al 100%. Módulos de podador, gobernador, motor RAG y alineación estrictamente delimitados y desacoplados.
+  * **Ley 2 (Causa Raíz):** Cumplida al 100%. Se atacó el origen de la amnesia en el podador y el conflicto de etiquetas en la transición de fases del gobernador.
+  * **Ley 3 (Mínimo Blast Radius):** Cumplida al 100%. Reversión limpia de sobre-ingeniería innecesaria y cambios atómicos en caliente.
+  * **Ley 4 (Integridad en Cascada):** Preservación absoluta de la memoria semántica de las respuestas sintetizadas para evitar alucinaciones en turnos derivados.
+  * **RVI Máximo:** `2/10`.
+  * **Resultado:** 🟢 **100% Exitoso**.
+
 ### 🔹 Sesión: 2026-09-10 Tarde (`fe37eff0-f313-46c0-9ac4-cc5ad3a5f1a2`) - Gobernador de Presupuesto RAG, Circuit Breaker 50k, Semáforo de Suficiencia, Tuning MoE a 52-70 t/s y Trilema de Modelos
 * **Hitos Principales:**
   1. **Tuning de Hardware MoE en RTX 3090 (24 GB) y Actualización de Presets:**
