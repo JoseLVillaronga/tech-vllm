@@ -301,8 +301,8 @@
             }
         }
 
-        // Configuración rápida de parámetros de Llama.cpp (GPT-OSS 20B / Gemma 4 / Qwen MoE)
-        function selectQuickLlamaModel(modelName, ctx, batch, ubatch, gpuLayers, moeCpu, reasoning, loadMode, threads, parallel) {
+        // Configuración rápida de parámetros de Llama.cpp (GPT-OSS 20B / Gemma 4 / Qwen MoE / Qwen 27B Denso)
+        function selectQuickLlamaModel(modelName, ctx, batch, ubatch, gpuLayers, moeCpu, reasoning, loadMode, threads, parallel, isMoe = 'false', cacheK = 'f16', cacheV = 'f16') {
             const form = document.getElementById('config-form');
             if (!form) return;
             const cleanModel = modelName.replace(/\.gguf$/, '');
@@ -328,5 +328,8 @@
             if (form.elements['LLAMA_LOAD_MODE']) form.elements['LLAMA_LOAD_MODE'].value = loadMode;
             if (form.elements['LLAMA_THREADS']) form.elements['LLAMA_THREADS'].value = threads;
             if (form.elements['LLAMA_PARALLEL']) form.elements['LLAMA_PARALLEL'].value = parallel || 2;
+            if (form.elements['LLAMA_IS_MOE']) form.elements['LLAMA_IS_MOE'].value = String(isMoe);
+            if (form.elements['LLAMA_CACHE_TYPE_K']) form.elements['LLAMA_CACHE_TYPE_K'].value = cacheK || 'f16';
+            if (form.elements['LLAMA_CACHE_TYPE_V']) form.elements['LLAMA_CACHE_TYPE_V'].value = cacheV || 'f16';
         }
 

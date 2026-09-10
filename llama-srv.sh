@@ -59,7 +59,6 @@ CTX_SIZE="${LLAMA_CTX_SIZE:-131072}"
 BATCH_SIZE="${LLAMA_BATCH_SIZE:-4096}"
 UBATCH_SIZE="${LLAMA_UBATCH_SIZE:-1024}"
 GPU_LAYERS="${LLAMA_GPU_LAYERS:-256}"
-N_CPU_MOE="${LLAMA_N_CPU_MOE:-18}"
 REASONING="${LLAMA_REASONING:-off}"
 THREADS="${LLAMA_THREADS:-8}"
 LOAD_MODE="${LLAMA_LOAD_MODE:-mlock}"
@@ -78,6 +77,35 @@ else
     MMPROJ_DESC="Desactivado (Solo Texto)"
 fi
 
+# 5.2 Parámetros Condicionales por Arquitectura (MoE vs Denso)
+IS_MOE="${LLAMA_IS_MOE:-false}"
+MOE_ARGS=()
+if [ "${IS_MOE}" = "true" ]; then
+    ARCH_TYPE="MoE (Mixture of Experts)"
+    N_CPU_MOE="${LLAMA_N_CPU_MOE:-0}"
+    if [ "${N_CPU_MOE}" -gt 0 ] 2>/dev/null; then
+        MOE_ARGS=(--n-cpu-moe "${N_CPU_MOE}")
+        MOE_DESC="${N_CPU_MOE} capas de expertos en CPU"
+    else
+        MOE_DESC="100% en GPU (--n-cpu-moe 0)"
+    fi
+else
+    ARCH_TYPE="Denso (Dense Transformer)"
+    MOE_DESC="No aplica (desactivado)"
+fi
+
+# 5.3 Cuantización de KV Cache (Optimización de VRAM para grandes contextos)
+CACHE_K="${LLAMA_CACHE_TYPE_K:-}"
+CACHE_V="${LLAMA_CACHE_TYPE_V:-}"
+CACHE_ARGS=()
+if [ -n "${CACHE_K}" ] && [ "${CACHE_K}" != "f16" ]; then
+    CACHE_ARGS+=(--cache-type-k "${CACHE_K}")
+fi
+if [ -n "${CACHE_V}" ] && [ "${CACHE_V}" != "f16" ]; then
+    CACHE_ARGS+=(--cache-type-v "${CACHE_V}")
+fi
+KV_CACHE_DESC="K=${CACHE_K:-f16} / V=${CACHE_V:-f16}"
+
 echo "============================================================"
 echo "🦙 Iniciando llama-server para vLLM Suite"
 echo "============================================================"
@@ -85,12 +113,14 @@ echo "👤 Usuario Ejecutor: $(whoami) (Directorio Base: ${USER_HOME})"
 echo "📍 Binario:          ${LLAMA_BIN}"
 echo "📦 Modelo:           ${MODEL_PATH}"
 echo "🏷️ Alias:            ${ALIAS}"
+echo "🏗️ Arquitectura:     ${ARCH_TYPE} (MoE: ${MOE_DESC})"
+echo "💾 KV Cache:         ${KV_CACHE_DESC}"
 echo "👁️ Proyector Visión:  ${MMPROJ_DESC}"
 echo "🔌 Puerto Backend:   ${PORT}"
 echo "🧠 Contexto Máximo:  ${CTX_SIZE} tokens"
 echo "⚡ Batch Lógico:     ${BATCH_SIZE}"
 echo "🚀 Micro-Batch (uB): ${UBATCH_SIZE}"
-echo "🎮 GPU Layers:       ${GPU_LAYERS} (MoE CPU: ${N_CPU_MOE})"
+echo "🎮 GPU Layers:       ${GPU_LAYERS}"
 echo "💭 Razonamiento:     ${REASONING}"
 echo "🔒 Modo de Carga:    --load-mode ${LOAD_MODE}"
 echo "🧵 Hilos CPU:        ${THREADS}"
@@ -103,13 +133,14 @@ exec "${LLAMA_BIN}" \
   --model "${MODEL_PATH}" \
   --alias "${ALIAS}" \
   "${MMPROJ_ARGS[@]}" \
+  "${MOE_ARGS[@]}" \
+  "${CACHE_ARGS[@]}" \
   --ctx-size "${CTX_SIZE}" \
   --parallel "${PARALLEL}" \
   --slot-save-path "${SLOT_SAVE_PATH}" \
   --batch-size "${BATCH_SIZE}" \
   --ubatch-size "${UBATCH_SIZE}" \
   --gpu-layers "${GPU_LAYERS}" \
-  --n-cpu-moe "${N_CPU_MOE}" \
   --reasoning "${REASONING}" \
   --flash-attn on \
   --threads "${THREADS}" \
