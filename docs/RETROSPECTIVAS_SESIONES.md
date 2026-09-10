@@ -26,6 +26,7 @@ Al finalizar cada sesión de trabajo, el agente y el usuario realizan una audito
 
 ## 📈 Historial Consolidado de Sesiones
 
+| **2026-09-10 (Tarde - Gobernador de Presupuesto RAG, Circuit Breaker 50k, Semáforo de Suficiencia, Tuning MoE a 52-70 t/s y Trilema de Modelos)** | `fe37eff0` | 18 | ~65 | 4 | **0** | 1/10 | Mínimo (Modular) | 🟢 **100% Exitoso** |
 | **2026-09-10 (Madrugada - Soporte Dual MoE/Denso en Llama.cpp, KV Cache Quantization, Auditoría GGUF y Despliegue 100% GPU de Qwen 3.8 27B a 33 t/s)** | `fe37eff0` | 14 | ~35 | 1 | **0** | 1/10 | Mínimo (Modular) | 🟢 **100% Exitoso** |
 | **2026-09-09 (Tarde - RAG Multi-Tenant, Tablas Aisladas LanceDB, Clonación Arrow Zero-GPU, Despliegues Día Cero & Extractor InfoLEG en GUI)** | `fe37eff0` | 20 | ~95 | 6 | **0** | 1/10 | Mínimo (Modular) | 🟢 **100% Exitoso** |
 | **2026-09-08 (Noche - Evaluación Agéntica en Deepseek Harness, Modo Agentic Bilingüe en Puerto 8010, Sanitización de Nombres PDF y Coronación de gpt-oss-20b en RAG)** | `fe37eff0` | 10 | ~45 | 3 | **0** | 1/10 | Mínimo (Modular) | 🟢 **100% Exitoso** |
@@ -54,6 +55,37 @@ Al finalizar cada sesión de trabajo, el agente y el usuario realizan una audito
 
 ## 📝 Fichas Detalladas por Sesión
  
+### 🔹 Sesión: 2026-09-10 Tarde (`fe37eff0-f313-46c0-9ac4-cc5ad3a5f1a2`) - Gobernador de Presupuesto RAG, Circuit Breaker 50k, Semáforo de Suficiencia, Tuning MoE a 52-70 t/s y Trilema de Modelos
+* **Hitos Principales:**
+  1. **Tuning de Hardware MoE en RTX 3090 (24 GB) y Actualización de Presets:**
+     - Comprobación empírica del *sweet spot*: Cuantización de KV Cache a `q4_0` para 128k tokens + derivación de solo 8 capas a CPU (`LLAMA_N_CPU_MOE=8`).
+     - Aceleración de generación de Qwen 3.6 35B MoE de ~25 t/s a **~52-70 t/s**, saturando la GPU de forma segura a 21.4 GB / 24.0 GB (89%).
+     - Sincronización del botón rápido en `tab_config.html` (`⚡ Qwen 3.6 35B MoE (Híbrido / 70 t/s)`).
+  2. **Diseño e Implementación del Gobernador de Presupuesto RAG ([`gateway/core/tool_governor.py`](../gateway/core/tool_governor.py) - Leyes 1 y 2):**
+     - Traslado del control del flujo agéntico desde prompts probabilísticos hacia el middleware determinista del Gateway.
+     - **Hard Circuit Breaker ($\ge 50.000$ tokens):** Remoción física del parámetro `tools` en el payload JSON hacia `llama-server` para obligar al modelo a redactar la síntesis final, evitando desbordes de contexto y latencias de minutos.
+     - **Semáforo de Suficiencia tras 4 llamadas:**
+       - Insuficiencia ($< 5.000$ tokens): Remoción de herramientas e instrucción formal de cierre honesto (*"No tengo datos suficientes en las fuentes oficiales..."*), prohibiendo inferencias de memoria paramétrica (Invariante de Veracidad).
+       - Zona Discrecional ($5.000 - 10.000$ tokens): Mantiene herramientas activas, permitiendo contestar con lo que tiene (modelo perezoso) o continuar profundizando a criterio del LLM sin desalentarlo.
+       - Zona Óptima ($> 10.000$ tokens): Evidencia consolidada.
+  3. **Estudio Forense del Trilema de Modelos Locales:**
+     - `gpt-oss-20b`: Evidencia forense del "razonamiento en el vacío" (bucle de repetición de 15 veces en `<think>` y alucinación masiva de 10 tratados ficticios TLC UE-Arg-Chile-Uy con Ley 24.400) vs. rescate total por LanceDB cuando sí invocó la herramienta.
+     - `Qwen 3.8 27B Denso`: Razonamiento doctoral, resiliencia ante la salvaguarda de la Ley 27.483 (~27k tokens) usando GPS estructural, 62.9k tokens de contexto evaluados y generación analítica a ~22 t/s.
+     - `Qwen 3.6 35B MoE`: Activación live del Circuit Breaker en Gateway a ~60k tokens (`🛑 [Tool Governor] Techo alcanzado: ~60,114 tokens en 9 llamadas. Herramientas deshabilitadas para forzar síntesis final`), entregando un dictamen perfecto de 7 leyes en 55 segundos.
+  4. **Expansión Contigua Anti-Truncamiento en LanceDB ([`rag_engine.py`](../rag_engine.py) - Ley 4):**
+     - Mecanismo dinámico que une automáticamente fragmentos adyacentes de la misma sección hasta 650 tokens para prevenir truncamientos ciegos en artículos extensos (ej. Art. 75 CN).
+  5. **Suite de Pruebas Automatizadas:**
+     - 7/7 tests unitarios nuevos en [`tests/test_tool_governor.py`](../tests/test_tool_governor.py) (100% OK).
+     - 16/16 tests de integración en [`tests/test_gateway_tools.py`](../tests/test_gateway_tools.py) (100% OK).
+* **Evaluación MEA v2.1 & Leyes de Ingeniería:**
+  * **Invariantes (Gate 1):** **0 violaciones**. Veracidad absoluta, cero citas apócrifas, cero rutas absolutas o secretos expuestos.
+  * **Ley 1 (Modularización):** Cumplida al 100%. `tool_governor.py` como módulo independiente desacoplado.
+  * **Ley 2 (Causa Raíz):** Cumplida al 100%. Se gobernó el transporte HTTP (JSON payload) en lugar de parches de prompts.
+  * **Ley 3 (Mínimo Blast Radius):** Cumplida al 100%. Cero regresiones en los microservicios activos.
+  * **Ley 4 (Integridad en Cascada):** Demostración empírica fundamental del valor del grounding factual contra la alucinación probabilística.
+  * **RVI Máximo:** `1/10`.
+  * **Resultado:** 🟢 **100% Exitoso**.
+
 ### 🔹 Sesión: 2026-09-10 Madrugada (`fe37eff0-f313-46c0-9ac4-cc5ad3a5f1a2`) - Soporte Dual MoE/Denso en Llama.cpp, KV Cache Quantization, Auditoría GGUF y Despliegue 100% GPU de Qwen 3.8 27B a 33 t/s
 * **Hitos Principales:**
   1. **Separación Arquitectónica y Gobernanza Condicional ([`llama-srv.sh`](../llama-srv.sh) - Commit `f83fa60`):**

@@ -16,6 +16,8 @@
    - [Capa 3: Gateway de Seguridad, Inferencia y Alineación (`alignment_engine.py` & LLM)](#capa-3-gateway-de-seguridad-inferencia-y-alineación)
 4. [Caso de Estudio Forense: El Código Penal Argentino (Ley 11.179)](#4-caso-de-estudio-forense-el-código-penal-argentino)
 5. [Checklist de Mantenimiento para Futuras Obras y Códigos](#5-checklist-de-mantenimiento-para-futuras-obras-y-códigos)
+6. [Arquitectura RAG Multi-Tenant (Fase 2)](#6-arquitectura-rag-multi-tenant-fase-2)
+7. [Gobernador de Presupuesto RAG y Ciclo de Vida en Gateway (Circuit Breaker)](#7-gobernador-de-presupuesto-rag-y-ciclo-de-vida-en-gateway)
 
 ---
 
@@ -262,4 +264,50 @@ En el API Security Gateway (puerto 8000/8010):
 
 ### 6. Autonomía para Despliegues Limpios ("Día Cero")
 Gracias a `get_canonical_rag_schema()`, una instalación limpia en un servidor nuevo sin ninguna base previa en `data/lancedb/` es capaz de crear la primera base vacía directamente desde la GUI o CLI con su esquema completo de 16 columnas tipadas, lista para la ingesta diferencial inmediata sin migraciones manuales.
+
+---
+
+## 7. Gobernador de Presupuesto RAG y Ciclo de Vida en Gateway (Circuit Breaker Determinista)
+
+A partir de la versión 2.14.0 (Septiembre 2026), el sistema incorpora un **Gobernador de Ciclo de Vida y Presupuesto RAG** (`gateway/core/tool_governor.py`) que traslada el control del flujo agéntico desde el terreno probabilístico (prompts) hacia el terreno determinista del middleware (**Ley 4 de Integridad en Cascada** y **Ley 2 de Causa Raíz**).
+
+```mermaid
+flowchart TD
+    REQ["Open-WebUI (Petición con Tools)"] --> GATEWAY["Gateway enrich_chat_payload"]
+    GATEWAY --> STATS["inspect_active_turn_tools (Aislamiento de Turno Activo)"]
+    
+    STATS --> EVAL{"Evaluación de Tokens Acumulados & Llamadas"}
+    
+    EVAL -->|Tokens >= 50.000| HARD_CAP["Zona 1: Hard Circuit Breaker (Techo 50k)\n- Remueve 'tools' del payload JSON\n- Inyecta banner de forzado de síntesis"]
+    EVAL -->|Llamadas >= 4 & Tokens < 5.000| INSUF["Zona 2: Insuficiencia (< 5k tokens)\n- Remueve 'tools' del payload JSON\n- Inyecta directiva formal: 'No tengo datos suficientes'"]
+    EVAL -->|Llamadas >= 4 & 5.000 <= Tokens < 10.000| DISC["Zona 3: Zona Discrecional\n- Mantiene 'tools' activas\n- Permite contestar o continuar a criterio del LLM"]
+    EVAL -->|Tokens >= 10.000 & < 50.000| HEALTHY["Zona 4: Evidencia Robusta\n- Mantiene 'tools' activas\n- Síntesis libre"]
+    EVAL -->|Llamadas < 4 & Consulta de Amplitud| GUIDANCE["Zona 5: Exploración Temprana\n- Sugiere combinar herramientas hacia objetivo 10k"]
+    
+    HARD_CAP --> ENGINE["llama-server / vLLM (Inferencia Forzada a Texto)"]
+    INSUF --> ENGINE
+    DISC --> ENGINE
+    HEALTHY --> ENGINE
+    GUIDANCE --> ENGINE
+```
+
+### 1. El Principio del Techo Duro (*Hard Circuit Breaker* a 50.000 tokens)
+- **Problema de Fondo:** Un modelo con capacidad de multi-herramienta (como Qwen 35B MoE) puede ejecutar lecturas masivas sucesivas de documentos hasta saturar la ventana de contexto (128k), provocando degradación de memoria, tiempos de prefill de varios minutos o errores OOM.
+- **Solución en Middleware:** Si el acumulado de tokens de herramientas en el turno activo supera los **50.000 tokens** (`GATEWAY_MAX_TOOL_TOKENS=50000`):
+  1. El Gateway **remueve físicamente el atributo `tools` y `tool_choice`** del payload JSON.
+  2. Inyecta al final del último mensaje de herramienta la directiva de forzado:
+     `🛑 [GOBERNADOR RAG - TECHO DE CONTEXTO ALCANZADO]: Se han acumulado más de 50.000 tokens... Proceda de inmediato a redactar su respuesta final estructurada.`
+  3. Al carecer de herramientas en el contrato de la API, el motor LLM está imposibilitado de iterar y se ve obligado matemáticamente a generar la síntesis de texto final.
+
+### 2. Semáforo de Suficiencia tras 4 Llamadas
+Para evitar bucles infructuosos de búsqueda cuando una materia no existe en la biblioteca, el Gobernador evalúa el estado tras 4 llamadas:
+- **Corte por Insuficiencia (`< 5.000 tokens`):** Si tras 4 llamadas la evidencia reunida es inferior a 5.000 tokens (o nula), el Gateway corta el bucle retirando las herramientas e instruyendo el Invariante de Veracidad:
+  `⚠️ [GOBERNADOR RAG - FUENTES DOCUMENTALES INSUFICIENTES]: Concluya formalmente: 'No tengo datos suficientes en las fuentes oficiales para responder a esta consulta con certeza.' Prohibido inferir.`
+- **Zona Discrecional (`5.000 a 10.000 tokens`):** Si el modelo reunió entre 5k y 10k tokens, se le permite responder si está satisfecho (modelo perezoso), pero **no se le desalienta continuar** si a su propio criterio prefiere seguir llamando herramientas para profundizar.
+
+### 3. Expansión Contigua Anti-Truncamiento (Stitching Dinámico)
+En `rag_engine.py` (Líneas 577-635), cuando una búsqueda semántica recupera un fragmento perteneciente a una sección extensa particionada (ej: *Constitución Nacional, Art. 75, Chunk 90*):
+- El motor detecta el particionamiento mediante metadatos y recupera automáticamente los fragmentos contiguos adyacentes de la misma sección hasta un presupuesto calibrado de **650 tokens**.
+- Esto garantiza que el texto legal no aparezca mutilado ni engañosamente cortado, erradicando de raíz la causa de alucinaciones inducidas por truncamiento ciego.
+
 
