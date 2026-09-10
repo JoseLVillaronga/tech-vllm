@@ -612,6 +612,95 @@ class TestGatewayCore(unittest.TestCase):
             data = json.loads(res.body.decode("utf-8"))
             self.assertEqual(data.get("table_name"), "kb_tech_support_argentina")
 
+    def test_get_invariants_system_prompt_non_empty(self):
+        from gateway.core.alignment_engine import get_invariants_system_prompt, DEFAULT_ALIGNMENT_SETTINGS
+
+        # 1. Caso base: debe retornar invariantes y no None ni vacío
+        prompt = get_invariants_system_prompt(DEFAULT_ALIGNMENT_SETTINGS)
+        self.assertIsNotNone(prompt)
+        self.assertIsInstance(prompt, str)
+        self.assertIn("[DIRECTIVAS FUNDAMENTALES Y DEBER DE VERACIDAD (INVARIANTES NO NEGOCIABLES)]", prompt)
+        self.assertIn("PROTOCOLO ANTISESGO Y SECUENCIA DE NAVEGACIÓN EN EMBUDO", prompt)
+        self.assertIn("CONFINAMIENTO DOCUMENTAL", prompt)
+
+        # 2. Con herramientas PDF y Doc Reader
+        prompt_tools = get_invariants_system_prompt(
+            DEFAULT_ALIGNMENT_SETTINGS,
+            has_pdf_tool=True,
+            has_doc_tool=True,
+            has_vision_attachment=True
+        )
+        self.assertIn("[PROTOCOLO OBLIGATORIO DE GENERACIÓN DE PDF]", prompt_tools)
+        self.assertIn("[PROTOCOLO DE LECTURA Y NAVEGACIÓN DOCUMENTAL]", prompt_tools)
+        self.assertIn("[PROTOCOLO DE VISIÓN Y DOCUMENTOS GRÁFICOS", prompt_tools)
+
+    def test_grounding_triggers_pattern_treaties_and_rights(self):
+        from gateway.core.alignment_engine import GROUNDING_TRIGGERS_PATTERN
+
+        # Pruebas de consultas de tratados, vigencia y derecho
+        q1 = "Pasame una lista de tratados internacionales vigentes que se nombren en Derecho Argentino, fundamenta en profundidad"
+        self.assertIsNotNone(GROUNDING_TRIGGERS_PATTERN.search(q1))
+
+        q2 = "¿Cuáles son los convenios de la OIT aplicables?"
+        self.assertIsNotNone(GROUNDING_TRIGGERS_PATTERN.search(q2))
+
+        q3 = "Analizar los precedentes sobre libertad sindical"
+        self.assertIsNotNone(GROUNDING_TRIGGERS_PATTERN.search(q3))
+
+        q4 = "¿Cuáles son los derechos fundamentales de los empleados?"
+        self.assertIsNotNone(GROUNDING_TRIGGERS_PATTERN.search(q4))
+
+    def test_company_profile_thematic_neutrality_clause(self):
+        from gateway.core.alignment_engine import format_company_profile_block
+
+        profile = {
+            "enabled": True,
+            "company_name": "TECCAM S.R.L.",
+            "activity": "Telecomunicaciones y Desarrollos de Energias Renovables"
+        }
+        block = format_company_profile_block(profile)
+        self.assertIn("Delimitación y Neutralidad Temática:", block)
+        self.assertIn("sin forzar menciones a la empresa, su actividad comercial ni encuadres corporativos innecesarios", block)
+
+    def test_enrich_chat_payload_independent_injections(self):
+        import asyncio
+        from gateway.core.alignment_engine import enrich_chat_payload
+
+        # Payload donde el cliente envió previamente solo una marca temporal
+        data = {
+            "model": "CorpAI-Gen | Legal & Compliance",
+            "messages": [
+                {"role": "system", "content": "Fecha y hora actual: lunes 1 de enero de 2026.\n\nInstrucción previa."},
+                {"role": "user", "content": "Pasame una lista de tratados internacionales vigentes en Argentina"}
+            ],
+            "tools": [{"type": "function", "function": {"name": "buscar_en_base_de_conocimiento"}}]
+        }
+
+        corp_profile = {
+            "enabled": True,
+            "company_name": "Empresa Test"
+        }
+
+        res = asyncio.run(enrich_chat_payload(
+            data,
+            actual_model="gemma",
+            is_cloud_request=False,
+            include_alignment=True,
+            alignment_mode="full",
+            company_profile=corp_profile
+        ))
+
+        sys_msg = res["messages"][0]["content"]
+        user_msg = res["messages"][1]["content"]
+
+        # Debe haber inyectado perfil corporativo e invariantes de forma independiente
+        self.assertIn("[PERFIL E IDENTIDAD CORPORATIVA DE LA ORGANIZACIÓN]:", sys_msg)
+        self.assertIn("[DIRECTIVAS FUNDAMENTALES Y DEBER DE VERACIDAD", sys_msg)
+        self.assertIn("Delimitación y Neutralidad Temática:", sys_msg)
+
+        # Debe haber inyectado el grounding perentorio en el user_msg
+        self.assertIn("[DIRECTIVA DE CONTROL Y GROUNDING OBLIGATORIO (MEA)]", user_msg)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -3,6 +3,23 @@
 Todos los cambios notables en este proyecto serán documentados en este archivo.
 El formato está basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/).
 
+## [2.13.0] - 2026-09-10
+
+### Fixed
+- **Restitución Crítica de Invariantes MEA en System Prompt (`gateway/core/alignment_engine.py`):**
+  - Restituida la sentencia `return` en `get_invariants_system_prompt()`, subsanando la omisión silenciosa que devolvía `None` y reactivando la inyección íntegra de los 9 Invariantes MEA (~12.500 caracteres), protocolo PDF, lector de documentos y visión en modo `full`.
+- **Inyección Modular Independiente en `enrich_chat_payload` (`gateway/core/alignment_engine.py`):**
+  - Desacoplada la evaluación compuesta en `system_msg` (`and` estricto): ahora fecha/hora, perfil corporativo e invariantes éticos se evalúan e inyectan de forma independiente, garantizando que marcas temporales previas no impidan la inyección de las directivas fundamentales.
+- **Detección Ampliada de Disparadores de Grounding (`gateway/core/alignment_engine.py`):**
+  - Incorporación a `GROUNDING_TRIGGERS_PATTERN` de términos jurídicos clave (`tratado/s`, `convenio/s`, `convención/es`, `derecho/s`, `vigente/s`, `precedente/s`, `jurídico/a`), garantizando el disparo perentorio de la directiva de grounding MEA ante consultas normativas y de derecho internacional.
+- **Resolución de Tensión Coherente en Invariantes 4 y 5 (`gateway/core/alignment_engine.py`):**
+  - Calibración de las reglas 4 y 5: la secuencia en embudo rige taxativamente ante sesiones con herramientas habilitadas; ante clientes o sesiones sin herramientas (`tools: []`), el modelo debe declarar con transparencia técnica que no dispone de herramientas documentales conectadas en esa sesión, eliminando alucinaciones o simulaciones falsas de consulta.
+- **Cláusula de Delimitación y Neutralidad Temática Multi-Tenant (`gateway/core/alignment_engine.py`):**
+  - Incorporación de directiva de neutralidad funcional en `format_company_profile_block()`: ante consultas de conocimiento general (leyes, ciencia, código, historia), el modelo responde con estricta neutralidad técnica y universalidad, erradicando sesgos y conclusiones corporativas forzadas o alucinaciones sectoriales.
+- **Desacoplamiento Estricto de Capas e Independencia de Imports (`gateway/core/alignment_engine.py`):**
+  - Conversión del import de `perform_ollama_web_search` desde `gateway.tools` a carga diferida (`lazy import`) dentro de la rama `gemma-4-web`, eliminando acoplamientos estáticos entre `core` y `tools` (Ley 1).
+  - Sincronización canónica de `db.alignment_settings` en MongoDB eliminando referencias hardcodeadas a empresas específicas en los invariantes globales.
+
 ## [2.12.0] - 2026-09-09
 
 ### Added

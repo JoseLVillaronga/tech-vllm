@@ -8,7 +8,6 @@ from typing import Optional, List, Dict, Any
 from pymongo import MongoClient
 
 from config import get_mongo_uri, MONGO_DB
-from gateway.tools.web_search import perform_ollama_web_search
 from gateway.core.context_pruner import prune_chat_history, get_max_user_turns
 from gateway.core.tool_governor import apply_tool_budget_governor
 
@@ -24,7 +23,7 @@ DEFAULT_INVARIANTS_PROMPT = """🏛️ [DIRECTIVAS FUNDAMENTALES Y DEBER DE VERA
    - Si una información no está presente en el contexto o en las herramientas disponibles, decláralo con total transparencia en lugar de suponerla o inventarla.
 4. PROTOCOLO ANTISESGO Y SECUENCIA DE NAVEGACIÓN EN EMBUDO (OBLIGATORIO):
    - Jamás asumas de memoria previa el contenido de leyes, vigencias, manuales, procedimientos operativos, contratos, políticas corporativas o documentación técnica cuando tengas herramientas de consulta disponibles: consulta activamente las herramientas para contrastar el texto oficial y vigente.
-   - En cualquier consulta de investigación en la biblioteca, análisis de contratos o verificación de procedimientos/políticas, aplica estrictamente la secuencia progresiva en 3 pasos:
+   - En cualquier consulta de investigación en la biblioteca, análisis de contratos o verificación de procedimientos/políticas (cuando existan herramientas de consulta disponibles), aplica estrictamente la secuencia progresiva en 3 pasos:
      * Paso 1 [Macro / Orientación]: buscar_en_base_de_conocimiento u obtener_indice_biblioteca para identificar las obras, manuales, contratos o normas disponibles, su estado de vigencia y doc_id. REGLA FUNDAMENTAL DEL PASO 1: 'obtener_indice_biblioteca' suministra únicamente títulos y metadatos orientativos; JAMÁS des por concluida la consulta en este paso ni describas el alcance de una ley sin haber leído su contenido dispositivo.
      * Paso 2 [Medio / GPS Estructural]: obtener_estructura_documento (con parámetro 'filtro' si aplica). OBLIGATORIO en obras, códigos o manuales extensos (> 10.000 tokens) para situar la topología del documento, ubicar los capítulos o títulos rectores exactos y no confundir áreas (ej: ubicar 'Contratos en General' y evitar saltar a capítulos inconexos de 'Familia', o ubicar el procedimiento específico sin mezclarlo con otros). Está ESTRICTAMENTE PROHIBIDO saltar directo a leer_documento_completo sin haber consultado antes la estructura.
      * Paso 3 [Quirúrgico / Literal]: leer_documento_completo (solicitando la sección o capítulo puntual identificado en el Paso 2) para extraer el texto normativo, procedimental o contractual literal e íntegro de los artículos o cláusulas necesarias.
@@ -32,12 +31,13 @@ DEFAULT_INVARIANTS_PROMPT = """🏛️ [DIRECTIVAS FUNDAMENTALES Y DEBER DE VERA
 5. DEBER DE VERIFICACIÓN ACTIVA, GROUNDING DOCUMENTAL Y PROHIBICIÓN DE SIMULACIÓN O ADIVINACIÓN:
    - ÁMBITO DE APLICACIÓN UNIVERSAL: Rige para derecho positivo y constitucional (artículos, mecanismos, facultades, DNU, actos administrativos), procedimientos operativos e instructivos (SOPs, flujogramas, pasos, protocolos), contratos (cláusulas, acuerdos, obligaciones, términos), políticas corporativas (seguridad, calidad, compliance) y documentación técnica interna (manuales, especificaciones corporativas).
    - Cuando el usuario consulte o pida mostrar/citar cualquier artículo, cláusula, paso procedimental, política, definición o mecanismo (ej: "mostrame el artículo X", "¿cuál es el mecanismo...", "¿qué es un DNU y sus límites?", "¿qué condiciones deben cumplirse?", "definición vigente", "¿cómo se ejecuta el procedimiento Y?"), o en REPREGUNTAS Y TURNOS DE CONTINUACIÓN CONVERSACIONAL:
-     ESTÁ ESTRICTAMENTE PROHIBIDO RESPONDER DE MEMORIA PARAMÉTRICA O INVENTAR CONTENIDO, PASOS, REQUISITOS, LÍMITES O NÚMEROS DE ARTÍCULOS. La inercia conversacional NO exime de la obligación de invocar herramientas.
-   - Para definir una institución, explicar un mecanismo o citar normas, procedimientos, contratos o políticas en cuerpos documentales extensos, es OBLIGATORIO COMBINAR las herramientas:
+     * Si dispones de herramientas de consulta en la sesión: ESTÁ ESTRICTAMENTE PROHIBIDO RESPONDER DE MEMORIA PARAMÉTRICA O INVENTAR CONTENIDO, PASOS, REQUISITOS, LÍMITES O NÚMEROS DE ARTÍCULOS. La inercia conversacional NO exime de la obligación de invocar herramientas.
+     * Si la sesión actual NO cuenta con herramientas de búsqueda o lectura documental habilitadas: declara con total honestidad y rigor que no dispones de herramientas de consulta conectadas en esta sesión para verificar el texto oficial y vigente, en lugar de simular falsamente haberlas consultado o inventar normativas de memoria.
+   - Para definir una institución, explicar un mecanismo o citar normas, procedimientos, contratos o políticas en cuerpos documentales extensos (cuando existan herramientas disponibles), es OBLIGATORIO COMBINAR las herramientas:
      1) buscar_en_base_de_conocimiento para orientar la búsqueda y obtener el doc_id de la norma, contrato o procedimiento aplicable.
      2) obtener_estructura_documento (con filtro temático) para ubicar el capítulo rector o sección específica.
      3) leer_documento_completo para extraer con exactitud literal los artículos o cláusulas necesarias (evitando omitir requisitos determinantes, causales taxativas o alterar principios jurídicos y operativos).
-   - QUEDA TERMINANTEMENTE PROHIBIDO SIMULAR EN TEXTO QUE ESTÁS RECUPERANDO INFORMACIÓN (ej. no escribas '[En proceso de recuperación...]', 'procederé a buscar...' ni narres procesos internos). La recuperación de información se realiza EXCLUSIVAMENTE ejecutando la herramienta formal.
+   - QUEDA TERMINANTEMENTE PROHIBIDO SIMULAR EN TEXTO QUE ESTÁS RECUPERANDO INFORMACIÓN (ej. no escribas '[En proceso de recuperación...]', 'procederé a buscar...' ni narres procesos internos, ni afirmes 'he consultado la base de datos' si no se ejecutó la herramienta). La recuperación de información se realiza EXCLUSIVAMENTE ejecutando la herramienta formal.
    - Si la búsqueda rápida no devuelve el contenido exacto en los fragmentos iniciales, declara con honestidad y transparencia que no fue localizado en la búsqueda preliminar o ejecuta 'leer_documento_completo' solicitando la sección correspondiente, pero JAMÁS rellenes el vacío inventando texto apócrifo.
    - Si la figura consultada no se encuentra en el documento que venías analizando, utiliza 'obtener_indice_biblioteca' para verificar si está regulada en un cuerpo normativo, manual o contrato independiente en lugar de forzarla o inventarla dentro del documento actual.
    - PROHIBICIÓN DE CITAS TEXTUALES APÓCRIFAS O ATRIBUCIÓN ERRÓNEA DE INCISOS: Si citas o transcribes una norma, artículo o inciso constitucional, legal o contractual, el texto debe provenir ÍNTEGRAMENTE de los fragmentos recuperados. Queda TERMINANTEMENTE PROHIBIDO inventar citas textuales entre comillas, inventar redacciones apócrifas de incisos o atribuirles regulaciones inexistentes. Si un fragmento se corta o no contiene el listado completo, invoca 'leer_documento_completo' en lugar de inventar el texto restante.
@@ -62,25 +62,28 @@ DEFAULT_INVARIANTS_PROMPT = """🏛️ [DIRECTIVAS FUNDAMENTALES Y DEBER DE VERA
 
 GROUNDING_TRIGGERS_PATTERN = re.compile(
     r"\b("
-    # 1. Normas, leyes, códigos y jurisprudencia
+    # 1. Normas, leyes, códigos, tratados y jurisprudencia
     r"constituci[oó]n|art[ií]culo|art[ií]culos|art\.|ley|leyes|c[oó]digo|c[oó]digos|dnu|decreto|decretos|"
-    r"resoluci[oó]n|resoluciones|reglamento|reglamentos|estatuto|estatutos|ordenanza|ordenanzas|jurisprudencia|fallo|fallos|doctrina|"
+    r"tratado|tratados|convenio|convenios|convenci[oó]n|convenciones|pacto|pactos|"
+    r"resoluci[oó]n|resoluciones|reglamento|reglamentos|estatuto|estatutos|ordenanza|ordenanzas|"
+    r"jurisprudencia|fallo|fallos|doctrina|precedente|precedentes|"
+    r"derecho|derechos|jur[ií]dic[ao]s?|legal|legales|normativ[ao]s?|"
     # 2. Procedimientos, instructivos y circuitos operativos
     r"procedimiento|procedimientos|instructivo|instructivos|protocolo|protocolos|flujograma|flujogramas|pasos|circuito|circuitos|"
     r"tr[aá]mite|tr[aá]mites|expediente|expedientes|requisito|requisitos|condici[oó]n|condiciones|etapa|etapas|gu[ií]a|gu[ií]as|"
-    r"plazo|plazos|t[eé]rmino|t[eé]rminos|vencimiento|vencimientos|vigencia|c[oó]mputo|notificaci[oó]n|publicaci[oó]n|"
+    r"plazo|plazos|t[eé]rmino|t[eé]rminos|vencimiento|vencimientos|vigencia|vigentes?|c[oó]mputo|notificaci[oó]n|publicaci[oó]n|"
     # 3. Contratos, acuerdos, cláusulas y obligaciones
-    r"contrato|contratos|cl[aá]usula|cl[aá]usulas|convenio|convenios|acuerdo|acuerdos|pacto|pactos|pliego|pliegos|licitaci[oó]n|licitaciones|"
+    r"contrato|contratos|cl[aá]usula|cl[aá]usulas|acuerdo|acuerdos|pliego|pliegos|licitaci[oó]n|licitaciones|"
     r"rescisi[oó]n|resoluci[oó]n|garant[ií]a|garant[ií]as|indemnizaci[oó]n|penalidad|penalidades|sanci[oó]n|sanciones|multa|multas|mora|"
     # 4. Políticas, compliance y seguridad interna
-    r"pol[ií]tica|pol[ií]ticas|compliance|conducta|normativ[ao]|normas|confidencialidad|seguridad|calidad|auditor[ií]a|auditor[ií]as|"
+    r"pol[ií]tica|pol[ií]ticas|compliance|conducta|confidencialidad|seguridad|calidad|auditor[ií]a|auditor[ií]as|"
     # 5. Instituciones, órganos, potestades y competencias
     r"funci[oó]n|funciones|atribuci[oó]n|atribuciones|potestad|potestades|competencia|competencias|facultad|facultades|"
     r"deber|deberes|obligaci[oó]n|obligaciones|responsabilidad|responsabilidades|mecanismo|mecanismos|alcance|eficacia|validez|"
     r"[oó]rgano|[oó]rganos|organismo|organismos|ente|entes|autoridad|autoridades|tribunal|tribunales|juzgado|juzgados|c[aá]mara|c[aá]maras|"
     r"defensor|defensor[ií]a|ministerio\s+p[uú]blico|procuraci[oó]n|fiscal[ií]a|magistratura|sindicatura|congreso|senado|diputados|"
-    # 6. Documentación interna y Teccam
-    r"documentaci[oó]n|manual|manuales|teccam"
+    # 6. Documentación institucional y corporativa
+    r"documentaci[oó]n|manual|manuales|empresa|corporativ[ao]s?|organizaci[oó]n|institucional"
     r")\b",
     re.IGNORECASE
 )
@@ -240,6 +243,9 @@ def get_invariants_system_prompt(settings: Dict[str, Any], has_pdf_tool: bool = 
     if custom_prompt:
         blocks.append(f"\n[DIRECTIVAS ADICIONALES]:\n{custom_prompt}")
 
+    return "\n\n".join(blocks).strip()
+
+
 def is_english_query(text: str) -> bool:
     """Heurística rápida y liviana para detectar si la consulta o tarea está redactada en inglés."""
     if not text:
@@ -297,7 +303,12 @@ def format_company_profile_block(profile: Optional[Dict[str, Any]]) -> str:
     lines.append(
         "Directiva de Identidad Institucional: Actúas como asistente oficial de esta organización. "
         "Toda respuesta sobre identidad corporativa, medios de contacto, horarios y servicios debe alinearse "
-        "estrictamente a los datos institucionales expuestos precedentemente."
+        "estrictamente a los datos institucionales expuestos precedentemente.\n"
+        "Delimitación y Neutralidad Temática: Si la consulta del usuario versa sobre temas generales "
+        "(legislación nacional o internacional general, ciencia, código, historia o cultura) no vinculados "
+        "específicamente a la operativa, contratación o servicios internos de esta organización, responde con "
+        "estricta neutralidad, objetividad y universalidad técnica, sin forzar menciones a la empresa, su actividad comercial "
+        "ni encuadres corporativos innecesarios."
     )
 
     return "\n".join(lines)
@@ -397,12 +408,21 @@ async def enrich_chat_payload(
         system_msg = next((m for m in messages if m.get("role") == "system"), None)
         if system_msg:
             orig_content = system_msg.get("content", "")
-            if (
-                "[DIRECTIVAS FUNDAMENTALES" not in orig_content
-                and "Fecha y hora actual:" not in orig_content
-                and "[PERFIL E IDENTIDAD CORPORATIVA" not in orig_content
-            ):
-                system_msg["content"] = f"{full_system_header}\n\n{orig_content}".strip()
+            needed_parts = []
+            if settings.get("inject_temporal", True) and "Fecha y hora actual:" not in orig_content:
+                needed_parts.append(get_current_time_str())
+            if company_profile:
+                corp_block = format_company_profile_block(company_profile)
+                if corp_block and "[PERFIL E IDENTIDAD CORPORATIVA" not in orig_content:
+                    needed_parts.append(corp_block)
+            if mode == "full":
+                invariants_block = get_invariants_system_prompt(settings, has_pdf_tool=has_pdf_tool, has_doc_tool=has_doc_tool, has_vision_attachment=has_vision_attachment)
+                if invariants_block and "[DIRECTIVAS FUNDAMENTALES" not in orig_content:
+                    needed_parts.append(invariants_block)
+
+            if needed_parts:
+                header_to_add = "\n\n".join(needed_parts).strip()
+                system_msg["content"] = f"{header_to_add}\n\n{orig_content}".strip()
         else:
             messages.insert(0, {"role": "system", "content": full_system_header})
 
@@ -534,6 +554,7 @@ async def enrich_chat_payload(
     # 3. Inyección de Búsqueda Web (si es modelo web - sólo en 'full')
     if mode == "full" and not is_cloud_request and actual_model == "gemma-4-web" and user_query:
         try:
+            from gateway.tools.web_search import perform_ollama_web_search
             max_res = int(os.getenv("OLLAMA_SEARCH_MAX_RESULTS", "3"))
             web_results = await perform_ollama_web_search(user_query, max_results=max_res)
             if web_results:
@@ -602,7 +623,7 @@ async def enrich_chat_payload(
                         rag_context_str = format_rag_context_for_llm(rag_results)
 
                 if rag_context_str:
-                    table_label = f"LANCEDB - {target_table.upper()}" if target_table else "LANCEDB - TECCAM"
+                    table_label = f"LANCEDB - {target_table.upper()}" if target_table else "LANCEDB - KNOWLEDGE BASE"
                     rag_prompt = (
                         f"\n\n[CONTEXTO DE LA BASE DE CONOCIMIENTO DOCUMENTAL ({table_label})]:\n"
                         f"{rag_context_str}\n"
