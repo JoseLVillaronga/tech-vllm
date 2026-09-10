@@ -444,6 +444,7 @@ def search_knowledge_base(
     )
     target_art_num = art_match.group(1).strip() if art_match else None
 
+    cand_limit = max(80, top_k * 10)
     all_candidates = {}
     
     # A) Búsqueda vectorial semántica (1024D)
@@ -451,7 +452,7 @@ def search_knowledge_base(
         vec_builder = table.search(query_vector, query_type="vector")
         if filter_expr:
             vec_builder = vec_builder.where(filter_expr)
-        vec_results = vec_builder.limit(top_k * 5).to_list()
+        vec_results = vec_builder.limit(cand_limit).to_list()
         
         for item in vec_results:
             d_id = item.get("id")
@@ -471,7 +472,7 @@ def search_knowledge_base(
         fts_builder = table.search(query_str, query_type="fts")
         if filter_expr:
             fts_builder = fts_builder.where(filter_expr)
-        fts_results = fts_builder.limit(top_k * 5).to_list()
+        fts_results = fts_builder.limit(cand_limit).to_list()
         
         max_fts = max([r.get("_score", 0.0) for r in fts_results]) if fts_results else 1.0
         if max_fts <= 0:
@@ -526,7 +527,7 @@ def search_knowledge_base(
         if f_sim > 0:
             final_sim = (v_sim * 0.45) + (f_sim * 0.55)
         else:
-            final_sim = v_sim
+            final_sim = v_sim * 0.85
 
         # Si la consulta busca un artículo específico, aplicar boosting al fragmento exacto
         if target_art_num:
@@ -573,8 +574,64 @@ def search_knowledge_base(
                 "distance": round(data["dist"], 4)
             })
 
-    # Ordenar por score híbrido y limitar a top_k
-    final_results = sorted(results, key=lambda x: x["similarity"], reverse=True)[:top_k]
+    # Ordenar por score híbrido preliminar
+    preliminary_results = sorted(results, key=lambda x: x["similarity"], reverse=True)[:top_k]
+
+    # Expansión de Chunks Adyacentes (Anti-Truncamiento / Ley 4):
+    # Si un fragmento es breve (< 350 tokens) o forma parte de un artículo extenso fraccionado,
+    # se expande con los fragmentos contiguos de la misma sección para no generar recortes engañosos.
+    expanded_results = []
+    consumed_chunk_keys = set()
+
+    for r in preliminary_results:
+        d_id = r.get("doc_id")
+        c_idx = r.get("chunk_index")
+        chunk_key = (d_id, c_idx)
+        if chunk_key in consumed_chunk_keys:
+            continue
+
+        s_path = r.get("section_path")
+        total_c = r.get("total_chunks") or 0
+        curr_tokens = r.get("chunk_tokens") or 0
+        curr_c_idx = c_idx
+
+        expansions = 0
+        while curr_c_idx is not None and d_id and s_path and (curr_c_idx + 1) < total_c and expansions < 2:
+            try:
+                next_records = table.search().where(f"doc_id = '{d_id}' AND chunk_index = {curr_c_idx + 1}").limit(1).to_pandas()
+                if next_records.empty:
+                    break
+                next_row = next_records.iloc[0]
+                if next_row.get("section_path") != s_path:
+                    break
+                next_cnt = (next_row.get("content") or "").strip()
+                next_toks = int(next_row.get("chunk_tokens") or max(1, len(next_cnt) // 4))
+                if curr_tokens + next_toks > 650:
+                    break
+
+                base_cnt = r.get("content", "").strip()
+                overlap_match = False
+                for ol_len in range(min(120, len(base_cnt)), 20, -1):
+                    suffix = base_cnt[-ol_len:].strip()
+                    if next_cnt.startswith(suffix):
+                        stitched = base_cnt + " " + next_cnt[len(suffix):].lstrip()
+                        overlap_match = True
+                        break
+                if not overlap_match:
+                    stitched = base_cnt + "\n" + next_cnt
+
+                r["content"] = stitched
+                curr_tokens += next_toks
+                r["chunk_tokens"] = curr_tokens
+                curr_c_idx += 1
+                consumed_chunk_keys.add((d_id, curr_c_idx))
+                expansions += 1
+            except Exception:
+                break
+
+        expanded_results.append(r)
+
+    final_results = expanded_results
     dur_ms = (time.time() - t0) * 1000
     print(f"🔍 [RAG Search] Consulta: '{query_str[:40]}...' | {len(final_results)} resultados en {dur_ms:.2f} ms")
     return final_results

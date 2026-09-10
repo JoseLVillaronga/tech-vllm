@@ -27,7 +27,7 @@ class Tools:
             description="Clave API autorizada para consultar el servicio RAG."
         )
         DEFAULT_TOP_K: int = Field(
-            default=5,
+            default=6,
             description="Cantidad máxima de fragmentos relevantes a recuperar por búsqueda puntual."
         )
 
@@ -69,12 +69,12 @@ class Tools:
             elif isinstance(dominios, str):
                 temas_list = [d.strip() for d in dominios.split(",") if d.strip()]
 
-        top_k_val = 4
+        top_k_val = 6
         if hasattr(self.valves, "DEFAULT_TOP_K") and not str(type(self.valves.DEFAULT_TOP_K)).endswith("FieldInfo'>"):
             try:
                 top_k_val = int(self.valves.DEFAULT_TOP_K)
             except Exception:
-                top_k_val = 4
+                top_k_val = 6
 
         payload = {
             "query": clean_query,

@@ -25,7 +25,7 @@ async def handle_rag_search(request: Request, body: bytes, key_doc: dict = None)
         doc_id = body_data.get("doc_id") or body_data.get("documento_id") or None
         vigencia = body_data.get("vigencia") or None
         solo_vigentes = bool(body_data.get("solo_vigentes", False))
-        top_k = int(body_data.get("top_k", 5))
+        top_k = int(body_data.get("top_k", 6))
 
         target_table = None
         if key_doc and isinstance(key_doc, dict):
