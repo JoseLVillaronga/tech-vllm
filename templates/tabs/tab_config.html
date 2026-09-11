@@ -48,7 +48,7 @@
                             
                             <!-- Right: Gemma Model Settings -->
                             <div class="space-y-4">
-                                <h3 class="text-sm font-bold text-indigo-400 border-b border-slate-800 pb-1.5 uppercase font-mono tracking-wider">Inferencia Gemma 4</h3>
+                                <h3 class="text-sm font-bold text-indigo-400 border-b border-slate-800 pb-1.5 uppercase font-mono tracking-wider">Inferencia vLLM (Gemma 4 / Qwen / GLM)</h3>
                                 <div>
                                     <label class="block text-xs font-semibold text-slate-300 mb-1">MODEL (Checkpoint del LLM)</label>
                                     <div class="flex flex-col gap-2">
@@ -63,6 +63,10 @@
                                             <button type="button" onclick="selectQuickModel('PrithivMLmods/gemma-4-E2B-it-Uncensored-MAX', 0.25, 8192, '', 'False', 0, 'false')" class="px-2.5 py-1 rounded bg-slate-950 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 text-[10px] font-semibold text-indigo-300 transition-all cursor-pointer">Gemma 4 E2B Uncensored (PyTorch)</button>
                                         </div>
                                     </div>
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-semibold text-slate-300 mb-1">VLLM_ALIAS (Nombre API / --served-model-name)</label>
+                                    <input type="text" id="vllm-alias-input" name="VLLM_ALIAS" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-indigo-500 font-mono" placeholder="CorpAI-Gen | Legal & Compliance">
                                 </div>
                                 <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
                                     <div>

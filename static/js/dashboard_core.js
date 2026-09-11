@@ -68,6 +68,13 @@
             if (load8BitsSelect && load8Bits !== null && load8Bits !== undefined) {
                 load8BitsSelect.value = String(load8Bits).toLowerCase() === 'true' ? 'true' : 'false';
             }
+            const aliasInput = document.getElementById('vllm-alias-input') || (document.getElementById('config-form') ? document.getElementById('config-form').elements['VLLM_ALIAS'] : null);
+            if (aliasInput) {
+                const currentAlias = (aliasInput.value || '').trim();
+                if (!currentAlias) {
+                    aliasInput.value = "CorpAI-Gen | Legal & Compliance";
+                }
+            }
         }
 
         window.currentActiveTab = 'tab-monitor';

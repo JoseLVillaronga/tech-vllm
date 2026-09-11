@@ -10,13 +10,15 @@ load_dotenv()
 
 from config import API_KEY
 
-def main():
+def build_vllm_cmd():
+    """Construye el comando CLI de arranque de vLLM a partir de variables de entorno."""
     # Obtener valores desde .env con valores por defecto
     hf_token = os.getenv("HF_TOKEN")
     api_key = API_KEY
     host = "127.0.0.1" # Forzar localhost para seguridad (detrás de gateway)
     port = os.getenv("GEMMA_BACKEND_PORT", "18000")
     model = os.getenv("MODEL", "nvidia/Gemma-4-26B-A4B-NVFP4")
+    vllm_alias = os.getenv("VLLM_ALIAS", "").strip().strip('"').strip("'")
     gpu_memory_utilization = os.getenv("GPU_MEMORY_UTILIZATION", "0.90")
     max_model_len = os.getenv("MAX_MODEL_LEN", "16384")
     max_num_seqs = os.getenv("MAX_NUM_SEQS", "64")
@@ -48,6 +50,9 @@ def main():
         "--max-num-batched-tokens", str(max_num_batched_tokens),
         "--api-key", api_key
     ]
+
+    if vllm_alias:
+        cmd.extend(["--served-model-name", vllm_alias])
 
     if enable_prefix_caching:
         cmd.append("--enable-prefix-caching")
@@ -156,9 +161,41 @@ def main():
     if float(swap_space) > 0:
         cmd.extend(["--cpu-offload-gb", str(swap_space)])
 
+    meta = {
+        "model": model,
+        "vllm_alias": vllm_alias,
+        "host": host,
+        "port": port,
+        "quantization": quantization,
+        "load_8_bits": load_8_bits,
+        "selected_backend": selected_backend,
+        "backend_reason": backend_reason,
+        "gpu_memory_utilization": gpu_memory_utilization,
+        "swap_space": swap_space,
+        "api_key": api_key
+    }
+    return cmd, meta
+
+
+def main():
+    cmd, meta = build_vllm_cmd()
+    model = meta["model"]
+    vllm_alias = meta["vllm_alias"]
+    host = meta["host"]
+    port = meta["port"]
+    quantization = meta["quantization"]
+    load_8_bits = meta["load_8_bits"]
+    selected_backend = meta["selected_backend"]
+    backend_reason = meta["backend_reason"]
+    gpu_memory_utilization = meta["gpu_memory_utilization"]
+    swap_space = meta["swap_space"]
+    api_key = meta["api_key"]
+
     print("=" * 60)
     print("🚀 Iniciando servidor vLLM OpenAI API...")
     print(f"📦 Modelo: {model}")
+    if vllm_alias:
+        print(f"🏷️ Alias API: {vllm_alias}")
     print(f"🌐 Dirección: http://{host}:{port}")
     if quantization:
         q_desc = f"{quantization} (8-bit)" if (quantization.strip().lower() == "bitsandbytes" and load_8_bits) else f"{quantization} (4-bit default)" if quantization.strip().lower() == "bitsandbytes" else quantization
@@ -175,6 +212,7 @@ def main():
         print("\n🛑 Servidor vLLM detenido por el usuario.")
     except Exception as e:
         print(f"\n❌ Error al ejecutar el servidor vLLM: {e}")
+
 
 if __name__ == "__main__":
     main()

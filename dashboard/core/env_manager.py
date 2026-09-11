@@ -52,8 +52,8 @@ def save_env_from_dict(new_values):
             key = stripped.split("=", 1)[0].strip()
             if key in new_values:
                 val = new_values[key]
-                # Envolver en comillas si es una cadena de modelo o tiene espacios
-                if key in ["MODEL"] or " " in str(val):
+                # Envolver en comillas si es una cadena de modelo, alias o tiene espacios
+                if key in ["MODEL", "VLLM_ALIAS", "LLAMA_ALIAS"] or " " in str(val):
                     updated_lines.append(f'{key}="{val}"\n')
                 else:
                     updated_lines.append(f'{key}={val}\n')
@@ -64,7 +64,7 @@ def save_env_from_dict(new_values):
     # Escribir las claves que son totalmente nuevas
     for key, val in new_values.items():
         if key not in keys_written:
-            if key in ["MODEL"] or " " in str(val):
+            if key in ["MODEL", "VLLM_ALIAS", "LLAMA_ALIAS"] or " " in str(val):
                 updated_lines.append(f'{key}="{val}"\n')
             else:
                 updated_lines.append(f'{key}={val}\n')
