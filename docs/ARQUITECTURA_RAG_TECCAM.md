@@ -12,7 +12,7 @@
 2. [Los Tres Corolarios Operativos](#2-los-tres-corolarios-operativos)
 3. [La Arquitectura en Tres Capas](#3-la-arquitectura-en-tres-capas)
    - [Capa 1: Ingesta y Calidad Documental (Teccam PDF & InfoLEG)](#capa-1-ingesta-y-calidad-documental)
-   - [Capa 2: Middleware RAG, Indexación y Topología (`rag_engine.py` & LanceDB)](#capa-2-middleware-rag-indexación-y-topología)
+   - [Capa 2: Middleware RAG, Indexación y Topología (Paquete `rag/` & `rag_engine.py` & LanceDB)](#capa-2-middleware-rag-indexación-y-topología)
    - [Capa 3: Gateway de Seguridad, Inferencia y Alineación (`alignment_engine.py` & LLM)](#capa-3-gateway-de-seguridad-inferencia-y-alineación)
 4. [Caso de Estudio Forense: El Código Penal Argentino (Ley 11.179)](#4-caso-de-estudio-forense-el-código-penal-argentino)
 5. [Checklist de Mantenimiento para Futuras Obras y Códigos](#5-checklist-de-mantenimiento-para-futuras-obras-y-códigos)
@@ -111,9 +111,9 @@ El punto de partida de toda base de conocimiento es la fidelidad del texto fuent
 
 ---
 
-### Capa 2: Middleware RAG, Indexación y Topología (`rag_engine.py`)
+### Capa 2: Middleware RAG, Indexación y Topología (Paquete `rag/` & `rag_engine.py`)
 
-Esta capa actúa como el árbitro de la verdad documental y expone las interfaces que consume el LLM:
+Esta capa actúa como el árbitro de la verdad documental y expone las interfaces que consume el LLM. A partir de la modularización bajo la Ley 1 y Ley 3, el subsistema se organiza en el paquete desacoplado `rag/` (`rag.config`, `rag.db`, `rag.settings`, `rag.embeddings`, `rag.matching`, `rag.search`, `rag.reader`), manteniendo `rag_engine.py` como un wrapper canónico 100% retrocompatible:
 
 1. **GPS Documental sin Truncamientos Deceptivos:**
    - La tabla de navegación estructural (`obtener_estructura_documento`) orienta al modelo sin saturar su memoria de trabajo.
