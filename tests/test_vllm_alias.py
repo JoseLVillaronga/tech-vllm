@@ -47,6 +47,33 @@ class TestVllmAlias(unittest.TestCase):
             written = "".join(handle.writelines.call_args[0][0])
         self.assertIn('VLLM_ALIAS="CorpAI-Gen | Legal & Compliance"', written)
 
+    @patch.dict(os.environ, {
+        "VLLM_ALIAS": "CorpAI-Gen | Legal & Compliance",
+        "VLLM_ATTENTION_BACKEND": "FLASHINFER",
+        "MODEL": "olberdingbrands/gemma-4-12B-it-awq",
+        "MAX_NUM_BATCHED_TOKENS": "1024"
+    }, clear=False)
+    def test_batched_tokens_auto_guard_multimodal(self):
+        """Verifica que en modelos multimodales (Gemma 4), max_num_batched_tokens se eleve a 4096 si era menor."""
+        cmd, meta = build_vllm_cmd()
+        self.assertIn("--max-num-batched-tokens", cmd)
+        idx = cmd.index("--max-num-batched-tokens")
+        self.assertEqual(cmd[idx + 1], "4096")
+        # Verificar saneamiento de variables no nativas en os.environ
+        self.assertNotIn("VLLM_ALIAS", os.environ)
+        self.assertNotIn("VLLM_ATTENTION_BACKEND", os.environ)
+
+    @patch.dict(os.environ, {
+        "MODEL": "Qwen/Qwen2.5-7B-Instruct",
+        "MAX_NUM_BATCHED_TOKENS": "2048"
+    }, clear=False)
+    def test_batched_tokens_standard_model(self):
+        """Verifica que en modelos estándar de texto se preserve el valor configurado de batched tokens."""
+        cmd, meta = build_vllm_cmd()
+        self.assertIn("--max-num-batched-tokens", cmd)
+        idx = cmd.index("--max-num-batched-tokens")
+        self.assertEqual(cmd[idx + 1], "2048")
+
 
 if __name__ == "__main__":
     unittest.main()

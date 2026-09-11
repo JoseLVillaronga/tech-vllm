@@ -26,7 +26,17 @@ def build_vllm_cmd():
     swap_space = os.getenv("SWAP_SPACE", "0")
     quantization = os.getenv("QUANTIZATION")
     load_8_bits = os.getenv("LOAD_8_BITS", "False").strip().lower() in ("true", "1", "yes")
-    max_num_batched_tokens = os.getenv("MAX_NUM_BATCHED_TOKENS", "4096")
+    raw_batched = os.getenv("MAX_NUM_BATCHED_TOKENS", "4096")
+    try:
+        batched_int = int(raw_batched)
+    except (ValueError, TypeError):
+        batched_int = 4096
+
+    # Modelos multimodales (como Gemma 4 / VL) requieren que max_num_batched_tokens >= max_tokens_per_mm_item (2496).
+    # Si chunked MM input está deshabilitado por vLLM para atención bidireccional, un batch menor a 4096 causa ValueError.
+    if any(k in model.lower() for k in ("gemma", "vl", "vision")) and batched_int < 4096:
+        batched_int = 4096
+    max_num_batched_tokens = str(batched_int)
     enable_prefix_caching = os.getenv("ENABLE_PREFIX_CACHING", "True").strip().lower() in ("true", "1", "yes")
 
     # Exportar HF_TOKEN si está definido y permitir contextos extendidos
@@ -140,7 +150,13 @@ def build_vllm_cmd():
             selected_backend = "FLASH_ATTN"
             backend_reason = "Estándar -> FlashAttention"
 
-    os.environ["VLLM_ATTENTION_BACKEND"] = selected_backend
+    if user_backend_pref in ("flashinfer", "flash_attn", "flashattention"):
+        cmd.extend(["--attention-backend", selected_backend])
+
+    # Saneamiento de entorno: eliminar variables con prefijo VLLM_ que no son nativas
+    # del motor para evitar advertencias de vllm.envs (VLLM_ALIAS, VLLM_ATTENTION_BACKEND)
+    os.environ.pop("VLLM_ALIAS", None)
+    os.environ.pop("VLLM_ATTENTION_BACKEND", None)
 
     # Agregar --quantization si está definido en .env (con soporte para 8 bits en bitsandbytes)
     if quantization:
