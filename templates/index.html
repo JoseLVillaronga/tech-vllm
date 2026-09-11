@@ -95,6 +95,9 @@
 
             <!-- TAB 7: METRICS & API AUDIT -->
             {% include "tabs/tab_metrics.html" %}
+
+            <!-- TAB 8: GESTIÓN DE USUARIOS Y ACCESOS REMOTOS -->
+            {% include "tabs/tab_users.html" %}
         </main>
     </div>
 
@@ -106,5 +109,6 @@
     <script src="{{ url_for('static', filename='js/dashboard_alignment.js') }}"></script>
     <script src="{{ url_for('static', filename='js/dashboard_keys.js') }}"></script>
     <script src="{{ url_for('static', filename='js/dashboard_metrics.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/dashboard_users.js') }}"></script>
 </body>
 </html>

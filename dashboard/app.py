@@ -1,12 +1,14 @@
 import os
 import sys
-from flask import Flask
+from datetime import timedelta
+from flask import Flask, request, session, redirect, url_for, jsonify
 from dashboard.core import (
     REPO_ROOT,
     init_db_telemetry,
     start_telemetry_collector
 )
 from dashboard.routes import ALL_BLUEPRINTS
+from config import SECRET_KEY
 
 PORT = int(os.getenv("DASHBOARD_PORT", "8004"))
 
@@ -18,6 +20,38 @@ def create_app():
         static_folder=str(REPO_ROOT / "static"),
         template_folder=str(REPO_ROOT / "templates")
     )
+
+    # Configuración de Sesión y Seguridad
+    application.secret_key = SECRET_KEY
+    application.config["SESSION_COOKIE_HTTPONLY"] = True
+    application.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+    application.config["PERMANENT_SESSION_LIFETIME"] = timedelta(hours=12)
+
+    # Inyección de usuario actual en templates Jinja2
+    @application.context_processor
+    def inject_auth_context():
+        return {
+            "current_user": session.get("user")
+        }
+
+    # Control de acceso global antes de cada petición
+    @application.before_request
+    def check_authentication():
+        # Excepciones que no requieren autenticación previa
+        path = request.path
+        if (
+            path == "/login"
+            or path == "/api/auth/login"
+            or path.startswith("/static/")
+            or path == "/favicon.ico"
+        ):
+            return None
+
+        # Si no hay sesión activa, denegar o redirigir al login
+        if not session.get("user"):
+            if path.startswith("/api/") or request.is_json:
+                return jsonify({"error": "No autenticado. Inicie sesión para continuar."}), 401
+            return redirect(url_for("auth_bp.login_page", next=path))
 
     # Registrar todos los Blueprints modulares
     for bp in ALL_BLUEPRINTS:

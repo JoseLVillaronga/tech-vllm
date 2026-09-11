@@ -12,8 +12,12 @@ from .voices import voices_bp
 from .rag import rag_bp
 from .alignment import alignment_bp
 from .tests import tests_bp
+from .auth import auth_bp
+from .users import users_bp
 
 ALL_BLUEPRINTS = [
+    auth_bp,
+    users_bp,
     frontend_bp,
     system_bp,
     keys_bp,
@@ -27,6 +31,8 @@ ALL_BLUEPRINTS = [
 ]
 
 __all__ = [
+    "auth_bp",
+    "users_bp",
     "frontend_bp",
     "system_bp",
     "keys_bp",

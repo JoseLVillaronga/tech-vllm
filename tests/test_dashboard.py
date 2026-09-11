@@ -16,6 +16,13 @@ class TestDashboardModular(unittest.TestCase):
         self.app = create_app()
         self.app.config["TESTING"] = True
         self.client = self.app.test_client()
+        # Establecer sesión autenticada como admin para pruebas funcionales
+        with self.client.session_transaction() as sess:
+            sess["user"] = {
+                "username": "admin",
+                "role": "admin",
+                "is_local": True
+            }
 
     def test_app_dashboard_backward_compatibility(self):
         """Verifica que el entrypoint app_dashboard.py exponga la app y todas las funciones clave."""

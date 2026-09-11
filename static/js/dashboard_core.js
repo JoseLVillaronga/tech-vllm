@@ -107,6 +107,9 @@
             if (tabId === 'tab-rag') {
                 loadRagStats();
             }
+            if (tabId === 'tab-users') {
+                if (typeof loadUsers === 'function') loadUsers();
+            }
         }
 
         // Obtener estado y métricas

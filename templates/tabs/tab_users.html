@@ -1,0 +1,197 @@
+<!-- TAB: GESTIÓN DE USUARIOS Y ACCESOS REMOTOS -->
+<div id="tab-users" class="tab-content hidden space-y-6">
+    <!-- Header del Tab -->
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+            <h2 class="text-xl font-bold tracking-tight text-white flex items-center gap-2.5">
+                <svg class="h-6 w-6 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                </svg>
+                Gestión de Usuarios y Accesos Remotos
+            </h2>
+            <p class="text-xs text-slate-400 mt-1">
+                Control de cuentas para acceso externo vía LAN/WAN, roles de administración y credenciales encriptadas en MongoDB.
+            </p>
+        </div>
+        <div class="flex items-center gap-3">
+            <button onclick="loadUsers()" class="px-3.5 py-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-200 text-xs font-medium border border-slate-700/60 flex items-center gap-2 transition-all">
+                <svg class="h-3.5 w-3.5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 8H18.2" />
+                </svg>
+                Refrescar
+            </button>
+            <button onclick="openCreateUserModal()" class="px-4 py-2 rounded-xl bg-brand hover:bg-brand-hover text-white text-xs font-medium shadow-lg shadow-brand/20 flex items-center gap-2 transition-all">
+                <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                </svg>
+                Nuevo Usuario
+            </button>
+        </div>
+    </div>
+
+    <!-- Banner Informativo de Arquitectura de Seguridad -->
+    <div class="glass-panel rounded-2xl p-5 border border-indigo-500/20 bg-indigo-950/20 grid grid-cols-1 md:grid-cols-2 gap-4 text-xs leading-relaxed">
+        <div class="space-y-1.5 border-l-2 border-emerald-500 pl-3">
+            <span class="font-semibold text-emerald-400 flex items-center gap-1.5">
+                <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                </svg>
+                Cuenta Maestra (<code class="text-emerald-300 font-mono font-bold">admin</code>)
+            </span>
+            <p class="text-slate-300">
+                Restringida estrictamente a conexiones locales de <strong>localhost</strong> (<code class="font-mono">127.0.0.1</code> o <code class="font-mono">::1</code>). Su contraseña es gestionada en <code class="text-emerald-300 font-mono">ADMIN_PASS</code> (.env).
+            </p>
+        </div>
+        <div class="space-y-1.5 border-l-2 border-sky-500 pl-3">
+            <span class="font-semibold text-sky-400 flex items-center gap-1.5">
+                <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064" />
+                </svg>
+                Cuentas Remotas (MongoDB)
+            </span>
+            <p class="text-slate-300">
+                Habilitadas para operar vía reverse proxy o internet. Las contraseñas se almacenan con hash criptográfico con salt (<code class="font-mono">scrypt</code>).
+            </p>
+        </div>
+    </div>
+
+    <!-- Tabla de Usuarios Registrados -->
+    <div class="glass-panel rounded-2xl overflow-hidden border border-slate-800/80">
+        <div class="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
+            <h3 class="text-sm font-semibold text-white">Usuarios del Sistema</h3>
+            <span id="users-count-badge" class="px-2.5 py-0.5 rounded-full text-xs font-mono bg-slate-800 text-slate-300 border border-slate-700">0 usuarios</span>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs">
+                <thead class="bg-slate-900/60 text-slate-400 uppercase tracking-wider font-semibold border-b border-slate-800">
+                    <tr>
+                        <th class="px-6 py-3.5">Usuario</th>
+                        <th class="px-6 py-3.5">Rol</th>
+                        <th class="px-6 py-3.5">Estado</th>
+                        <th class="px-6 py-3.5">Creado Por</th>
+                        <th class="px-6 py-3.5">Último Acceso</th>
+                        <th class="px-6 py-3.5 text-right">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody id="users-table-body" class="divide-y divide-slate-800/60 font-mono text-slate-300">
+                    <!-- Fila fija para admin local -->
+                    <tr class="bg-emerald-950/10 hover:bg-emerald-950/20 transition-colors">
+                        <td class="px-6 py-4 font-sans font-medium text-white flex items-center gap-2">
+                            <span class="h-2 w-2 rounded-full bg-emerald-400"></span>
+                            <span class="font-bold">admin</span>
+                            <span class="px-1.5 py-0.5 rounded text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-mono">Localhost</span>
+                        </td>
+                        <td class="px-6 py-4">
+                            <span class="px-2 py-0.5 rounded-md bg-purple-500/15 text-purple-300 border border-purple-500/30 text-[11px] font-sans font-semibold">Superadmin</span>
+                        </td>
+                        <td class="px-6 py-4">
+                            <span class="inline-flex items-center gap-1.5 text-emerald-400 font-sans">
+                                <svg class="h-3 w-3" fill="currentColor" viewBox="0 0 8 8"><circle cx="4" cy="4" r="3"/></svg>
+                                Activo
+                            </span>
+                        </td>
+                        <td class="px-6 py-4 text-slate-400 font-sans">Sistema (.env)</td>
+                        <td class="px-6 py-4 text-slate-400 font-sans">En tiempo real</td>
+                        <td class="px-6 py-4 text-right font-sans">
+                            <span class="text-slate-500 text-[11px] italic">Protegido por .env</span>
+                        </td>
+                    </tr>
+                    <!-- Cuentas remotas inyectadas por dashboard_users.js -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Modal: Crear Nuevo Usuario -->
+<div id="modal-create-user" class="fixed inset-0 z-50 hidden flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4">
+    <div class="glass-panel w-full max-w-md rounded-2xl border border-slate-700/80 bg-slate-900/95 p-6 shadow-2xl space-y-5">
+        <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+            <h3 class="text-base font-bold text-white flex items-center gap-2">
+                <svg class="h-5 w-5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+                </svg>
+                Nuevo Usuario Remoto
+            </h3>
+            <button onclick="closeCreateUserModal()" class="text-slate-400 hover:text-white p-1">
+                <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+            </button>
+        </div>
+
+        <form id="form-create-user" onsubmit="handleCreateUserSubmit(event)" class="space-y-4 text-xs">
+            <div>
+                <label class="block text-slate-300 font-medium mb-1">Nombre de Usuario</label>
+                <input type="text" id="new-user-username" required placeholder="ej. operador_externo" class="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-slate-100 placeholder-slate-500 focus:outline-none focus:border-brand">
+                <p class="text-[10px] text-slate-500 mt-1">Letras, números y guiones bajos (3-32 caracteres). No puede llamarse 'admin'.</p>
+            </div>
+
+            <div>
+                <label class="block text-slate-300 font-medium mb-1">Contraseña</label>
+                <input type="password" id="new-user-password" required minlength="6" placeholder="Mínimo 6 caracteres" class="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-slate-100 placeholder-slate-500 focus:outline-none focus:border-brand font-mono">
+            </div>
+
+            <div>
+                <label class="block text-slate-300 font-medium mb-1">Rol en el Dashboard</label>
+                <select id="new-user-role" class="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-slate-100 focus:outline-none focus:border-brand">
+                    <option value="operator" selected>Operador (Monitoreo, Pruebas y Métricas)</option>
+                    <option value="admin">Administrador Remoto (Acceso Total y Usuarios)</option>
+                </select>
+            </div>
+
+            <div id="create-user-error" class="hidden p-3 rounded-xl bg-rose-500/15 border border-rose-500/40 text-rose-300 text-xs"></div>
+
+            <div class="flex justify-end gap-3 pt-3 border-t border-slate-800">
+                <button type="button" onclick="closeCreateUserModal()" class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium">
+                    Cancelar
+                </button>
+                <button type="submit" class="px-4 py-2 rounded-xl bg-brand hover:bg-brand-hover text-white text-xs font-medium shadow-lg shadow-brand/20">
+                    Guardar Usuario
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal: Restablecer Contraseña -->
+<div id="modal-reset-password" class="fixed inset-0 z-50 hidden flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4">
+    <div class="glass-panel w-full max-w-sm rounded-2xl border border-slate-700/80 bg-slate-900/95 p-6 shadow-2xl space-y-5">
+        <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+            <h3 class="text-base font-bold text-white flex items-center gap-2">
+                <svg class="h-5 w-5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+                </svg>
+                Restablecer Contraseña
+            </h3>
+            <button onclick="closeResetPasswordModal()" class="text-slate-400 hover:text-white p-1">
+                <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+            </button>
+        </div>
+
+        <form id="form-reset-password" onsubmit="handleResetPasswordSubmit(event)" class="space-y-4 text-xs">
+            <input type="hidden" id="reset-password-username">
+            <p class="text-slate-300">
+                Cambio de contraseña para: <span id="reset-password-target-user" class="font-bold text-white font-mono"></span>
+            </p>
+
+            <div>
+                <label class="block text-slate-300 font-medium mb-1">Nueva Contraseña</label>
+                <input type="password" id="reset-password-input" required minlength="6" placeholder="Mínimo 6 caracteres" class="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-slate-100 placeholder-slate-500 focus:outline-none focus:border-brand font-mono">
+            </div>
+
+            <div id="reset-password-error" class="hidden p-3 rounded-xl bg-rose-500/15 border border-rose-500/40 text-rose-300 text-xs"></div>
+
+            <div class="flex justify-end gap-3 pt-3 border-t border-slate-800">
+                <button type="button" onclick="closeResetPasswordModal()" class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium">
+                    Cancelar
+                </button>
+                <button type="submit" class="px-4 py-2 rounded-xl bg-brand hover:bg-brand-hover text-white text-xs font-medium shadow-lg shadow-brand/20">
+                    Actualizar
+                </button>
+            </div>
+        </form>
+    </div>
+</div>

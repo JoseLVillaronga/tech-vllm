@@ -43,6 +43,10 @@ MONGO_PASS = env("MONGO_PASS")            # Sin fallback real hardcodeado
 MONGO_HOST = env("MONGO_HOST", "127.0.0.1")
 MONGO_DB = env("MONGO_DB", "vllm")
 
+# Autenticación de Dashboard
+ADMIN_PASS = env("ADMIN_PASS")
+SECRET_KEY = env("SECRET_KEY") or env("API_KEY") or "vllm-suite-dashboard-session-secret"
+
 
 def get_mongo_uri(db_name: str = None, auth_source: str = "admin", port: int = 27017) -> str:
     """Construye la URI de conexión a MongoDB sin exponer credenciales hardcodeadas.

@@ -26,6 +26,22 @@ from .telemetry_service import (
 from .provider_utils import slugify_provider_name
 from .audio_utils import resample_audio_to_24k_mono
 from .quota_utils import check_and_reset_key_quota_dict
+from .auth_service import (
+    resolve_client_ip_dashboard,
+    is_localhost_ip,
+    is_localhost_request,
+    verify_credentials,
+    list_dashboard_users,
+    create_dashboard_user,
+    update_dashboard_user,
+    reset_dashboard_user_password,
+    delete_dashboard_user,
+    login_user_session,
+    logout_user_session,
+    get_current_user,
+    login_required,
+    admin_required
+)
 
 __all__ = [
     "get_db",
@@ -47,5 +63,19 @@ __all__ = [
     "start_telemetry_collector",
     "slugify_provider_name",
     "resample_audio_to_24k_mono",
-    "check_and_reset_key_quota_dict"
+    "check_and_reset_key_quota_dict",
+    "resolve_client_ip_dashboard",
+    "is_localhost_ip",
+    "is_localhost_request",
+    "verify_credentials",
+    "list_dashboard_users",
+    "create_dashboard_user",
+    "update_dashboard_user",
+    "reset_dashboard_user_password",
+    "delete_dashboard_user",
+    "login_user_session",
+    "logout_user_session",
+    "get_current_user",
+    "login_required",
+    "admin_required"
 ]
