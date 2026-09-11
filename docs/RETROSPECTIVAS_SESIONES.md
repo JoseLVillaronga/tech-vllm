@@ -26,6 +26,7 @@ Al finalizar cada sesión de trabajo, el agente y el usuario realizan una audito
 
 ## 📈 Historial Consolidado de Sesiones
 
+| **2026-09-11 (Mediodía/Tarde - Autenticación Perimetral Localhost en Dashboard, Anti-Spoofing IP, Auditoría de Portabilidad y Modularización Quirúrgica de RAG con Cero Blast Radius)** | `59680d91` | 12 | ~55 | 3 | **0** | 2/10 | Mínimo (Quirúrgico) | 🟢 **100% Exitoso** |
 | **2026-09-10 (Noche - Resolución de Amnesia Multi-Turno en Podador de Contexto, Guía Positiva Ontológica y Consolidación del Principio Perimetral MEA)** | `59680d91` | 16 | ~70 | 6 | **0** | 2/10 | Mínimo (Quirúrgico) | 🟢 **100% Exitoso** |
 | **2026-09-10 (Tarde - Gobernador de Presupuesto RAG, Circuit Breaker 50k, Semáforo de Suficiencia, Tuning MoE a 52-70 t/s y Trilema de Modelos)** | `fe37eff0` | 18 | ~65 | 4 | **0** | 1/10 | Mínimo (Modular) | 🟢 **100% Exitoso** |
 | **2026-09-10 (Madrugada - Soporte Dual MoE/Denso en Llama.cpp, KV Cache Quantization, Auditoría GGUF y Despliegue 100% GPU de Qwen 3.8 27B a 33 t/s)** | `fe37eff0` | 14 | ~35 | 1 | **0** | 1/10 | Mínimo (Modular) | 🟢 **100% Exitoso** |
@@ -56,6 +57,29 @@ Al finalizar cada sesión de trabajo, el agente y el usuario realizan una audito
 
 ## 📝 Fichas Detalladas por Sesión
  
+### 🔹 Sesión: 2026-09-11 Mediodía/Tarde (`59680d91-1691-45da-96a7-4b47f72e1539`) - Autenticación Perimetral Localhost en Dashboard, Anti-Spoofing IP, Auditoría de Portabilidad y Modularización Quirúrgica de RAG con Cero Blast Radius
+* **Hitos Principales:**
+  1. **Segregación Estricta de Autenticación en Dashboard ([`dashboard/core/auth_service.py`](../dashboard/core/auth_service.py) - Commit `bfee69f`):**
+     - Cuenta maestra `admin` restringida obligatoriamente al perímetro de **localhost** (`127.0.0.1` / `::1`) con credencial `ADMIN_PASS` de `.env` comparada con `hmac.compare_digest`.
+     - Sistema CRUD de usuarios remotos persistidos en MongoDB (`db.dashboard_users`) con hashes `scrypt` y control RBAC (`admin` y `operator`).
+     - Algoritmo de resolución IP Anti-Spoofing: descarte estricto de cabeceras `X-Forwarded-For` no confiables si la conexión directa de socket proviene de una red externa (LAN/WAN).
+  2. **Auditoría Global, Saneamiento de Portabilidad y Modernización (Commit `c6fb1e1`):**
+     - Erradicación de rutas absolutas hardcodeadas ligadas al usuario (`/home/jose/...`) y sustitución por resolución dinámica `Path(__file__).resolve().parent`.
+     - Migración de las 16 ocurrencias de `datetime.utcnow()` deprecadas a `datetime.now(timezone.utc)`.
+     - Integración de la clave API de pruebas unitarias autorizada en la suite (`vllm_key_e6da09f85627dfa797085c481ecf278ff273c7a5`).
+  3. **Modularización Quirúrgica del Motor RAG ([`rag/`](../rag/) & [`rag_engine.py`](../rag_engine.py) - Commit `a3e8b67`):**
+     - Desacople del monolito de 1.619 líneas en 7 submódulos cohesivos (`config`, `db`, `settings`, `embeddings`, `matching`, `search`, `reader`).
+     - Conversión de `rag_engine.py` en un wrapper retrocompatible de 12 líneas que re-exporta los 33 símbolos canónicos.
+     - Cero Blast Radius: ningún import externo ni mock de tests requirió modificación.
+     - Creación de la suite [`tests/test_rag_modular.py`](../tests/test_rag_modular.py) con 13 tests.
+     - Validación del 100% de la suite del repositorio: **103 de 103 tests en verde**.
+     - Validación en vivo con OpenWebUI: recuperación íntegra y precisa de Preámbulo, Art. 75 (32 incisos) y Tratados en ~210 ms.
+* **Métricas MEA:**
+  * Invariantes violados: **0**
+  * RVI Máximo: **2/10**
+  * Blast Radius: **Mínimo (Quirúrgico / Modular)**
+  * Causa Raíz: **100% Atacada (Ley 1, Ley 2, Ley 3, Ley 4)**
+
 ### 🔹 Sesión: 2026-09-10 Noche (`59680d91-1691-45da-96a7-4b47f72e1539`) - Resolución de Amnesia Multi-Turno en Podador de Contexto, Guía Positiva Ontológica y Consolidación del Principio Perimetral MEA
 * **Hitos Principales:**
   1. **Auditoría Integral de Imports y Desacoplamiento Arquitectónico (Ley 1):**
