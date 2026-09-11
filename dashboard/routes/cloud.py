@@ -1,3 +1,4 @@
+import time
 import requests
 from bson import ObjectId
 from flask import Blueprint, request, jsonify
@@ -78,15 +79,27 @@ def api_update_cloud_provider(provider_id):
         if res.matched_count == 0:
             return jsonify({"error": "Proveedor no encontrado"}), 404
             
+        _MODELS_CACHE.pop(provider_id, None)
         return jsonify({"message": "Proveedor en la nube actualizado con éxito"})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 
+_MODELS_CACHE = {}
+_MODELS_CACHE_TTL = 900  # 15 minutos
+
+
 @cloud_bp.route("/api/cloud-providers/<provider_id>/models", methods=["GET"])
 def api_get_cloud_provider_models(provider_id):
-    """Consulta en vivo el catálogo de modelos disponibles en el endpoint /models del proveedor."""
+    """Consulta en vivo o desde caché el catálogo de modelos disponibles en el endpoint /models del proveedor."""
     try:
+        force_refresh = request.args.get("refresh", "false").lower() in ("true", "1", "yes")
+        now = time.time()
+        if not force_refresh and provider_id in _MODELS_CACHE:
+            cached = _MODELS_CACHE[provider_id]
+            if now - cached["timestamp"] < _MODELS_CACHE_TTL:
+                return jsonify(cached["data"])
+
         db = get_db()
         provider = db.cloud_providers.find_one({"_id": ObjectId(provider_id)})
         if not provider:
@@ -121,12 +134,15 @@ def api_get_cloud_provider_models(provider_id):
                     "created": m.get("created"),
                     "owned_by": m.get("owned_by") or provider.get("name", "cloud")
                 })
-        return jsonify({
+                
+        payload = {
             "provider_id": provider_id,
             "provider_name": provider.get("name", ""),
             "provider_slug": slug,
             "models": formatted_models
-        })
+        }
+        _MODELS_CACHE[provider_id] = {"timestamp": now, "data": payload}
+        return jsonify(payload)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -141,6 +157,7 @@ def api_delete_cloud_provider(provider_id):
         if res.deleted_count == 0:
             return jsonify({"error": "Proveedor no encontrado"}), 404
             
+        _MODELS_CACHE.pop(provider_id, None)
         return jsonify({"message": "Proveedor en la nube eliminado con éxito"})
     except Exception as e:
         return jsonify({"error": str(e)}), 500

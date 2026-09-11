@@ -2,13 +2,16 @@
         window.cachedCloudProviders = [];
         window.cachedProviderModels = {};
         window.cachedApiKeys = {};
+        window.keySelectedModels = { create: {}, edit: {} };
+        window.providerModelsData = { create: {}, edit: {} };
 
-        async function getProviderModels(providerId) {
-            if (window.cachedProviderModels[providerId]) {
+        async function getProviderModels(providerId, forceRefresh = false) {
+            if (!forceRefresh && window.cachedProviderModels[providerId]) {
                 return window.cachedProviderModels[providerId];
             }
             try {
-                const res = await fetch(`/api/cloud-providers/${providerId}/models`);
+                const url = forceRefresh ? `/api/cloud-providers/${providerId}/models?refresh=true` : `/api/cloud-providers/${providerId}/models`;
+                const res = await fetch(url);
                 const data = await res.json();
                 if (res.ok && data.models) {
                     window.cachedProviderModels[providerId] = data.models;
@@ -20,55 +23,143 @@
             return [];
         }
 
-        async function handleProviderCheckboxChange(context, providerId, preselectedModels = []) {
+        async function handleProviderCheckboxChange(context, providerId, preselectedModels = null) {
             const cb = document.getElementById(`${context}-prov-cb-${providerId}`);
             const panel = document.getElementById(`${context}-prov-models-panel-${providerId}`);
             if (!cb || !panel) return;
 
+            if (!window.keySelectedModels[context]) window.keySelectedModels[context] = {};
+            if (!window.providerModelsData[context]) window.providerModelsData[context] = {};
+
             if (cb.checked) {
                 panel.classList.remove('hidden');
                 const listContainer = document.getElementById(`${context}-prov-models-list-${providerId}`);
-                if (listContainer && listContainer.getAttribute('data-loaded') !== 'true') {
-                    listContainer.innerHTML = '<span class="text-[10px] text-indigo-400 animate-pulse">Consultando modelos del proveedor...</span>';
+
+                // Si se pasan modelos preseleccionados (ej: al abrir modal de edición) o no existe el set, inicializarlo
+                if (preselectedModels !== null || !window.keySelectedModels[context][providerId]) {
+                    window.keySelectedModels[context][providerId] = new Set(preselectedModels || []);
+                }
+
+                if (!window.providerModelsData[context][providerId]) {
+                    if (listContainer) {
+                        listContainer.innerHTML = '<span class="text-[10px] text-indigo-400 animate-pulse py-2 text-center">Consultando modelos del proveedor...</span>';
+                    }
                     const models = await getProviderModels(providerId);
                     const existingModelIds = new Set(models.map(m => m.id));
-                    const customPreselected = (preselectedModels || []).filter(mId => mId !== '*' && !existingModelIds.has(mId));
+                    const selectedList = Array.from(window.keySelectedModels[context][providerId] || []);
+                    const customPreselected = selectedList.filter(mId => mId !== '*' && !existingModelIds.has(mId));
 
-                    if (models.length === 0 && customPreselected.length === 0) {
-                        listContainer.innerHTML = '<span class="text-[10px] text-slate-500">No se encontraron modelos automáticos. Puedes declarar modelos manualmente abajo.</span>';
-                    } else {
-                        listContainer.setAttribute('data-loaded', 'true');
-                        let htmlItems = '';
-
-                        // Renderizar modelos preseleccionados personalizados / manuales
-                        customPreselected.forEach(mId => {
-                            htmlItems += `
-                                <label data-model-item class="flex items-center gap-2 text-[11px] text-cyan-300 hover:text-white cursor-pointer py-0.5 px-1 rounded bg-cyan-950/20 border border-cyan-500/20 hover:bg-cyan-900/30 transition-all">
-                                    <input type="checkbox" data-context="${context}" data-provider-id="${providerId}" value="${escapeHtml(mId)}" checked onchange="updateProviderModelCountBadge('${context}', '${providerId}')" class="rounded border-slate-700 text-cyan-500 focus:ring-cyan-500 bg-slate-950">
-                                    <span class="font-mono text-cyan-200 truncate flex-1" title="${escapeHtml(mId)}">✨ ${escapeHtml(mId)} <span class="text-[9px] text-cyan-400 font-sans font-semibold">(Manual)</span></span>
-                                    <button type="button" onclick="this.closest('label').remove(); updateProviderModelCountBadge('${context}', '${providerId}')" class="text-slate-500 hover:text-rose-400 text-[10px] px-1" title="Eliminar">✕</button>
-                                </label>
-                            `;
-                        });
-
-                        // Renderizar modelos descubiertos del proveedor
-                        models.forEach(m => {
-                            const isChecked = preselectedModels.includes(m.id) || preselectedModels.includes(m.prefixed_id) || preselectedModels.includes('*');
-                            htmlItems += `
-                                <label data-model-item class="flex items-center gap-2 text-[11px] text-slate-300 hover:text-white cursor-pointer py-0.5 px-1 rounded hover:bg-slate-800/50 transition-all">
-                                    <input type="checkbox" data-context="${context}" data-provider-id="${providerId}" value="${escapeHtml(m.id)}" ${isChecked ? 'checked' : ''} onchange="updateProviderModelCountBadge('${context}', '${providerId}')" class="rounded border-slate-700 text-cyan-500 focus:ring-cyan-500 bg-slate-950">
-                                    <span class="font-mono text-slate-200 truncate" title="${escapeHtml(m.id)}">${escapeHtml(m.id)}</span>
-                                </label>
-                            `;
-                        });
-
-                        listContainer.innerHTML = htmlItems;
-                    }
-                    updateProviderModelCountBadge(context, providerId);
+                    window.providerModelsData[context][providerId] = {
+                        models: models,
+                        custom: customPreselected,
+                        filter: '',
+                        visibleLimit: 50
+                    };
                 }
+
+                renderProviderModelsSlice(context, providerId);
             } else {
                 panel.classList.add('hidden');
             }
+        }
+
+        function renderProviderModelsSlice(context, providerId) {
+            const listContainer = document.getElementById(`${context}-prov-models-list-${providerId}`);
+            if (!listContainer) return;
+
+            const data = window.providerModelsData[context] && window.providerModelsData[context][providerId];
+            if (!data) return;
+
+            const selectedSet = (window.keySelectedModels[context] && window.keySelectedModels[context][providerId]) || new Set();
+            const filterQuery = (data.filter || '').toLowerCase().trim();
+
+            const customMatches = (data.custom || []).filter(mId => !filterQuery || mId.toLowerCase().includes(filterQuery));
+            const providerMatches = (data.models || []).filter(m => !filterQuery || (m.id && m.id.toLowerCase().includes(filterQuery)) || (m.name && m.name.toLowerCase().includes(filterQuery)));
+            const totalMatches = customMatches.length + providerMatches.length;
+
+            if (totalMatches === 0) {
+                listContainer.innerHTML = filterQuery 
+                    ? '<span class="text-[10px] text-slate-500 py-3 text-center">No se encontraron modelos coincidentes.</span>'
+                    : '<span class="text-[10px] text-slate-500 py-3 text-center">No se encontraron modelos automáticos. Puedes declarar modelos manualmente abajo.</span>';
+                updateProviderModelCountBadge(context, providerId);
+                return;
+            }
+
+            const limit = data.visibleLimit || 50;
+            const renderedCustom = customMatches.slice(0, limit);
+            const remainingLimit = Math.max(0, limit - renderedCustom.length);
+            const renderedModels = providerMatches.slice(0, remainingLimit);
+
+            let htmlItems = '';
+
+            renderedCustom.forEach(mId => {
+                const isChecked = selectedSet.has(mId);
+                htmlItems += `
+                    <label data-model-item style="content-visibility: auto; contain-intrinsic-size: auto none auto 24px;" class="flex items-center gap-2 text-[11px] text-cyan-300 hover:text-white cursor-pointer py-0.5 px-1 rounded bg-cyan-950/20 border border-cyan-500/20 hover:bg-cyan-900/30 transition-all">
+                        <input type="checkbox" data-context="${context}" data-provider-id="${providerId}" value="${escapeHtml(mId)}" ${isChecked ? 'checked' : ''} onchange="toggleProviderModelSelection('${context}', '${providerId}', '${escapeHtml(mId)}', this.checked)" class="rounded border-slate-700 text-cyan-500 focus:ring-cyan-500 bg-slate-950">
+                        <span class="font-mono text-cyan-200 truncate flex-1" title="${escapeHtml(mId)}">✨ ${escapeHtml(mId)} <span class="text-[9px] text-cyan-400 font-sans font-semibold">(Manual)</span></span>
+                        <button type="button" onclick="removeCustomProviderModel('${context}', '${providerId}', '${escapeHtml(mId)}')" class="text-slate-500 hover:text-rose-400 text-[10px] px-1" title="Eliminar">✕</button>
+                    </label>
+                `;
+            });
+
+            renderedModels.forEach(m => {
+                const isChecked = selectedSet.has(m.id) || selectedSet.has(m.prefixed_id) || selectedSet.has('*');
+                htmlItems += `
+                    <label data-model-item style="content-visibility: auto; contain-intrinsic-size: auto none auto 24px;" class="flex items-center gap-2 text-[11px] text-slate-300 hover:text-white cursor-pointer py-0.5 px-1 rounded hover:bg-slate-800/50 transition-all">
+                        <input type="checkbox" data-context="${context}" data-provider-id="${providerId}" value="${escapeHtml(m.id)}" ${isChecked ? 'checked' : ''} onchange="toggleProviderModelSelection('${context}', '${providerId}', '${escapeHtml(m.id)}', this.checked)" class="rounded border-slate-700 text-cyan-500 focus:ring-cyan-500 bg-slate-950">
+                        <span class="font-mono text-slate-200 truncate" title="${escapeHtml(m.id)}">${escapeHtml(m.id)}</span>
+                    </label>
+                `;
+            });
+
+            const currentRenderedCount = renderedCustom.length + renderedModels.length;
+            if (currentRenderedCount < totalMatches) {
+                htmlItems += `
+                    <div id="${context}-prov-more-${providerId}" class="text-[9px] text-slate-400 text-center py-1.5 px-2 bg-slate-900/60 rounded border border-dashed border-slate-800 mt-1 cursor-pointer hover:text-indigo-300 hover:border-indigo-500/30 transition-all" onclick="loadMoreProviderModels('${context}', '${providerId}')">
+                        Mostrando ${currentRenderedCount} de ${totalMatches} modelos (haz scroll o clic para cargar más)
+                    </div>
+                `;
+            }
+
+            listContainer.innerHTML = htmlItems;
+
+            if (!listContainer.hasAttribute('data-has-scroll-listener')) {
+                listContainer.setAttribute('data-has-scroll-listener', 'true');
+                listContainer.addEventListener('scroll', () => {
+                    if (listContainer.scrollTop + listContainer.clientHeight >= listContainer.scrollHeight - 35) {
+                        loadMoreProviderModels(context, providerId);
+                    }
+                });
+            }
+
+            updateProviderModelCountBadge(context, providerId);
+        }
+
+        function loadMoreProviderModels(context, providerId) {
+            const data = window.providerModelsData[context] && window.providerModelsData[context][providerId];
+            if (!data) return;
+            const filterQuery = (data.filter || '').toLowerCase().trim();
+            const customMatches = (data.custom || []).filter(mId => !filterQuery || mId.toLowerCase().includes(filterQuery));
+            const providerMatches = (data.models || []).filter(m => !filterQuery || (m.id && m.id.toLowerCase().includes(filterQuery)) || (m.name && m.name.toLowerCase().includes(filterQuery)));
+            const totalMatches = customMatches.length + providerMatches.length;
+            if ((data.visibleLimit || 50) < totalMatches) {
+                data.visibleLimit = (data.visibleLimit || 50) + 50;
+                renderProviderModelsSlice(context, providerId);
+            }
+        }
+
+        function toggleProviderModelSelection(context, providerId, modelId, isChecked) {
+            if (!window.keySelectedModels[context]) window.keySelectedModels[context] = {};
+            if (!window.keySelectedModels[context][providerId]) window.keySelectedModels[context][providerId] = new Set();
+            const set = window.keySelectedModels[context][providerId];
+            if (isChecked) {
+                set.add(modelId);
+            } else {
+                set.delete(modelId);
+                set.delete('*');
+            }
+            updateProviderModelCountBadge(context, providerId);
         }
 
         function addCustomProviderModel(context, providerId) {
@@ -77,69 +168,71 @@
             const modelId = input.value.trim();
             if (!modelId) return;
 
-            const listContainer = document.getElementById(`${context}-prov-models-list-${providerId}`);
-            if (!listContainer) return;
-
-            // Si la lista contenía el mensaje de estado vacío o de carga, limpiarlo
-            if (listContainer.querySelector('span.text-slate-500, span.text-indigo-400')) {
-                listContainer.innerHTML = '';
+            if (!window.providerModelsData[context]) window.providerModelsData[context] = {};
+            if (!window.providerModelsData[context][providerId]) {
+                window.providerModelsData[context][providerId] = { models: [], custom: [], filter: '', visibleLimit: 50 };
+            }
+            const data = window.providerModelsData[context][providerId];
+            if (!data.custom.includes(modelId)) {
+                data.custom.unshift(modelId);
             }
 
-            // Evitar duplicados
-            const existingCb = Array.from(listContainer.querySelectorAll(`input[data-context="${context}"][data-provider-id="${providerId}"]`)).find(cb => cb.value === modelId);
-            if (existingCb) {
-                existingCb.checked = true;
-                input.value = '';
-                updateProviderModelCountBadge(context, providerId);
-                return;
-            }
+            if (!window.keySelectedModels[context]) window.keySelectedModels[context] = {};
+            if (!window.keySelectedModels[context][providerId]) window.keySelectedModels[context][providerId] = new Set();
+            window.keySelectedModels[context][providerId].add(modelId);
 
-            const newLabel = document.createElement('label');
-            newLabel.setAttribute('data-model-item', '');
-            newLabel.className = 'flex items-center gap-2 text-[11px] text-cyan-300 hover:text-white cursor-pointer py-0.5 px-1 rounded bg-cyan-950/20 border border-cyan-500/20 hover:bg-cyan-900/30 transition-all';
-            newLabel.innerHTML = `
-                <input type="checkbox" data-context="${context}" data-provider-id="${providerId}" value="${escapeHtml(modelId)}" checked onchange="updateProviderModelCountBadge('${context}', '${providerId}')" class="rounded border-slate-700 text-cyan-500 focus:ring-cyan-500 bg-slate-950">
-                <span class="font-mono text-cyan-200 truncate flex-1" title="${escapeHtml(modelId)}">✨ ${escapeHtml(modelId)} <span class="text-[9px] text-cyan-400 font-sans font-semibold">(Manual)</span></span>
-                <button type="button" onclick="this.closest('label').remove(); updateProviderModelCountBadge('${context}', '${providerId}')" class="text-slate-500 hover:text-rose-400 text-[10px] px-1" title="Eliminar">✕</button>
-            `;
-            listContainer.prepend(newLabel);
             input.value = '';
-            updateProviderModelCountBadge(context, providerId);
+            renderProviderModelsSlice(context, providerId);
+        }
+
+        function removeCustomProviderModel(context, providerId, modelId) {
+            const data = window.providerModelsData[context] && window.providerModelsData[context][providerId];
+            if (data && data.custom) {
+                data.custom = data.custom.filter(id => id !== modelId);
+            }
+            if (window.keySelectedModels[context] && window.keySelectedModels[context][providerId]) {
+                window.keySelectedModels[context][providerId].delete(modelId);
+            }
+            renderProviderModelsSlice(context, providerId);
         }
 
         function filterProviderModels(context, providerId, query) {
-            const listContainer = document.getElementById(`${context}-prov-models-list-${providerId}`);
-            if (!listContainer) return;
-            const q = (query || '').toLowerCase().trim();
-            const items = listContainer.querySelectorAll('[data-model-item]');
-            items.forEach(item => {
-                const text = item.textContent.toLowerCase();
-                if (!q || text.includes(q)) {
-                    item.classList.remove('hidden');
-                } else {
-                    item.classList.add('hidden');
-                }
-            });
+            if (!window.providerModelsData[context] || !window.providerModelsData[context][providerId]) return;
+            window.providerModelsData[context][providerId].filter = query;
+            window.providerModelsData[context][providerId].visibleLimit = 50;
+            renderProviderModelsSlice(context, providerId);
         }
 
         function selectAllProviderModels(context, providerId, selectAll) {
-            const listContainer = document.getElementById(`${context}-prov-models-list-${providerId}`);
-            if (!listContainer) return;
-            const checkboxes = listContainer.querySelectorAll(`input[data-context="${context}"][data-provider-id="${providerId}"]`);
-            checkboxes.forEach(cb => {
-                const item = cb.closest('[data-model-item]');
-                if (!item || !item.classList.contains('hidden')) {
-                    cb.checked = selectAll;
-                }
-            });
-            updateProviderModelCountBadge(context, providerId);
+            const data = window.providerModelsData[context] && window.providerModelsData[context][providerId];
+            if (!data) return;
+            if (!window.keySelectedModels[context]) window.keySelectedModels[context] = {};
+            if (!window.keySelectedModels[context][providerId]) window.keySelectedModels[context][providerId] = new Set();
+            const set = window.keySelectedModels[context][providerId];
+
+            const filterQuery = (data.filter || '').toLowerCase().trim();
+            const customMatches = (data.custom || []).filter(mId => !filterQuery || mId.toLowerCase().includes(filterQuery));
+            const providerMatches = (data.models || []).filter(m => !filterQuery || (m.id && m.id.toLowerCase().includes(filterQuery)) || (m.name && m.name.toLowerCase().includes(filterQuery)));
+
+            if (selectAll) {
+                customMatches.forEach(mId => set.add(mId));
+                providerMatches.forEach(m => set.add(m.id));
+            } else {
+                customMatches.forEach(mId => set.delete(mId));
+                providerMatches.forEach(m => set.delete(m.id));
+                set.delete('*');
+            }
+            renderProviderModelsSlice(context, providerId);
         }
 
         function updateProviderModelCountBadge(context, providerId) {
             const badge = document.getElementById(`${context}-prov-count-${providerId}`);
             if (!badge) return;
-            const checkedCount = document.querySelectorAll(`input[data-context="${context}"][data-provider-id="${providerId}"]:checked`).length;
-            const totalCount = document.querySelectorAll(`input[data-context="${context}"][data-provider-id="${providerId}"]`).length;
+            const data = window.providerModelsData[context] && window.providerModelsData[context][providerId];
+            const totalCount = data ? ((data.models || []).length + (data.custom || []).length) : 0;
+            const selectedSet = (window.keySelectedModels[context] && window.keySelectedModels[context][providerId]) || new Set();
+            const checkedCount = selectedSet.size;
+
             badge.textContent = `${checkedCount} / ${totalCount} modelos`;
             if (checkedCount > 0) {
                 badge.className = "text-[9px] px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 font-semibold border border-indigo-500/30";
@@ -226,14 +319,16 @@
                 `;
             }).join('');
 
-            // Para los proveedores ya marcados, cargar sus modelos e inicializar la selección
+            // Para los proveedores ya marcados, cargar sus modelos e inicializar la selección concurrentemente
+            const loadTasks = [];
             for (const p of window.cachedCloudProviders) {
                 const isChecked = (allowedProviders || []).includes(p.id) || (allowedProviders || []).includes(p.name) || (allowedProviders || []).includes('*');
                 if (isChecked) {
                     const preselected = keyModelsByProvider[p.id] || [];
-                    await handleProviderCheckboxChange('edit', p.id, preselected);
+                    loadTasks.push(handleProviderCheckboxChange('edit', p.id, preselected));
                 }
             }
+            await Promise.all(loadTasks);
         }
 
         async function populateRagBaseOptionsForKeySelects() {
@@ -497,8 +592,12 @@
             document.querySelectorAll('input[name="key-providers"]:checked').forEach(cb => {
                 const pId = cb.value;
                 allowed_providers.push(pId);
-                const modelCbs = document.querySelectorAll(`input[data-context="create"][data-provider-id="${pId}"]:checked`);
-                allowed_models[pId] = Array.from(modelCbs).map(mCb => mCb.value);
+                if (window.keySelectedModels && window.keySelectedModels['create'] && window.keySelectedModels['create'][pId]) {
+                    allowed_models[pId] = Array.from(window.keySelectedModels['create'][pId]);
+                } else {
+                    const modelCbs = document.querySelectorAll(`input[data-context="create"][data-provider-id="${pId}"]:checked`);
+                    allowed_models[pId] = Array.from(modelCbs).map(mCb => mCb.value);
+                }
             });
 
             if (!name) {
@@ -628,24 +727,6 @@
             const doclingEl = document.getElementById('edit-key-service-docling');
             if (doclingEl) doclingEl.checked = services.includes('docling');
             
-            // Consultar modelos existentes asignados a esta clave API
-            let keyModelsByProv = {};
-            try {
-                const kmRes = await fetch(`/api/keys/${id}/models`);
-                if (kmRes.ok) {
-                    const kmList = await kmRes.json();
-                    kmList.forEach(km => {
-                        const pId = km.provider_id;
-                        if (!keyModelsByProv[pId]) keyModelsByProv[pId] = [];
-                        keyModelsByProv[pId].push(km.model_id);
-                    });
-                }
-            } catch(e) {
-                console.error("Error obteniendo modelos de la clave:", e);
-            }
-            
-            await renderEditCloudProviderCheckboxes(providers, keyModelsByProv);
-
             // Poblar campos de perfil corporativo
             const cachedKey = (window.cachedApiKeys && window.cachedApiKeys[id]) || {};
             const cp = cachedKey.company_profile || {};
@@ -665,8 +746,31 @@
             if (cpInstEl) cpInstEl.value = cp.custom_instructions || '';
             const cpRagTableEl = document.getElementById('edit-key-company-rag-table');
             if (cpRagTableEl) cpRagTableEl.value = cp.rag_table || cachedKey.rag_table || '';
-            
+
+            // Abrir el modal DE INMEDIATO para dar respuesta instantánea al usuario
             document.getElementById('edit-key-modal').classList.remove('hidden');
+
+            // Limpiar estado de selección previo para el contexto edit
+            window.keySelectedModels['edit'] = {};
+            window.providerModelsData['edit'] = {};
+
+            // Consultar modelos existentes asignados a esta clave API en segundo plano
+            let keyModelsByProv = {};
+            try {
+                const kmRes = await fetch(`/api/keys/${id}/models`);
+                if (kmRes.ok) {
+                    const kmList = await kmRes.json();
+                    kmList.forEach(km => {
+                        const pId = km.provider_id;
+                        if (!keyModelsByProv[pId]) keyModelsByProv[pId] = [];
+                        keyModelsByProv[pId].push(km.model_id);
+                    });
+                }
+            } catch(e) {
+                console.error("Error obteniendo modelos de la clave:", e);
+            }
+            
+            await renderEditCloudProviderCheckboxes(providers, keyModelsByProv);
         }
 
         function closeEditKeyModal() {
@@ -699,8 +803,12 @@
             document.querySelectorAll('input[name="edit-key-providers"]:checked').forEach(cb => {
                 const pId = cb.value;
                 allowed_providers.push(pId);
-                const modelCbs = document.querySelectorAll(`input[data-context="edit"][data-provider-id="${pId}"]:checked`);
-                allowed_models[pId] = Array.from(modelCbs).map(mCb => mCb.value);
+                if (window.keySelectedModels && window.keySelectedModels['edit'] && window.keySelectedModels['edit'][pId]) {
+                    allowed_models[pId] = Array.from(window.keySelectedModels['edit'][pId]);
+                } else {
+                    const modelCbs = document.querySelectorAll(`input[data-context="edit"][data-provider-id="${pId}"]:checked`);
+                    allowed_models[pId] = Array.from(modelCbs).map(mCb => mCb.value);
+                }
             });
 
             if (!name) {

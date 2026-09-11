@@ -140,5 +140,35 @@ class TestDashboardModular(unittest.TestCase):
         self.assertEqual(data[0]["name"], "Carlos")
 
 
+    @patch("dashboard.routes.cloud.requests.get")
+    @patch("dashboard.routes.cloud.get_db")
+    def test_api_cloud_provider_models_caching(self, mock_get_db, mock_requests_get):
+        """Verifica que el endpoint de modelos de proveedor use la caché en memoria y no repita peticiones externas."""
+        from bson import ObjectId
+        mock_db = MagicMock()
+        mock_db.cloud_providers.find_one.return_value = {
+            "_id": ObjectId("507f1f77bcf86cd799439011"),
+            "name": "OpenRouter",
+            "base_url": "https://openrouter.ai/api/v1",
+            "api_key": "sk-or-test"
+        }
+        mock_get_db.return_value = mock_db
+
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {"data": [{"id": "meta-llama/llama-3-8b"}]}
+        mock_requests_get.return_value = mock_resp
+
+        # Primera llamada: hace la petición externa
+        res1 = self.client.get("/api/cloud-providers/507f1f77bcf86cd799439011/models?refresh=true")
+        self.assertEqual(res1.status_code, 200)
+        self.assertEqual(mock_requests_get.call_count, 1)
+
+        # Segunda llamada: responde desde la caché en memoria sin invocar requests.get
+        res2 = self.client.get("/api/cloud-providers/507f1f77bcf86cd799439011/models")
+        self.assertEqual(res2.status_code, 200)
+        self.assertEqual(mock_requests_get.call_count, 1)
+
+
 if __name__ == "__main__":
     unittest.main()
