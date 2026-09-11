@@ -2,7 +2,7 @@ import sys
 import time
 import psutil
 import threading
-from datetime import datetime
+from datetime import datetime, timezone
 from dashboard.core.database import get_db
 from dashboard.core.system_metrics import (
     get_gpu_info,
@@ -69,7 +69,7 @@ def start_telemetry_collector():
                 # 4. Registrar en MongoDB
                 db = get_db()
                 db.telemetry_history.insert_one({
-                    "timestamp": datetime.utcnow(),
+                    "timestamp": datetime.now(timezone.utc),
                     "cpu": cpu_util,
                     "cpu_temp": cpu_temp,
                     "ram": ram_util,

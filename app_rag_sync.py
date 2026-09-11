@@ -14,7 +14,7 @@ import json
 import argparse
 import hashlib
 import httpx
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional, Tuple
 from dotenv import load_dotenv
 
@@ -523,7 +523,7 @@ def sync_knowledge_base(
         Diccionario con el resumen de la operación.
     """
     start_time = time.time()
-    sync_date = datetime.utcnow()
+    sync_date = datetime.now(timezone.utc)
     
     target_table_name = table_name
     if not target_table_name:

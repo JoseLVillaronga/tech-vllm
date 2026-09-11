@@ -21,8 +21,8 @@ load_dotenv()
 
 PORT = int(os.getenv("IMAGE_BACKEND_PORT", "18004"))
 MODEL_ID = os.getenv("IMAGE_MODEL", "stabilityai/sdxl-turbo")
-from config import API_KEY
-OUTPUT_DIR = os.getenv("IMAGE_OUTPUT_DIR", "/home/jose/vllm/outputs/images")
+_REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
+OUTPUT_DIR = os.getenv("IMAGE_OUTPUT_DIR", os.path.join(_REPO_ROOT, "outputs", "images"))
 
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 

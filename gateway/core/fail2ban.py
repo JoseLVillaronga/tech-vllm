@@ -3,7 +3,7 @@ import time
 import sys
 import asyncio
 import ipaddress
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from gateway.core.database import get_db
 
 # Control de intrusión (Fail2ban nativo en memoria)
@@ -67,7 +67,7 @@ async def register_failed_attempt(client_ip: str):
             # Bloquear automáticamente en MongoDB
             try:
                 db = get_db()
-                ban_until = datetime.utcnow() + timedelta(hours=ban_hours)
+                ban_until = datetime.now(timezone.utc) + timedelta(hours=ban_hours)
                 db.ip_rules.update_one(
                     {"network": client_ip},
                     {
@@ -76,7 +76,7 @@ async def register_failed_attempt(client_ip: str):
                             "action": "blacklist",
                             "description": f"Auto-ban Fail2ban ({max_failures} intentos fallidos en {window_seconds}s)",
                             "is_active": True,
-                            "created_at": datetime.utcnow(),
+                            "created_at": datetime.now(timezone.utc),
                             "expires_at": ban_until
                         }
                     },

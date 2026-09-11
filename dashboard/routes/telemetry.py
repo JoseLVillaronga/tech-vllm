@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from flask import Blueprint, request, jsonify, Response
 from dashboard.core import get_db
 
@@ -9,7 +9,7 @@ def api_telemetry_history():
     """Retorna el historial de telemetría de hardware (CPU, RAM, GPU, VRAM) para series temporales."""
     try:
         hours = request.args.get("hours", default=6, type=int)
-        start_date = datetime.utcnow() - timedelta(hours=hours)
+        start_date = datetime.now(timezone.utc) - timedelta(hours=hours)
         
         db = get_db()
         records = list(db.telemetry_history.find(
@@ -45,7 +45,7 @@ def api_metrics():
         api_key = request.args.get("api_key", default="", type=str)
         model = request.args.get("model", default="", type=str)
         
-        start_date = datetime.utcnow() - timedelta(days=days)
+        start_date = datetime.now(timezone.utc) - timedelta(days=days)
         
         query = {"timestamp": {"$gte": start_date}}
         if service:
@@ -69,7 +69,7 @@ def api_metrics():
         total_calls = len(logs)
         
         for i in range(days):
-            day_str = (datetime.utcnow() - timedelta(days=i)).strftime("%Y-%m-%d")
+            day_str = (datetime.now(timezone.utc) - timedelta(days=i)).strftime("%Y-%m-%d")
             time_series[day_str] = {
                 "prompt_tokens": 0,
                 "completion_tokens": 0,
@@ -144,7 +144,7 @@ def api_export_metrics():
         api_key = request.args.get("api_key", default="", type=str)
         model = request.args.get("model", default="", type=str)
         
-        start_date = datetime.utcnow() - timedelta(days=days)
+        start_date = datetime.now(timezone.utc) - timedelta(days=days)
         
         query = {"timestamp": {"$gte": start_date}}
         if service:

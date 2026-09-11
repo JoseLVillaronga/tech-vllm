@@ -2,7 +2,7 @@ import re
 import io
 import csv
 import ipaddress
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from bson import ObjectId
 from flask import Blueprint, request, jsonify, make_response
 from dashboard.core import get_db
@@ -67,7 +67,7 @@ def api_get_blocked_requests():
                 query["timestamp"] = time_filter
         else:
             hours = request.args.get("hours", default=24, type=int)
-            start_date = datetime.utcnow() - timedelta(hours=hours)
+            start_date = datetime.now(timezone.utc) - timedelta(hours=hours)
             query["timestamp"] = {"$gte": start_date}
             
         if ip:
@@ -140,7 +140,7 @@ def api_export_blocked_requests():
                 query["timestamp"] = time_filter
         else:
             hours = request.args.get("hours", default=24, type=int)
-            start_date = datetime.utcnow() - timedelta(hours=hours)
+            start_date = datetime.now(timezone.utc) - timedelta(hours=hours)
             query["timestamp"] = {"$gte": start_date}
             
         if ip:

@@ -2,6 +2,7 @@ import os
 import sys
 import json
 import subprocess
+from pathlib import Path
 from dotenv import load_dotenv
 
 # Cargar variables de entorno desde el archivo .env
@@ -101,7 +102,8 @@ def main():
 
     # Configurar LoRA si está habilitado en .env, el adaptador está completamente descargado y el modelo es compatible (Gemma)
     lora_env = os.getenv("LORA", "True").strip().lower() in ("true", "1", "yes")
-    lora_dir = os.getenv("LORA_DIR", "/home/jose/modelos/loras/gemma-4-E4B-opus-reasoning-claude-code-lora")
+    default_lora_dir = str(Path.home() / "modelos" / "loras" / "gemma-4-E4B-opus-reasoning-claude-code-lora")
+    lora_dir = os.getenv("LORA_DIR", default_lora_dir)
     has_active_lora = lora_env and "gemma" in model.lower() and os.path.exists(os.path.join(lora_dir, "adapter_config.json"))
     if has_active_lora:
         cmd.extend([

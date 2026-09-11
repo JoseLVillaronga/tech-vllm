@@ -1,6 +1,6 @@
 import unittest
 from unittest.mock import patch, MagicMock
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from dashboard.app import create_app
 from dashboard.core import (
     slugify_provider_name,
@@ -43,7 +43,7 @@ class TestDashboardModular(unittest.TestCase):
     def test_quota_reset_logic(self):
         """Prueba la lógica de reset de cuotas diarias y mensuales de claves API."""
         mock_db = MagicMock()
-        yesterday = datetime.utcnow() - timedelta(days=2)
+        yesterday = datetime.now(timezone.utc) - timedelta(days=2)
         
         # Caso 1: cuota 'none' no se reinicia
         key_none = {"_id": "k1", "quota_reset": "none", "used_tokens": 100, "last_reset_at": yesterday}

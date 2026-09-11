@@ -22,7 +22,7 @@ LANCEDB_DIR = os.getenv("LANCEDB_PATH", os.path.join(PROJECT_DIR, "data", "lance
 TABLE_NAME = os.getenv("LANCEDB_TABLE_NAME", "teccam_knowledge_base")
 EMBEDDINGS_BACKEND_PORT = int(os.getenv("EMBEDDINGS_BACKEND_PORT", "18005"))
 from config import API_KEY as MASTER_KEY, get_mongo_uri, MONGO_DB
-TECCAM_PDF_URL_BASE = os.getenv("TECCAM_PDF_URL_BASE", "http://192.168.1.33:5022").rstrip("/")
+TECCAM_PDF_URL_BASE = os.getenv("TECCAM_PDF_URL_BASE", "http://127.0.0.1:5022").rstrip("/")
 TECCAM_PDF_API_KEY = os.getenv("TECCAM_PDF_API_KEY", "").strip()
 
 # Asegurar que el directorio de LanceDB existe

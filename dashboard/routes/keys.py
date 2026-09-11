@@ -1,6 +1,6 @@
 import sys
 import secrets
-from datetime import datetime
+from datetime import datetime, timezone
 from bson import ObjectId
 from flask import Blueprint, request, jsonify
 from dashboard.core import get_db, check_and_reset_key_quota_dict, slugify_provider_name
@@ -112,7 +112,7 @@ def api_create_key():
             "max_tokens": max_tokens,
             "used_tokens": 0,
             "quota_reset": quota_reset,
-            "last_reset_at": datetime.utcnow(),
+            "last_reset_at": datetime.now(timezone.utc),
             "expires_at": expires_val,
             "is_active": True,
             "company_profile": company_profile
@@ -137,7 +137,7 @@ def api_create_key():
                                 "provider_slug": p_slug,
                                 "model_id": m_id,
                                 "prefixed_id": f"{p_slug}/{m_id}",
-                                "created_at": datetime.utcnow()
+                                "created_at": datetime.now(timezone.utc)
                             })
                 except Exception as p_err:
                     print(f"Error procesando modelos para clave {key_id}: {p_err}", file=sys.stderr, flush=True)
@@ -225,7 +225,7 @@ def api_update_key(key_id):
                                 "provider_slug": p_slug,
                                 "model_id": m_id,
                                 "prefixed_id": f"{p_slug}/{m_id}",
-                                "created_at": datetime.utcnow()
+                                "created_at": datetime.now(timezone.utc)
                             })
                 except Exception as p_err:
                     print(f"Error actualizando modelos para clave {key_id}: {p_err}", file=sys.stderr, flush=True)
@@ -242,7 +242,7 @@ def api_reset_key_quota(key_id):
     """Reinicia manualmente a cero el contador de tokens consumidos de una clave API."""
     try:
         db = get_db()
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         res = db.api_keys.update_one(
             {"_id": ObjectId(key_id)},
             {"$set": {"used_tokens": 0, "last_reset_at": now}}

@@ -1029,4 +1029,4 @@ Al interactuar con modelos dotados de herramientas avanzadas (RAG Jerárquico + 
 ---
 
 ### ❓ ¿Cuánto tiempo duran los enlaces de descarga de los PDFs?
-* Los archivos PDF se generan en `/home/jose/vllm/outputs/pdfs/` y cuentan con un mecanismo de **auto-limpieza TTL de 24 horas**. Cada vez que se compila un nuevo PDF, el motor elimina automáticamente los archivos que tengan más de un día de antigüedad para mantener el disco limpio.
+* Los archivos PDF se generan en el directorio `outputs/pdfs/` del proyecto y cuentan con un mecanismo de **auto-limpieza TTL de 24 horas**. Cada vez que se compila un nuevo PDF, el motor elimina automáticamente los archivos que tengan más de un día de antigüedad para mantener el disco limpio.
