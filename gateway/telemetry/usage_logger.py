@@ -6,7 +6,7 @@ from gateway.core.database import get_db
 
 def save_usage_log(ip: str, token: str, service: str, endpoint: str, model: str,
                    prompt_tokens: int, completion_tokens: int, audio_duration_sec: float,
-                   duration_sec: float):
+                   duration_sec: float, deduplicated_tools: int = 0):
     """
     Función síncrona ejecutada en BackgroundTasks para no bloquear el bucle de eventos.
     Registra el consumo y actualiza el contador de tokens utilizados.
@@ -32,7 +32,8 @@ def save_usage_log(ip: str, token: str, service: str, endpoint: str, model: str,
             "prompt_tokens": int(prompt_tokens) if prompt_tokens is not None else 0,
             "completion_tokens": int(completion_tokens) if completion_tokens is not None else 0,
             "audio_duration_sec": float(audio_duration_sec) if audio_duration_sec is not None else 0.0,
-            "duration_sec": float(duration_sec) if duration_sec is not None else 0.0
+            "duration_sec": float(duration_sec) if duration_sec is not None else 0.0,
+            "deduplicated_tools": int(deduplicated_tools) if deduplicated_tools else 0
         }
         db.usage_logs.insert_one(log_doc)
 
@@ -40,6 +41,7 @@ def save_usage_log(ip: str, token: str, service: str, endpoint: str, model: str,
         if token != MASTER_KEY and total_tokens > 0:
             db.api_keys.update_one({"key": token}, {"$inc": {"used_tokens": total_tokens}})
 
-        print(f"📊 Telemetría: Registro de uso guardado para '{service}' ({key_name}) - Modelo: {model} - Tokens: {total_tokens}", flush=True)
+        dedup_info = f" | 🧹 {deduplicated_tools} llamada(s) redundante(s) descartada(s)" if deduplicated_tools > 0 else ""
+        print(f"📊 Telemetría: Registro de uso guardado para '{service}' ({key_name}) - Modelo: {model} - Tokens: {total_tokens}{dedup_info}", flush=True)
     except Exception as e:
         print(f"⚠️ Error al guardar telemetría de uso en MongoDB: {e}", file=sys.stderr, flush=True)

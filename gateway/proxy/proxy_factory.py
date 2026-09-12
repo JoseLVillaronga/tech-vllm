@@ -29,7 +29,7 @@ from gateway.tools.rag_endpoints import handle_rag_search, handle_rag_document, 
 from gateway.cloud.cloud_router import handle_models_list, resolve_cloud_model
 from gateway.core.alignment_engine import enrich_chat_payload
 from gateway.core.slot_flusher import flush_llama_slots
-from gateway.core.tool_governor import parse_raw_tool_calls
+from gateway.core.tool_governor import parse_raw_tool_calls, deduplicate_tool_calls
 
 # Cliente HTTP compartido globalmente para evitar fugas de sockets y memoria
 _http_client = None
@@ -381,6 +381,8 @@ def create_proxy_app(
                 is_raw_tool_call = False
                 held_stream_chunks = []
                 last_stream_chunk_id = None
+                native_streamed_tool_calls = {}
+                has_native_tool_calls = False
 
                 try:
                     async for chunk in resp.aiter_bytes():
@@ -408,6 +410,27 @@ def create_proxy_app(
                                                 content = delta.get("content", "")
                                                 if content:
                                                     accumulated_text += content
+                                                tcs = delta.get("tool_calls")
+                                                if tcs and isinstance(tcs, list):
+                                                    has_native_tool_calls = True
+                                                    for tc in tcs:
+                                                        if isinstance(tc, dict):
+                                                            idx = tc.get("index", len(native_streamed_tool_calls))
+                                                            if idx not in native_streamed_tool_calls:
+                                                                native_streamed_tool_calls[idx] = {
+                                                                    "index": idx,
+                                                                    "id": tc.get("id", ""),
+                                                                    "type": "function",
+                                                                    "function": {"name": "", "arguments": ""}
+                                                                }
+                                                            if "id" in tc and tc["id"]:
+                                                                native_streamed_tool_calls[idx]["id"] = tc["id"]
+                                                            if "function" in tc and isinstance(tc["function"], dict):
+                                                                fn = tc["function"]
+                                                                if "name" in fn and fn["name"]:
+                                                                    native_streamed_tool_calls[idx]["function"]["name"] += fn["name"]
+                                                                if "arguments" in fn and fn["arguments"]:
+                                                                    native_streamed_tool_calls[idx]["function"]["arguments"] += fn["arguments"]
                                         except Exception:
                                             pass
                             except Exception:
@@ -498,8 +521,33 @@ def create_proxy_app(
                             yield f"data: {json.dumps(fallback_event)}\n\ndata: [DONE]\n\n".encode("utf-8")
                             print(f"🛡️ [Auto-Guardia RAG] Tool call recuperado en fin de stream ({len(recovered)} llamada/s promovida/s).", flush=True)
                         else:
-                            for h in held_stream_chunks:
-                                buffer += h
+                            # Si no era fallback de texto plano, verificar si contenía tool_calls nativas con duplicados
+                            if has_native_tool_calls and native_streamed_tool_calls:
+                                sorted_calls = [native_streamed_tool_calls[k] for k in sorted(native_streamed_tool_calls.keys())]
+                                deduped_calls, dups = deduplicate_tool_calls(sorted_calls)
+                                if dups > 0:
+                                    is_raw_tool_call = True
+                                    event_id = last_stream_chunk_id or f"chatcmpl-{uuid.uuid4().hex[:12]}"
+                                    clean_event = {
+                                        "id": event_id,
+                                        "object": "chat.completion.chunk",
+                                        "created": int(datetime.now(timezone.utc).timestamp()),
+                                        "model": model_name,
+                                        "choices": [{
+                                            "index": 0,
+                                            "delta": {
+                                                "role": "assistant",
+                                                "content": None,
+                                                "tool_calls": deduped_calls
+                                            },
+                                            "finish_reason": "tool_calls"
+                                        }]
+                                    }
+                                    yield f"data: {json.dumps(clean_event)}\n\ndata: [DONE]\n\n".encode("utf-8")
+                                    print(f"🧹 [Tool Governor] Deduplicadas {dups} llamada/s a herramientas idénticas en streaming nativo ({len(sorted_calls)} ➔ {len(deduped_calls)} llamadas).", flush=True)
+                            if not is_raw_tool_call:
+                                for h in held_stream_chunks:
+                                    buffer += h
                         held_stream_chunks.clear()
 
                     if buffer and not is_raw_tool_call:
@@ -523,6 +571,12 @@ def create_proxy_app(
                                         resp_json["choices"][0]["finish_reason"] = "tool_calls"
                                         non_stream_body = json.dumps(resp_json).encode("utf-8")
                                         print(f"🛡️ [Auto-Guardia RAG] Tool call recuperado desde texto plano no-streaming ({len(recovered)} llamada/s promovida/s).", flush=True)
+                                elif msg.get("tool_calls"):
+                                    deduped, dups = deduplicate_tool_calls(msg["tool_calls"])
+                                    if dups > 0:
+                                        msg["tool_calls"] = deduped
+                                        non_stream_body = json.dumps(resp_json).encode("utf-8")
+                                        print(f"🧹 [Tool Governor] Deduplicadas {dups} llamada/s a herramientas idénticas en respuesta no-streaming ({len(msg['tool_calls']) + dups} ➔ {len(deduped)}).", flush=True)
                             if "usage" in resp_json and resp_json["usage"]:
                                 usage_data = resp_json["usage"]
                         except Exception as parse_err:

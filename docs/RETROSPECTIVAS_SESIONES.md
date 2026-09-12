@@ -26,6 +26,7 @@ Al finalizar cada sesión de trabajo, el agente y el usuario realizan una audito
 
 ## 📈 Historial Consolidado de Sesiones
 
+| **2026-09-11 (Noche - Soporte Dinámico Jinja en llama-server, Auto-Guardia de Latencia Cero para Tool Chaining en Mistral y Estudio de Caso Antártico/Glaciares)** | `59680d91` | 14 | ~45 | 1 | **0** | 2/10 | Mínimo (Quirúrgico) | 🟢 **100% Exitoso** |
 | **2026-09-11 (Mediodía/Tarde - Autenticación Perimetral Localhost en Dashboard, Anti-Spoofing IP, Auditoría de Portabilidad y Modularización Quirúrgica de RAG con Cero Blast Radius)** | `59680d91` | 12 | ~55 | 3 | **0** | 2/10 | Mínimo (Quirúrgico) | 🟢 **100% Exitoso** |
 | **2026-09-10 (Noche - Resolución de Amnesia Multi-Turno en Podador de Contexto, Guía Positiva Ontológica y Consolidación del Principio Perimetral MEA)** | `59680d91` | 16 | ~70 | 6 | **0** | 2/10 | Mínimo (Quirúrgico) | 🟢 **100% Exitoso** |
 | **2026-09-10 (Tarde - Gobernador de Presupuesto RAG, Circuit Breaker 50k, Semáforo de Suficiencia, Tuning MoE a 52-70 t/s y Trilema de Modelos)** | `fe37eff0` | 18 | ~65 | 4 | **0** | 1/10 | Mínimo (Modular) | 🟢 **100% Exitoso** |
@@ -57,6 +58,27 @@ Al finalizar cada sesión de trabajo, el agente y el usuario realizan una audito
 
 ## 📝 Fichas Detalladas por Sesión
  
+### 🔹 Sesión: 2026-09-11 Noche (`59680d91-1691-45da-96a7-4b47f72e1539`) - Soporte Dinámico Jinja en llama-server, Auto-Guardia de Latencia Cero para Tool Chaining en Mistral y Estudio de Caso Antártico/Glaciares
+* **Hitos Principales:**
+  1. **Resolución Portable e Inyección Dinámica de Jinja ([`llama-srv.sh`](../llama-srv.sh) - Commit `8b5505c`):**
+     - Detección automática de modelos Mistral (`Mistral-Small`, `Mistral-Nemo`) e inyección de `--jinja --chat-template-file` apuntando a la plantilla oficial verificada.
+     - Resolución dinâmica y agnóstica al host sin hardcoding de rutas locales (Invariante 5 MEA).
+  2. **Auto-Guardia RAG de Latencia Cero en Gateway ([`gateway/proxy/proxy_factory.py`](../gateway/proxy/proxy_factory.py) & [`gateway/core/tool_governor.py`](../gateway/core/tool_governor.py)):**
+     - *Diagnóstico Raíz:* En turnos multi-turn tras recibir resultados de herramientas, los modelos Mistral degradan a Bare-JSON arrays (`[{"name": ..., "arguments": ...}]`) omitiendo el token `[TOOL_CALLS]`.
+     - *Implementación:* Intercepción especulativa en streaming (SSE) y no-streaming con 0 ms de delay para texto ordinario. Promoción determinista a `delta.tool_calls` solo cuando la función coincide con `valid_tool_names`.
+  3. **Suite de Pruebas Automatizadas:**
+     - Tests unitarios en [`tests/test_tool_governor.py`](../tests/test_tool_governor.py) cubriendo arrays JSON, pseudotokens y casos borde negativos.
+     - 112 de 112 tests unitarios pasando en verde (100% OK) en 3.71s.
+  4. **Documentación de Arquitectura y Estado del Arte ([`docs/ARQUITECTURA_TOOL_CALLING_MISTRAL_LLAMACPP.md`](ARQUITECTURA_TOOL_CALLING_MISTRAL_LLAMACPP.md)):**
+     - Comparativa rigurosa con los enfoques de la industria (llama.cpp Issue #26359, Ollama PR #17324 / Issue #17323, LiteLLM #33037, LangChain y Open-WebUI Pipelines).
+     - Análisis empírico del caso de estudio "Tratado Antártico y Ley de Glaciares" (27 llamadas concurrentes, 52.271 tokens de prompt, 48.7s de ingesta y respuesta jurídica impecable sobre Art. 16 Ley 26.639).
+     - Identificación de la próxima frontera: deduplicación y limitación de ráfagas paralelas (Parallel Throttle) en el Gateway.
+* **Métricas MEA:**
+  * Invariantes violados: **0**
+  * RVI Máximo: **2/10**
+  * Blast Radius: **Mínimo (Quirúrgico / Modular)**
+  * Causa Raíz: **100% Atacada (Leyes 1, 2, 3 y 4 de Villaronga)**
+
 ### 🔹 Sesión: 2026-09-11 Mediodía/Tarde (`59680d91-1691-45da-96a7-4b47f72e1539`) - Autenticación Perimetral Localhost en Dashboard, Anti-Spoofing IP, Auditoría de Portabilidad y Modularización Quirúrgica de RAG con Cero Blast Radius
 * **Hitos Principales:**
   1. **Segregación Estricta de Autenticación en Dashboard ([`dashboard/core/auth_service.py`](../dashboard/core/auth_service.py) - Commit `bfee69f`):**

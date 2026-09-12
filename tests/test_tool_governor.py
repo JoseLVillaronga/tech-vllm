@@ -4,6 +4,8 @@ from gateway.core.tool_governor import (
     apply_tool_budget_governor,
     is_broad_or_deep_query,
     parse_raw_tool_calls,
+    deduplicate_tool_calls,
+    normalize_tool_call_signature,
     DEFAULT_MAX_TOOL_TOKENS,
     DEFAULT_INSUFFICIENT_TOOL_TOKENS,
     DEFAULT_MIN_TOOL_TOKENS,
@@ -185,6 +187,67 @@ class TestToolGovernor(unittest.TestCase):
         self.assertIsNone(parse_raw_tool_calls('[{"name": "herramienta_prohibida", "arguments": {}}]', valid_tools))
         # Texto vacío
         self.assertIsNone(parse_raw_tool_calls("", valid_tools))
+
+    def test_deduplicate_tool_calls_identical_queries(self):
+        calls = [
+            {"id": "c1", "type": "function", "function": {"name": "buscar_en_base_de_conocimiento", "arguments": '{"consulta": "tratado antartico ley de glaciares"}'}},
+            {"id": "c2", "type": "function", "function": {"name": "buscar_en_base_de_conocimiento", "arguments": '{"consulta": "ley 26639"}'}},
+            {"id": "c3", "type": "function", "function": {"name": "buscar_en_base_de_conocimiento", "arguments": '{"consulta": "tratado antartico ley de glaciares"}'}},
+            {"id": "c4", "type": "function", "function": {"name": "buscar_en_base_de_conocimiento", "arguments": '{"consulta": "tratado antartico ley de glaciares"}'}},
+            {"id": "c5", "type": "function", "function": {"name": "buscar_en_base_de_conocimiento", "arguments": '{"consulta": "ley 26639"}'}},
+        ]
+        deduped, dups = deduplicate_tool_calls(calls)
+        self.assertEqual(dups, 3)
+        self.assertEqual(len(deduped), 2)
+        self.assertEqual(deduped[0]["id"], "c1")
+        self.assertEqual(deduped[0]["index"], 0)
+        self.assertEqual(deduped[1]["id"], "c2")
+        self.assertEqual(deduped[1]["index"], 1)
+
+    def test_deduplicate_tool_calls_case_and_key_order(self):
+        calls = [
+            {"id": "c1", "type": "function", "function": {"name": "buscar", "arguments": '{"consulta": "Tratado Antartico", "dominios": "Derecho"}'}},
+            {"id": "c2", "type": "function", "function": {"name": "buscar", "arguments": '{"dominios": "derecho", "consulta": "  tratado antartico  "}'}},
+        ]
+        deduped, dups = deduplicate_tool_calls(calls)
+        self.assertEqual(dups, 1)
+        self.assertEqual(len(deduped), 1)
+        self.assertEqual(deduped[0]["id"], "c1")
+
+    def test_deduplicate_tool_calls_different_queries_preserved(self):
+        # Asegura que si el modelo hace 5 búsquedas semánticas diferentes, NINGUNA se limite
+        calls = [
+            {"id": f"c{i}", "type": "function", "function": {"name": "buscar", "arguments": f'{{"consulta": "tema {i}"}}'}}
+            for i in range(5)
+        ]
+        deduped, dups = deduplicate_tool_calls(calls)
+        self.assertEqual(dups, 0)
+        self.assertEqual(len(deduped), 5)
+
+    def test_apply_tool_budget_governor_active_turn_deduplication(self):
+        data = {
+            "messages": [
+                {"role": "user", "content": "Analiza la relación entre tratados y glaciares"},
+                {
+                    "role": "assistant",
+                    "tool_calls": [
+                        {"id": "call_1", "type": "function", "function": {"name": "buscar", "arguments": '{"consulta": "glaciares"}'}},
+                        {"id": "call_2", "type": "function", "function": {"name": "buscar", "arguments": '{"consulta": "glaciares"}'}},
+                    ]
+                },
+                {"role": "tool", "tool_call_id": "call_1", "content": "Resultado 1"},
+                {"role": "tool", "tool_call_id": "call_2", "content": "Resultado 2 idéntico"}
+            ],
+            "tools": [{"type": "function", "function": {"name": "buscar"}}]
+        }
+        modified_data, report = apply_tool_budget_governor(data)
+        ast_msg = modified_data["messages"][1]
+        self.assertEqual(len(ast_msg["tool_calls"]), 1)
+        self.assertEqual(ast_msg["tool_calls"][0]["id"], "call_1")
+        # El mensaje tool duplicado call_2 debe haber sido podado
+        tool_msgs = [m for m in modified_data["messages"] if m.get("role") == "tool"]
+        self.assertEqual(len(tool_msgs), 1)
+        self.assertEqual(tool_msgs[0]["tool_call_id"], "call_1")
 
 
 if __name__ == "__main__":

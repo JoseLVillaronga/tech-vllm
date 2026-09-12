@@ -141,6 +141,40 @@ def apply_tool_budget_governor(data: Dict[str, Any]) -> Tuple[Dict[str, Any], Di
     if not messages or not isinstance(messages, list):
         return data, {"status": "no_messages"}
 
+    # Deduplicación perimetral de llamadas y resultados idénticos en el turno activo
+    last_user_idx = -1
+    for i in range(len(messages) - 1, -1, -1):
+        if messages[i].get("role") == "user":
+            last_user_idx = i
+            break
+    if last_user_idx == -1:
+        last_user_idx = 0
+
+    last_assistant_with_tools_idx = -1
+    for i in range(len(messages) - 1, last_user_idx - 1, -1):
+        if messages[i].get("role") == "assistant" and messages[i].get("tool_calls"):
+            last_assistant_with_tools_idx = i
+            break
+
+    if last_assistant_with_tools_idx != -1:
+        ast_msg = messages[last_assistant_with_tools_idx]
+        raw_tcs = ast_msg.get("tool_calls", [])
+        if isinstance(raw_tcs, list) and len(raw_tcs) > 1:
+            deduped_tcs, dups = deduplicate_tool_calls(raw_tcs)
+            if dups > 0:
+                ast_msg["tool_calls"] = deduped_tcs
+                kept_tool_ids = {tc.get("id") for tc in deduped_tcs if tc.get("id")}
+                filtered_msgs = []
+                for idx, m in enumerate(messages):
+                    if idx > last_assistant_with_tools_idx and m.get("role") == "tool":
+                        tid = m.get("tool_call_id")
+                        if tid and tid not in kept_tool_ids:
+                            continue
+                    filtered_msgs.append(m)
+                messages = filtered_msgs
+                data["messages"] = messages
+                print(f"🧹 [Tool Governor] Pruning de {dups} llamada/s y resultado/s duplicados en el turno activo antes de enviar al modelo.", flush=True)
+
     stats = inspect_active_turn_tools(messages)
     tool_count = stats["tool_call_count"]
     tool_tokens = stats["accumulated_tool_tokens"]
@@ -289,6 +323,79 @@ def apply_tool_budget_governor(data: Dict[str, Any]) -> Tuple[Dict[str, Any], Di
     }
 
 
+def normalize_tool_call_signature(fn_name: str, arguments: Any) -> Tuple[str, str]:
+    """
+    Retorna una firma determinista (fn_name, canonical_args_json) para comparar
+    llamadas a herramientas en el mismo turno.
+    Normaliza strings JSON, orden de claves y mayúsculas/espacios en campos de texto.
+    """
+    import json
+
+    fn_clean = (fn_name or "").strip()
+    if isinstance(arguments, str):
+        try:
+            parsed = json.loads(arguments)
+        except Exception:
+            return (fn_clean, arguments.strip().lower())
+    elif isinstance(arguments, dict):
+        parsed = arguments
+    else:
+        return (fn_clean, str(arguments or "").strip().lower())
+
+    if isinstance(parsed, dict):
+        normalized_dict = {}
+        for k, v in parsed.items():
+            k_clean = str(k).strip().lower()
+            if isinstance(v, str):
+                normalized_dict[k_clean] = v.strip().lower()
+            elif isinstance(v, list):
+                normalized_dict[k_clean] = [x.strip().lower() if isinstance(x, str) else x for x in v]
+            elif isinstance(v, dict):
+                normalized_dict[k_clean] = {str(dk).strip().lower(): (dv.strip().lower() if isinstance(dv, str) else dv) for dk, dv in v.items()}
+            else:
+                normalized_dict[k_clean] = v
+        canonical_args = json.dumps(normalized_dict, sort_keys=True, ensure_ascii=False)
+    else:
+        canonical_args = json.dumps(parsed, sort_keys=True, ensure_ascii=False)
+
+    return (fn_clean, canonical_args)
+
+
+def deduplicate_tool_calls(tool_calls: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], int]:
+    """
+    Filtra llamadas a herramientas con consultas o argumentos idénticos en una misma ráfaga o turno.
+    Preserva el orden original de la primera aparición de cada llamada única y re-indexa.
+    Retorna la lista de tool_calls deduplicada y la cantidad de duplicados descartados.
+    """
+    if not tool_calls or not isinstance(tool_calls, list):
+        return tool_calls or [], 0
+
+    seen_signatures = set()
+    deduped = []
+    duplicates_count = 0
+
+    for tc in tool_calls:
+        if not isinstance(tc, dict):
+            deduped.append(tc)
+            continue
+
+        fn_obj = tc.get("function", {})
+        fn_name = fn_obj.get("name") or tc.get("name") or ""
+        args = fn_obj.get("arguments") if "function" in tc else tc.get("arguments")
+
+        sig = normalize_tool_call_signature(fn_name, args)
+        if sig in seen_signatures:
+            duplicates_count += 1
+            continue
+
+        seen_signatures.add(sig)
+        cloned_tc = dict(tc)
+        cloned_tc["index"] = len(deduped)
+        deduped.append(cloned_tc)
+
+    return deduped, duplicates_count
+
+
 def parse_raw_tool_calls(text: str, valid_tools: set) -> Optional[List[Dict[str, Any]]]:
     """
     Auto-guardia de Fallback para Modelos Locales (Mistral / Nemo / DeepSeek):
@@ -343,7 +450,10 @@ def parse_raw_tool_calls(text: str, valid_tools: set) -> Optional[List[Dict[str,
                             }
                         })
                 if calls:
-                    return calls
+                    deduped_calls, dups = deduplicate_tool_calls(calls)
+                    if dups > 0:
+                        print(f"🧹 [Tool Governor] Deduplicadas {dups} llamada/s a herramientas idénticas en array crudo ({len(calls)} ➔ {len(deduped_calls)}).", flush=True)
+                    return deduped_calls
         except Exception:
             pass
 
