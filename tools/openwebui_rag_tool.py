@@ -42,11 +42,13 @@ class Tools:
     ) -> str:
         """
         Consulta fragmentos relevantes en la base de datos documental y jurídica de Teccam en LanceDB.
-        HERRAMIENTA PRINCIPAL RECOMENDADA: Utilízala como primer paso para responder preguntas sobre leyes, artículos (ej: 'artículo 957'), definiciones, conceptos, procedimientos operativos, contratos, políticas corporativas, documentación interna o jurisprudencia.
-        Si la consulta o repregunta es sobre la definición o régimen rector general de una institución (ej: 'contrato', 'definición vigente', 'reforma constitucional', 'DNU'), o ante transiciones normativas, procedimientos operativos, políticas o cláusulas contractuales, utiliza esta herramienta como orientación/doc_id y combínala con 'obtener_estructura_documento' (con filtro temático) y 'leer_documento_completo' para extraer el articulado, procedimiento o cláusula rectora con exactitud literal.
-        :param consulta: Pregunta o términos de búsqueda específicos para consultar en los libros, normas, procedimientos o contratos (ej: 'definición de contrato', 'artículo 957', 'mecanismo reforma constitucional', 'procedimiento compras', 'política de seguridad').
+        MODALIDADES DE INVESTIGACIÓN:
+        1. Aterrizaje Semántico: Para ubicar la norma, procedimiento o contrato aplicable y obtener su 'doc_id'.
+        2. Búsqueda Semántica Ortogonal: Puedes emitir múltiples llamadas paralelas con consultas independientes y complementarias para analizar problemas transversales (ej: cruce de tratados internacionales con leyes locales).
+        3. Combinada con Lectura Estructural: Para régimen rector general de instituciones o citas de incisos, utiliza esta herramienta como orientación y combínala con 'obtener_estructura_documento' y 'leer_documento_completo'.
+        :param consulta: Pregunta o términos de búsqueda específicos (ej: 'definición de contrato', 'artículo 957', 'mecanismo reforma constitucional', 'procedimiento compras', 'política de seguridad').
         :param dominios: Opcional: Tema o temas a filtrar separados por comas. Dejar vacío para buscar en toda la base.
-        :param doc_id: Opcional: ID de la obra (ej: '6a976eb89e1c2342dd2e5b34' para CCCN) obtenido de 'obtener_indice_biblioteca' para acotar la búsqueda exclusivamente a ese documento.
+        :param doc_id: Opcional: ID único de la obra obtenido previamente de 'obtener_indice_biblioteca' o búsquedas preliminares para acotar la búsqueda exclusivamente a ese documento. Jamás inventes ni asumas IDs.
         """
         base_url = str(self.valves.GATEWAY_URL).rstrip("/")
         if not base_url.endswith("/api/tools/rag-search") and not base_url.endswith("/v1/rag/search"):
@@ -122,9 +124,10 @@ class Tools:
         seccion: Optional[str] = None
     ) -> str:
         """
+        MODALIDAD DE CIRUGÍA ESTRUCTURAL / LECTURA LITERAL:
         ⚠️ REGLA DE ORO OBLIGATORIA: En libros, códigos o leyes extensas (>10.000 tokens), NO uses esta herramienta sin haber llamado ANTES a 'obtener_estructura_documento' para conocer las secciones o capítulos exactos. Intentar leer a ciegas sin conocer los capítulos exactos provocará rechazo por desbordamiento de contexto.
-        Obtiene el texto de un documento, procedimiento o ley oficial por sección temática o paginado.
-        :param doc_id: ID único del documento (ej: '6a8b02cface6becbcb49b20d') o título de la obra.
+        Obtiene el texto íntegro, literal y no truncado de un documento, procedimiento o ley oficial por sección temática o paginado.
+        :param doc_id: ID único del documento obtenido del catálogo o búsquedas previas (o título exacto de la obra).
         :param parte: Número de parte a recuperar si la sección o documento supera los 15.000 tokens (1 para la primera, 2 para la siguiente, etc.).
         :param seccion: Nombre del capítulo o título específico obtenido previamente mediante 'obtener_estructura_documento' (ej: 'Art. 21. Contrato de trabajo.', 'Título II').
         """
@@ -176,10 +179,10 @@ class Tools:
         filtro: Optional[str] = None
     ) -> str:
         """
-        Obtiene el 'GPS Documental' (Mapa y Árbol de Estructura de Secciones) de una obra, libro o código extenso (ej: Código Civil, Constitución Nacional, manuales técnicos).
-        Úsalo para conocer los capítulos, títulos o partes principales de una obra, o cuando la búsqueda inicial devuelva subtipos específicos y necesites ubicar el capítulo rector (ej: 'Disposiciones generales', 'Parte general').
-        :param doc_id: ID único del documento (ej: '6a976eb89e1c2342dd2e5b34' para CCCN) o título de la obra.
-        :param filtro: Opcional: Palabra clave para filtrar capítulos o títulos específicos (ej: 'contrato', 'disposiciones generales', 'fideicomiso', 'familia', 'sociedades').
+        Obtiene el 'GPS Documental' (Mapa y Árbol de Estructura de Secciones) de una obra, libro o código extenso (ej: Código Civil y Comercial, Código Penal, Constitución Nacional, manuales técnicos).
+        MODALIDAD JERÁRQUICA DETERMINISTA: Úsalo para conocer los capítulos, títulos o partes principales de una obra, ubicar el capítulo rector exacto y seleccionar la sección a leer sin ambigüedad.
+        :param doc_id: ID único del documento obtenido del catálogo o de búsquedas previas (o título exacto de la obra).
+        :param filtro: Opcional: Palabra clave para filtrar capítulos o títulos específicos (ej: 'contrato', 'disposiciones generales', 'fideicomiso', 'familia', 'sociedades', 'Libro II').
         """
         base_url = str(self.valves.GATEWAY_URL).rstrip("/")
         if not base_url.endswith("/api/tools/rag-structure") and not base_url.endswith("/v1/rag/structure"):
