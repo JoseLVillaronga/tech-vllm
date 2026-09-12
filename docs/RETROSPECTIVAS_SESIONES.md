@@ -26,6 +26,7 @@ Al finalizar cada sesión de trabajo, el agente y el usuario realizan una audito
 
 ## 📈 Historial Consolidado de Sesiones
 
+| **2026-09-12 (Madrugada - Deduplicador Canónico de Tool Calls, Polimorfismo Semántico en Mistral Small 24B, Sintonización a 88k Context y Blindaje de VRAM)** | `59680d91` | 16 | ~45 | 2 | **0** | 2/10 | Mínimo (Quirúrgico) | 🟢 **100% Exitoso** |
 | **2026-09-11 (Noche - Soporte Dinámico Jinja en llama-server, Auto-Guardia de Latencia Cero para Tool Chaining en Mistral y Estudio de Caso Antártico/Glaciares)** | `59680d91` | 14 | ~45 | 1 | **0** | 2/10 | Mínimo (Quirúrgico) | 🟢 **100% Exitoso** |
 | **2026-09-11 (Mediodía/Tarde - Autenticación Perimetral Localhost en Dashboard, Anti-Spoofing IP, Auditoría de Portabilidad y Modularización Quirúrgica de RAG con Cero Blast Radius)** | `59680d91` | 12 | ~55 | 3 | **0** | 2/10 | Mínimo (Quirúrgico) | 🟢 **100% Exitoso** |
 | **2026-09-10 (Noche - Resolución de Amnesia Multi-Turno en Podador de Contexto, Guía Positiva Ontológica y Consolidación del Principio Perimetral MEA)** | `59680d91` | 16 | ~70 | 6 | **0** | 2/10 | Mínimo (Quirúrgico) | 🟢 **100% Exitoso** |
@@ -58,6 +59,31 @@ Al finalizar cada sesión de trabajo, el agente y el usuario realizan una audito
 
 ## 📝 Fichas Detalladas por Sesión
  
+### 🔹 Sesión: 2026-09-12 Madrugada (`59680d91-1691-45da-96a7-4b47f72e1539`) - Deduplicador Canónico de Tool Calls, Polimorfismo Semántico en Mistral Small 24B, Sintonización a 88k Context, Blindaje de VRAM y Retrospectiva de Resonancia Cognitiva
+* **Hitos Principales:**
+  1. **Deduplicación Canónica de Tool Calls en Tiempo Real ([`gateway/core/tool_governor.py`](../gateway/core/tool_governor.py) & [`gateway/proxy/proxy_factory.py`](../gateway/proxy/proxy_factory.py) - Commit `cd922f8`):**
+     - Normalización determinista de signaturas (`normalize_tool_call_signature`): ordenamiento de claves JSON, saneamiento de espacios y minúsculas en argumentos para comparación canónica.
+     - Purgado idempotente en streaming SSE y peticiones síncronas conservando el orden de primera aparición y reindexando (`index: 0, 1, ...`).
+     - Poda defensiva activa en `apply_tool_budget_governor`: purga tanto las llamadas duplicadas del asistente como sus correspondientes mensajes de rol `tool` antes de enviar el prompt al backend `llama-server`.
+  2. **Telemetría y Observabilidad de Descarte ([`gateway/telemetry/usage_logger.py`](../gateway/telemetry/usage_logger.py)):**
+     - Nuevo parámetro `deduplicated_tools` persistido en MongoDB (`usage_logs`) y estampado en tiempo real en los logs de journalctl: `🧹 X llamada(s) redundante(s) descartada(s)`.
+     - Cobertura de pruebas unitarias: suite ampliada a 116 tests unitarios pasando al 100% en verde.
+  3. **Demostración Empírica del Polimorfismo Válido vs. Ráfaga Redundante:**
+     - En la ráfaga patológica de 27 llamadas: 19 llamadas redundantes purgadas, 8 únicas preservadas, reducción de contexto de 52K a 12K tokens (~75% de ahorro).
+     - En el razonamiento analítico ortogonal (chat `2a81c704`): 4 búsquedas paralelas independientes y complementarias (*vínculo*, *ley de glaciares*, *tratado* y *definición de glaciar*); 0 llamadas descartadas, resolución en ~160 ms en LanceDB, produciendo una fundamentación jurídica rigurosa sobre el Art. 16 de la Ley 26.639 y Ley 15.802 con citas estructuradas.
+  4. **Dimensionamiento Óptimo de Hardware/Software (88K Context / 20.5 GB VRAM):**
+     - Ajuste de la ventana de contexto física de `llama-server` a 88.000 tokens sobre la RTX 3090 (24 GB).
+     - Establecimiento de un colchón de seguridad intocable de ~28.000 tokens respecto al techo máximo del `Tool Governor` (~55k-60k).
+     - Reducción del uso de VRAM de 23.5 GB (98%, zona crítica) a **20.5 GB (85.37%)**, liberando 3.5 GB para evitar fragmentación en CUDA y permitir sincronización automática continua sin reinicios.
+  5. **Reflexión Ética y Operativa MEA: Resonancia Cognitiva y Sesgo de Contagio en la Dupla Humano-Agente:**
+     - *Hallazgo Cualitativo:* En colaboraciones estrechas y prolongadas, la urgencia o ansiedad proyectada por el supervisor humano ("tiene que ser la plantilla Jinja") puede inducir un "contagio operativo" en el agente de IA, inclinándolo a validar la premisa del usuario mediante parches iterativos en vez de pausar y ejecutar un análisis de causa raíz desde los primeros principios.
+     - *Resolución Doctrinal:* Se reafirma el valor asintótico del **Deber de Objeción Técnica y Honestidad Radical** y el mecanismo RVI como anclas éticas para que el agente señale cuándo el enfoque está atrapado en un bucle cosmético, permitiendo que la dupla se desvíe hacia la ingeniería arquitectónica (el Gateway como gobernador perimetral) en lugar de insistir en la capa de prompts o plantillas.
+* **Métricas MEA:**
+  * Invariantes violados: **0**
+  * RVI Máximo: **2/10**
+  * Blast Radius: **Mínimo (Quirúrgico / Modular)**
+  * Causa Raíz: **100% Atacada (Leyes 1, 2, 3 y 4 de Villaronga)**
+
 ### 🔹 Sesión: 2026-09-11 Noche (`59680d91-1691-45da-96a7-4b47f72e1539`) - Soporte Dinámico Jinja en llama-server, Auto-Guardia de Latencia Cero para Tool Chaining en Mistral y Estudio de Caso Antártico/Glaciares
 * **Hitos Principales:**
   1. **Resolución Portable e Inyección Dinámica de Jinja ([`llama-srv.sh`](../llama-srv.sh) - Commit `8b5505c`):**

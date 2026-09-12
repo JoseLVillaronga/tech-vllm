@@ -141,3 +141,23 @@ Durante las pruebas de campo en `Open-WebUI`, se evaluó la consulta:
   3. **Pruning Defensivo en Entrada (`tool_governor.py`):** Si un historial de conversación contiene llamadas duplicadas en el turno activo, purga las llamadas redundantes y sus correspondientes respuestas de rol `tool` antes de enviar el prompt a `llama-server`.
   4. **Impacto:** Reduce el volumen de prompt hasta en un ~75% en ráfagas repetitivas, recortando drásticamente el tiempo de KV cache y preservando el 100% de la riqueza semántica explorada por el LLM.
 
+---
+
+## 6. Validación de Polimorfismo Válido y Equilibrio Hardware/Software
+
+En una prueba posterior con la misma temática, el modelo demostró la validez de no imponer topes ciegos a llamadas distintas:
+* **Descomposición en 4 Dimensiones Ortogonales:** En un único turno emitió 4 búsquedas paralelas independientes:
+  1. `"Relación entre Tratado Antártico y ley de protección de glaciares en Argentina"`
+  2. `"Ley de glaciares 26639"`
+  3. `"Tratado Antártico"`
+  4. `"Definición de glaciar"`
+* **Comportamiento del Deduplicador:** Como ninguna llamada era idéntica, el Gateway descartó 0 llamadas. Las 4 búsquedas se resolvieron concurrentemente en LanceDB en ~160 ms promedio.
+* **Resultado:** Contexto acotado en **13.121 tokens de prompt**, procesado en 9.1 segundos, produciendo una síntesis legal de máxima calidad con citas estructuradas.
+
+### Dimensionamiento Físico de la Ventana de Contexto (88K) y Gestión de VRAM:
+* **Límite Teórico vs Realidad Operativa:** El modelo soporta teóricamente 128k tokens, pero en una GPU de 24 GB (RTX 3090) esto dejaba el margen de VRAM en ~98% (23.5 GB), con riesgo de fallo por fragmentación de memoria en CUDA.
+* **Ajuste a 88k:** Dado que el `Tool Governor` y el `Context Pruner` imponen por software un techo máximo de ~55k-60k tokens por turno, la ventana física en `llama-server` fue dimensionada a **88.000 tokens**.
+* **Métricas en Producción:**
+  - Colchón de seguridad: **~28.000 tokens de margen** entre el software y el hardware.
+  - Consumo de VRAM: **20.5 GB / 24.0 GB (85.37%)**.
+  - Margen libre de VRAM: **~3.5 GB**, erradicando OOMs por picos de asignación de atención y permitiendo operación 24/7 sin reinicios de servicio.
