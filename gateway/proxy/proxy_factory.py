@@ -29,6 +29,7 @@ from gateway.tools.rag_endpoints import handle_rag_search, handle_rag_document, 
 from gateway.cloud.cloud_router import handle_models_list, resolve_cloud_model
 from gateway.core.alignment_engine import enrich_chat_payload
 from gateway.core.slot_flusher import flush_llama_slots
+from gateway.core.tool_governor import parse_raw_tool_calls
 
 # Cliente HTTP compartido globalmente para evitar fugas de sockets y memoria
 _http_client = None
@@ -258,6 +259,7 @@ def create_proxy_app(
         # Resolución de modelos y enrutamiento inteligente (Cloud vs Local)
         is_cloud_request = False
         cloud_provider = None
+        valid_tool_names = set()
 
         if current_service in ["gemma", "gemma_raw"] and body:
             try:
@@ -271,6 +273,16 @@ def create_proxy_app(
                     data["model"] = actual_model
 
                 model_name = actual_model or service_name
+
+                # Extraer catálogo de herramientas válidas enviadas por el cliente
+                if isinstance(data, dict) and "tools" in data and isinstance(data["tools"], list):
+                    for t in data["tools"]:
+                        if isinstance(t, dict):
+                            fn = t.get("function", {})
+                            if isinstance(fn, dict) and "name" in fn:
+                                valid_tool_names.add(fn["name"])
+                            elif "name" in t:
+                                valid_tool_names.add(t["name"])
 
                 # Delegar puente multimodal, enriquecimiento de prompt, invariantes MEA, web search y RAG al submódulo especializado
                 if path.strip("/") == "v1/chat/completions":
@@ -365,6 +377,10 @@ def create_proxy_app(
                 usage_data = None
                 is_streaming = "text/event-stream" in resp_headers.get("content-type", "").lower()
                 non_stream_body = b""
+                evaluating_tool_fallback = bool(valid_tool_names and is_streaming and current_service in ["gemma", "gemma_raw"])
+                is_raw_tool_call = False
+                held_stream_chunks = []
+                last_stream_chunk_id = None
 
                 try:
                     async for chunk in resp.aiter_bytes():
@@ -372,7 +388,7 @@ def create_proxy_app(
                         if not is_streaming:
                             non_stream_body += chunk
 
-                        if current_service == "gemma" and resp.status_code == 200 and is_streaming:
+                        if current_service in ["gemma", "gemma_raw"] and resp.status_code == 200 and is_streaming:
                             try:
                                 chunk_str = chunk.decode("utf-8", errors="ignore")
                                 for line in chunk_str.split("\n"):
@@ -383,6 +399,8 @@ def create_proxy_app(
                                             continue
                                         try:
                                             obj = json.loads(data_str)
+                                            if "id" in obj:
+                                                last_stream_chunk_id = obj["id"]
                                             if "usage" in obj and obj["usage"]:
                                                 usage_data = obj["usage"]
                                             if "choices" in obj and obj["choices"]:
@@ -395,16 +413,96 @@ def create_proxy_app(
                             except Exception:
                                 pass
 
-                        buffer += chunk
-                        if b"<turn|>" in buffer:
-                            buffer = buffer.replace(b"<turn|>", b"")
-                        if len(buffer) > 10:
-                            yield buffer[:-10]
-                            buffer = buffer[-10:]
+                        # Auto-guardia de streaming para llamadas a herramientas en texto plano (Mistral Fallback)
+                        if evaluating_tool_fallback:
+                            stripped_acc = accumulated_text.strip()
+                            if stripped_acc and not stripped_acc.startswith("["):
+                                # No empieza con corchete -> respuesta de texto estándar, liberar de inmediato (0 delay)
+                                evaluating_tool_fallback = False
+                                for h in held_stream_chunks:
+                                    buffer += h
+                                    if b"<turn|>" in buffer:
+                                        buffer = buffer.replace(b"<turn|>", b"")
+                                    if len(buffer) > 10:
+                                        yield buffer[:-10]
+                                        buffer = buffer[-10:]
+                                held_stream_chunks.clear()
+                            else:
+                                held_stream_chunks.append(chunk)
+                                if stripped_acc.startswith("[") and (stripped_acc.endswith("]") or len(stripped_acc) > 800):
+                                    recovered = parse_raw_tool_calls(stripped_acc, valid_tool_names)
+                                    if recovered:
+                                        is_raw_tool_call = True
+                                        evaluating_tool_fallback = False
+                                        event_id = last_stream_chunk_id or f"chatcmpl-{uuid.uuid4().hex[:12]}"
+                                        fallback_event = {
+                                            "id": event_id,
+                                            "object": "chat.completion.chunk",
+                                            "created": int(datetime.now(timezone.utc).timestamp()),
+                                            "model": model_name,
+                                            "choices": [{
+                                                "index": 0,
+                                                "delta": {
+                                                    "role": "assistant",
+                                                    "content": None,
+                                                    "tool_calls": recovered
+                                                },
+                                                "finish_reason": "tool_calls"
+                                            }]
+                                        }
+                                        yield f"data: {json.dumps(fallback_event)}\n\ndata: [DONE]\n\n".encode("utf-8")
+                                        held_stream_chunks.clear()
+                                        print(f"🛡️ [Auto-Guardia RAG] Tool call recuperado desde texto plano en streaming ({len(recovered)} llamada/s promovida/s).", flush=True)
+                                    else:
+                                        evaluating_tool_fallback = False
+                                        for h in held_stream_chunks:
+                                            buffer += h
+                                            if b"<turn|>" in buffer:
+                                                buffer = buffer.replace(b"<turn|>", b"")
+                                            if len(buffer) > 10:
+                                                yield buffer[:-10]
+                                                buffer = buffer[-10:]
+                                        held_stream_chunks.clear()
+                                continue
+
+                        if not is_raw_tool_call:
+                            buffer += chunk
+                            if b"<turn|>" in buffer:
+                                buffer = buffer.replace(b"<turn|>", b"")
+                            if len(buffer) > 10:
+                                yield buffer[:-10]
+                                buffer = buffer[-10:]
                 except asyncio.CancelledError:
                     print(f"🔌 Cliente cerró la conexión para {current_service} prematuramente.")
                 finally:
-                    if buffer:
+                    if evaluating_tool_fallback and held_stream_chunks:
+                        recovered = parse_raw_tool_calls(accumulated_text, valid_tool_names)
+                        if recovered:
+                            is_raw_tool_call = True
+                            event_id = last_stream_chunk_id or f"chatcmpl-{uuid.uuid4().hex[:12]}"
+                            fallback_event = {
+                                "id": event_id,
+                                "object": "chat.completion.chunk",
+                                "created": int(datetime.now(timezone.utc).timestamp()),
+                                "model": model_name,
+                                "choices": [{
+                                    "index": 0,
+                                    "delta": {
+                                        "role": "assistant",
+                                        "content": None,
+                                        "tool_calls": recovered
+                                    },
+                                    "finish_reason": "tool_calls"
+                                }]
+                            }
+                            yield f"data: {json.dumps(fallback_event)}\n\ndata: [DONE]\n\n".encode("utf-8")
+                            print(f"🛡️ [Auto-Guardia RAG] Tool call recuperado en fin de stream ({len(recovered)} llamada/s promovida/s).", flush=True)
+                        else:
+                            for h in held_stream_chunks:
+                                buffer += h
+                        held_stream_chunks.clear()
+
+                    if buffer and not is_raw_tool_call:
                         if b"<turn|>" in buffer:
                             buffer = buffer.replace(b"<turn|>", b"")
                         total_bytes_yielded += len(buffer)
@@ -414,6 +512,17 @@ def create_proxy_app(
                     if not is_streaming and non_stream_body and resp.status_code == 200:
                         try:
                             resp_json = json.loads(non_stream_body.decode("utf-8", errors="ignore"))
+                            if "choices" in resp_json and resp_json["choices"]:
+                                msg = resp_json["choices"][0].get("message", {})
+                                raw_c = msg.get("content", "")
+                                if valid_tool_names and raw_c and not msg.get("tool_calls"):
+                                    recovered = parse_raw_tool_calls(raw_c, valid_tool_names)
+                                    if recovered:
+                                        msg["tool_calls"] = recovered
+                                        msg["content"] = None
+                                        resp_json["choices"][0]["finish_reason"] = "tool_calls"
+                                        non_stream_body = json.dumps(resp_json).encode("utf-8")
+                                        print(f"🛡️ [Auto-Guardia RAG] Tool call recuperado desde texto plano no-streaming ({len(recovered)} llamada/s promovida/s).", flush=True)
                             if "usage" in resp_json and resp_json["usage"]:
                                 usage_data = resp_json["usage"]
                         except Exception as parse_err:

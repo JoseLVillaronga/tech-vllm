@@ -287,3 +287,87 @@ def apply_tool_budget_governor(data: Dict[str, Any]) -> Tuple[Dict[str, Any], Di
         "accumulated_tool_tokens": tool_tokens,
         "tools_disabled": "tools" not in data
     }
+
+
+def parse_raw_tool_calls(text: str, valid_tools: set) -> Optional[List[Dict[str, Any]]]:
+    """
+    Auto-guardia de Fallback para Modelos Locales (Mistral / Nemo / DeepSeek):
+    Detecta si el contenido generado en 'content' es en realidad una llamada a herramienta
+    en formato de array JSON o pseudo-tokens sin interceptar por el parser nativo de llama-server:
+    1. Formato Array JSON: [{"name": "...", "arguments": {...}}] o [{"function": ...}]
+    2. Formato Tokens Corchete: [func_name[CALL_ID]...[ARGS]...]
+    
+    Retorna una lista de tool_calls formales compatibles con OpenAI o None si es texto regular.
+    """
+    import json
+    import uuid
+    import re
+
+    if not text or not valid_tools:
+        return None
+
+    cleaned = text.strip()
+    if not cleaned.startswith("["):
+        return None
+
+    # Caso 1: Array JSON [{"name": ...}]
+    if cleaned.endswith("]"):
+        try:
+            parsed = json.loads(cleaned)
+            if isinstance(parsed, list) and len(parsed) > 0:
+                calls = []
+                for idx, item in enumerate(parsed):
+                    if not isinstance(item, dict):
+                        return None
+                    fn_name = item.get("name")
+                    args = item.get("arguments")
+                    if not fn_name and "function" in item and isinstance(item["function"], dict):
+                        fn_name = item["function"].get("name")
+                        args = item["function"].get("arguments")
+
+                    if fn_name and fn_name in valid_tools:
+                        cid = item.get("id") or item.get("call_id") or f"call_{uuid.uuid4().hex[:8]}"
+                        if isinstance(args, dict):
+                            args_str = json.dumps(args, ensure_ascii=False)
+                        elif isinstance(args, str):
+                            args_str = args
+                        else:
+                            args_str = "{}"
+                        calls.append({
+                            "index": idx,
+                            "id": str(cid),
+                            "type": "function",
+                            "function": {
+                                "name": fn_name,
+                                "arguments": args_str
+                            }
+                        })
+                if calls:
+                    return calls
+        except Exception:
+            pass
+
+    # Caso 2: Tokens delimitadores entre corchetes [func[CALL_ID]...[ARGS]...]
+    if cleaned.startswith("[") and ("[ARGS]" in cleaned or "[CALL_ID]" in cleaned):
+        m = re.match(r"^\[([a-zA-Z0-9_\-]+)(?:\[CALL_ID\]([^\[\]]+))?\[ARGS\](.*)\]$", cleaned, re.DOTALL)
+        if m:
+            fn_name = m.group(1).strip()
+            cid = (m.group(2) or "").strip() or f"call_{uuid.uuid4().hex[:8]}"
+            args_str = (m.group(3) or "").strip()
+            if fn_name in valid_tools:
+                try:
+                    json.loads(args_str)
+                    return [{
+                        "index": 0,
+                        "id": str(cid),
+                        "type": "function",
+                        "function": {
+                            "name": fn_name,
+                            "arguments": args_str
+                        }
+                    }]
+                except Exception:
+                    pass
+
+    return None
+

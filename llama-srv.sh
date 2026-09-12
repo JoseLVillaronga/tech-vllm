@@ -118,6 +118,29 @@ else
     REASONING_DESC="${REASONING}"
 fi
 
+# 5.5 Chat Template Jinja Opcional (Tool Calling Nativo)
+CHAT_TEMPLATE_ARGS=()
+CHAT_TEMPLATE_PATH="${LLAMA_CHAT_TEMPLATE:-}"
+if [ -z "${CHAT_TEMPLATE_PATH}" ] && [[ "${MODEL_PATH}" =~ [Mm]istral ]]; then
+    MISTRAL_DEFAULT_TEMPLATE="${RESOLVED_LLAMA_DIR}/models/templates/Mistral-Small-3.2-24B-Instruct-2506.jinja"
+    if [ -f "${MISTRAL_DEFAULT_TEMPLATE}" ]; then
+        CHAT_TEMPLATE_PATH="${MISTRAL_DEFAULT_TEMPLATE}"
+    fi
+fi
+
+if [ -n "${CHAT_TEMPLATE_PATH}" ]; then
+    CHAT_TEMPLATE_PATH="${CHAT_TEMPLATE_PATH/\$LLAMA_DIR/$RESOLVED_LLAMA_DIR}"
+    CHAT_TEMPLATE_PATH="${CHAT_TEMPLATE_PATH/\$HOME/$USER_HOME}"
+    if [ -f "${CHAT_TEMPLATE_PATH}" ]; then
+        CHAT_TEMPLATE_ARGS=(--jinja --chat-template-file "${CHAT_TEMPLATE_PATH}")
+        CHAT_TEMPLATE_DESC="${CHAT_TEMPLATE_PATH} (--jinja)"
+    else
+        CHAT_TEMPLATE_DESC="No encontrado en ${CHAT_TEMPLATE_PATH} (Predeterminado GGUF)"
+    fi
+else
+    CHAT_TEMPLATE_DESC="Predeterminado GGUF (Sin template externo)"
+fi
+
 echo "============================================================"
 echo "🦙 Iniciando llama-server para vLLM Suite"
 echo "============================================================"
@@ -128,6 +151,7 @@ echo "🏷️ Alias:            ${ALIAS}"
 echo "🏗️ Arquitectura:     ${ARCH_TYPE} (MoE: ${MOE_DESC})"
 echo "💾 KV Cache:         ${KV_CACHE_DESC}"
 echo "👁️ Proyector Visión:  ${MMPROJ_DESC}"
+echo "📋 Chat Template:    ${CHAT_TEMPLATE_DESC}"
 echo "🔌 Puerto Backend:   ${PORT}"
 echo "🧠 Contexto Máximo:  ${CTX_SIZE} tokens"
 echo "⚡ Batch Lógico:     ${BATCH_SIZE}"
@@ -147,6 +171,7 @@ exec "${LLAMA_BIN}" \
   "${MMPROJ_ARGS[@]}" \
   "${MOE_ARGS[@]}" \
   "${CACHE_ARGS[@]}" \
+  "${CHAT_TEMPLATE_ARGS[@]}" \
   --ctx-size "${CTX_SIZE}" \
   --parallel "${PARALLEL}" \
   --slot-save-path "${SLOT_SAVE_PATH}" \

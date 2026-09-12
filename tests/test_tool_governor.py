@@ -3,6 +3,7 @@ from gateway.core.tool_governor import (
     inspect_active_turn_tools,
     apply_tool_budget_governor,
     is_broad_or_deep_query,
+    parse_raw_tool_calls,
     DEFAULT_MAX_TOOL_TOKENS,
     DEFAULT_INSUFFICIENT_TOOL_TOKENS,
     DEFAULT_MIN_TOOL_TOKENS,
@@ -157,6 +158,33 @@ class TestToolGovernor(unittest.TestCase):
 
         last_tool = modified_data["messages"][-1]
         self.assertIn("✅ [GOBERNADOR RAG - EVIDENCIA ROBUSTA]", last_tool["content"])
+
+    def test_parse_raw_tool_calls_json_array(self):
+        valid_tools = {"buscar_en_base_de_conocimiento", "leer_documento_completo"}
+        raw_json = '[{"name": "buscar_en_base_de_conocimiento", "arguments": {"consulta": "Tratados internacionales"}}]'
+        res = parse_raw_tool_calls(raw_json, valid_tools)
+        self.assertIsNotNone(res)
+        self.assertEqual(len(res), 1)
+        self.assertEqual(res[0]["function"]["name"], "buscar_en_base_de_conocimiento")
+        self.assertIn("Tratados internacionales", res[0]["function"]["arguments"])
+
+    def test_parse_raw_tool_calls_bracketed_format(self):
+        valid_tools = {"buscar_en_base_de_conocimiento"}
+        raw_bracketed = '[buscar_en_base_de_conocimiento[CALL_ID]call_999[ARGS]{"consulta": "Constitución", "dominios": "Derecho"}]'
+        res = parse_raw_tool_calls(raw_bracketed, valid_tools)
+        self.assertIsNotNone(res)
+        self.assertEqual(len(res), 1)
+        self.assertEqual(res[0]["id"], "call_999")
+        self.assertEqual(res[0]["function"]["name"], "buscar_en_base_de_conocimiento")
+
+    def test_parse_raw_tool_calls_negative_cases(self):
+        valid_tools = {"buscar_en_base_de_conocimiento"}
+        # Texto plano que empieza con corchete pero no es tool call
+        self.assertIsNone(parse_raw_tool_calls("[1] Tratados internacionales de la República Argentina.", valid_tools))
+        # Herramienta inexistente o no autorizada
+        self.assertIsNone(parse_raw_tool_calls('[{"name": "herramienta_prohibida", "arguments": {}}]', valid_tools))
+        # Texto vacío
+        self.assertIsNone(parse_raw_tool_calls("", valid_tools))
 
 
 if __name__ == "__main__":
