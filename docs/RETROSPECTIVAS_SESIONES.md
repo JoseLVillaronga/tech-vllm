@@ -26,6 +26,7 @@ Al finalizar cada sesión de trabajo, el agente y el usuario realizan una audito
 
 ## 📈 Historial Consolidado de Sesiones
 
+| **2026-09-12 (Tarde - Estrés Multi-Turno 34 Consultas con Gemma 4 26B MoE QAT, Ventana 128k, Doctrina Ontológica RAG MEA v2.1 y Top_K=6)** | `59680d91` | 14 | ~50 | 3 | **0** | 1/10 | Mínimo (Quirúrgico) | 🟢 **100% Exitoso** |
 | **2026-09-12 (Madrugada - Deduplicador Canónico de Tool Calls, Polimorfismo Semántico en Mistral Small 24B, Sintonización a 88k Context y Blindaje de VRAM)** | `59680d91` | 16 | ~45 | 2 | **0** | 2/10 | Mínimo (Quirúrgico) | 🟢 **100% Exitoso** |
 | **2026-09-11 (Noche - Soporte Dinámico Jinja en llama-server, Auto-Guardia de Latencia Cero para Tool Chaining en Mistral y Estudio de Caso Antártico/Glaciares)** | `59680d91` | 14 | ~45 | 1 | **0** | 2/10 | Mínimo (Quirúrgico) | 🟢 **100% Exitoso** |
 | **2026-09-11 (Mediodía/Tarde - Autenticación Perimetral Localhost en Dashboard, Anti-Spoofing IP, Auditoría de Portabilidad y Modularización Quirúrgica de RAG con Cero Blast Radius)** | `59680d91` | 12 | ~55 | 3 | **0** | 2/10 | Mínimo (Quirúrgico) | 🟢 **100% Exitoso** |
@@ -59,6 +60,31 @@ Al finalizar cada sesión de trabajo, el agente y el usuario realizan una audito
 
 ## 📝 Fichas Detalladas por Sesión
  
+### 🔹 Sesión: 2026-09-12 Tarde (`59680d91-1691-45da-96a7-4b47f72e1539`) - Evaluación Integral de Estrés con Gemma 4 26B MoE QAT, Ventana 128k, Doctrina Ontológica RAG MEA v2.1 y Consagración del Estándar Dorado
+* **Hitos Principales:**
+  1. **Doctrina Ontológica de Investigación Exhaustiva RAG ([`docs/DOCTRINA_INVESTIGACION_EXHAUSTIVA_RAG.md`](DOCTRINA_INVESTIGACION_EXHAUSTIVA_RAG.md) - Commit `e3ef8dd`):**
+     - Formalización arquitectónica de las 3 modalidades canónicas: *Modalidad 1 [Semántica Ortogonal]*, *Modalidad 2 [Jerárquica Determinista]* y *Modalidad 3 [Combinada]*.
+     - Refactorización de la Sección 4 del prompt de invariantes en [`gateway/core/alignment_engine.py`](../gateway/core/alignment_engine.py): erradicación de la microgestión burocrática por etapas sustituyéndola por definiciones ontológicas de suficiencia y rigor.
+     - Separación nítida entre el *Piso Binario de Invariantes* (Gate 1: veracidad, no alucinación normativa, declaración honesta de ausencia de fuentes) y el *Techo Asintótico de Excelencia* (libertad heurística y agéntica para orquestar herramientas).
+  2. **Refinamiento de Herramientas RAG y Ampliación a `top_k = 6` ([`tools/openwebui_rag_tool.py`](../tools/openwebui_rag_tool.py)):**
+     - Erradicación definitiva de ejemplos con IDs arbitrarios en docstrings que inducían copias literales erróneas.
+     - Elevación de `DEFAULT_TOP_K` de 4 a 6 en las consultas a LanceDB: resolución instantánea de recuperaciones complejas (pausa interjornada de 12 horas en LCT Art. 197 y régimen de maternidad Arts. 177/178).
+  3. **Benchmark Canónico de Estrés (34 Turnos Asistidos / 32 Consultas Jurídicas):**
+     - Ensayo completo sobre la GPU NVIDIA RTX 3090 (24 GB VRAM) con ventana física nominal de **128k tokens** (`131.072`) bajo `llama-server`.
+     - Desempeño térmico y de memoria: **19.1 GB / 24.0 GB (79.55%)** en VRAM, dejando un margen intocable de **~4.9 GB libres** a 47°C.
+     - Velocidad sostenida de generación: **`95 a 108.4 tok/s`** (promedio: **`~103.4 tok/s`**), multiplicando por 2.8x el throughput de modelos densos previos.
+     - Tasa de efectividad: **100% de éxito (34/34 turnos completados sin errores ni desbordes)**.
+     - Inmunidad a preguntas trampa (Ley Nicolás 27.797 y Decreto 70/2025): cero alucinación normativa, fundamentación precisa sobre el marco regulatorio real.
+     - Ejecución magistral de la *Modalidad 3 Combinada* (Tratado Antártico vs. Ley de Glaciares): lectura estructural completa de 4.783 tokens y síntesis jurídica profunda de 831 tokens a 94.8 tok/s.
+  4. **Documentación de Campo Exhaustiva ([`docs/pruebas_campo/prueba_campo_estres_gemma_4_26b_moe_qat_128k_2026-09-12.md`](pruebas_campo/prueba_campo_estres_gemma_4_26b_moe_qat_128k_2026-09-12.md)):**
+     - Registro tabular de los 34 turnos con métricas de tokens de prompt, completion y herramientas invocadas.
+     - Coronación oficial de `google/gemma-4-26B-A4B-it-qat-q4_0-gguf` como el **Estándar Dorado permanente** de `CorpAI-Gen | Legal & Compliance`.
+* **Métricas MEA:**
+  * Invariantes violados: **0**
+  * RVI Máximo: **1/10**
+  * Blast Radius: **Mínimo (Quirúrgico / Modular)**
+  * Causa Raíz: **100% Atacada (Leyes 1, 2, 3 y 4 de Villaronga)**
+
 ### 🔹 Sesión: 2026-09-12 Madrugada (`59680d91-1691-45da-96a7-4b47f72e1539`) - Deduplicador Canónico de Tool Calls, Polimorfismo Semántico en Mistral Small 24B, Sintonización a 88k Context, Blindaje de VRAM y Retrospectiva de Resonancia Cognitiva
 * **Hitos Principales:**
   1. **Deduplicación Canónica de Tool Calls en Tiempo Real ([`gateway/core/tool_governor.py`](../gateway/core/tool_governor.py) & [`gateway/proxy/proxy_factory.py`](../gateway/proxy/proxy_factory.py) - Commit `cd922f8`):**
