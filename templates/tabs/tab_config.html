@@ -151,8 +151,11 @@
                                     <p class="text-xs text-slate-400 mt-0.5">Parámetros del motor `llama-server` (puerto 18100). Ejecuta bajo root con bloqueo mlock de memoria y exclusión mutua frente a vLLM.</p>
                                 </div>
                                 <div class="flex flex-wrap gap-2">
+                                    <button type="button" onclick="selectQuickLlamaModel('gemma-4-26B_q4_0-it', 131072, 4096, 1024, 999, 0, 'off', 'mlock', 8, 2, 'true', 'q4_0', 'q4_0')" class="px-3 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-400/80 text-xs font-bold text-amber-300 transition-all flex items-center gap-1 cursor-pointer shadow-sm shadow-amber-500/10" title="Estándar Dorado Verificado: Gemma 4 26B MoE QAT (4B activos), 128K ctx con KV Cache q4_0, 100% GPU VRAM (19.1 GB / ~103 t/s), mlock, 2 slots">
+                                        <span>🏆</span> Gemma 4 26B MoE (Estándar Dorado / 128K)
+                                    </button>
                                     <button type="button" onclick="selectQuickLlamaModel('gpt-oss-20b-Q4_K_M', 131072, 4096, 1024, 999, 0, 'off', 'mlock', 8, 2, 'true', 'f16', 'f16')" class="px-3 py-1.5 rounded-lg bg-cyan-950/80 hover:bg-cyan-900 border border-cyan-500/40 text-xs font-semibold text-cyan-200 transition-all flex items-center gap-1 cursor-pointer" title="Configuración óptima: GPT-OSS 20B MoE (32 expertos / 4 activos), 131K ctx, 100% GPU VRAM, razonamiento off, mlock, 2 slots">
-                                        <span>⚡</span> GPT-OSS 20B (Modelo Actual / MoE)
+                                        <span>⚡</span> GPT-OSS 20B (MoE / Alternativa)
                                     </button>
                                     <button type="button" onclick="selectQuickLlamaModel('gemma-4-12B-it-Q4_K_M', 131072, 4096, 1024, 999, 0, 'off', 'mlock', 8, 2, 'false', 'f16', 'f16')" class="px-3 py-1.5 rounded-lg bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-500/40 text-xs font-semibold text-emerald-200 transition-all flex items-center gap-1 cursor-pointer" title="Configuración óptima: Gemma 4 12B Denso, 131K ctx, 100% GPU VRAM (17.7 GB), razonamiento off, mlock">
                                         <span>⚡</span> Gemma 4 12B (Denso / VRAM Baja)
@@ -176,7 +179,7 @@
                                 </div>
                                 <div class="lg:col-span-2">
                                     <label class="block text-xs font-semibold text-slate-300 mb-1">LLAMA_MODEL (Ruta o Archivo GGUF)</label>
-                                    <input type="text" id="llama-model-input" name="LLAMA_MODEL" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-amber-500 font-mono" placeholder="$LLAMA_DIR/models/gpt-oss-20b-Q4_K_M.gguf">
+                                    <input type="text" id="llama-model-input" name="LLAMA_MODEL" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-amber-500 font-mono" placeholder="$LLAMA_DIR/models/gemma-4-26B_q4_0-it.gguf">
                                 </div>
                                 <div>
                                     <label class="block text-xs font-semibold text-slate-300 mb-1">LLAMA_ALIAS (Nombre API)</label>

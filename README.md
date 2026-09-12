@@ -52,11 +52,11 @@ Gracias a la arquitectura desacoplada de la suite, los **Fallbacks automáticos 
 
 ---
 
-### 1. 📚 Perfil A: "RAG Intensivo y Consulta Documental" *(Estándar Dorado: `gpt-oss-20b`)*
+### 1. 📚 Perfil A: "RAG Intensivo y Consulta Documental" *(Estándar Dorado: `Gemma 4 26B MoE QAT` / `gpt-oss-20b`)*
 
-* **Objetivo:** Velocidad de respuesta instantánea en búsquedas vectoriales híbridas (Dense 1024D + BM25) en LanceDB, con prefill ultrarrápido de documentos extensos (>5.000 tok/s en 15k tokens) y cero atenuación atencional (*anti-crosstalk*).
-* **Distribución de VRAM (~18.1 GB - 21.0 GB):**
-  - **LLM Principal Recomendado:** **`gpt-oss-20b-Q4_K_M`** en `llama-server` (`:18100`/`:18000`, ~13-14 GB VRAM) con ventana operativa calibrada a 32K tokens, modo MEA en `:8000` y modo agéntico bilingüe en `:8010`. *(Alternativa clásica densa: `Gemma 4-E4B-it` en vLLM)*.
+* **Objetivo:** Velocidad de respuesta instantánea en búsquedas vectoriales híbridas (Dense 1024D + BM25) en LanceDB, con prefill ultrarrápido de documentos extensos (>4.000 tok/s), generación a más de 100 tok/s y cero alucinación normativa (Doctrina Ontológica MEA v2.1).
+* **Distribución de VRAM (~19.1 GB - 21.0 GB):**
+  - **LLM Principal Recomendado (Estándar Dorado):** **`google/gemma-4-26B-A4B-it-qat-q4_0-gguf`** (`gemma-4-26B_q4_0-it.gguf`) en `llama-server` (`:18100`/`:8000`, **19.1 GB VRAM / ~4.9 GB libres**, **100+ tok/s**) con ventana de contexto de **128.000 tokens (128K)** completa con KV Cache `q4_0` y modo MEA en `:8000`. *(Alternativas previas: `gpt-oss-20b-Q4_K_M` y `gemma-4-12B-it`)*.
   - **Qwen3-Embedding (CUDA en `:18005`):** `~3.5 GB - 4.5 GB` (`EMBEDDINGS_DEVICE=cuda`, `EMBEDDINGS_CPU_THREADS=0`). *Imprescindible en GPU para absorber los picos de reindexado masivo sin demoras.*
   - **Docling OCR (GPU en `:5020`):** `~800 MB`.
   - **Sistema / Gnome:** `~1.1 GB`.
