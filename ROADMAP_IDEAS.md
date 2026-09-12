@@ -755,3 +755,72 @@ El análisis forense confirmó dos causas raíz convergentes:
 * **El estándar de oro comprobado por la Ley 20.744:** Re-segmentar el CCCN y las obras jurídicas colosales (> 50.000 tokens) en Teccam PDF reconociendo encabezados de segundo y tercer nivel (`## Libro`, `### Título`, `#### Capítulo`, `Art. X`).
 * Mantener un tamaño objetivo de fragmento entre **400 y 1.200 tokens**, garantizando que el GPS Documental devuelva un árbol navegable de capítulos y que cada artículo clave disponga de un vector dedicado de alta nitidez en el espacio latente.
 
+---
+
+## 13. Gobernanza Perimétrica de Hiperparámetros de Muestreo (Sampling) y Perfiles Virtuales de Modelo
+
+### 13.1. Contexto y Hallazgos Empíricos (Sesión 2026-09-12)
+En las pruebas de estrés con **Gemma 4 26B MoE QAT** (`gemma-4-26B_q4_0-it.gguf`) sobre la GPU NVIDIA GeForce RTX 3090 (24 GB VRAM), se constataron dos realidades arquitectónicas determinantes:
+1. **Escalabilidad de Contexto a 256k Tokens en VRAM:**  
+   Con `--ctx-size 262144` y `--parallel 2` (2 slots independientes de 128k tokens con KV Cache en `q4_0`), el motor `llama-server` arrancó de forma estable ocupando **20.5 GB de VRAM (85.36%)**, dejando un margen de seguridad de **3.5 GB libres** y operando a 46°C, alcanzando una velocidad de prefill de **~3.700 a 4.100 tok/s** y una velocidad de generación sostenida de **~95 a 104 tok/s**.
+2. **Anatomía de la Cadena de Muestreo Actual:**  
+   Al inspeccionar el flujo de inferencia desde Open-WebUI hasta el binario `llama-server`, se identificó que las peticiones estándar llegan con el diccionario de parámetros vacío (`"params": {}`). En este escenario, `llama-server` recurre a sus propios valores por defecto (`temperature = 0.80`, `top_k = 40`, `top_p = 0.95`, `min_p = 0.05`), mientras que los metadatos GGUF sugeridos por Google DeepMind fueron calibrados para chatbots conversacionales abiertos (`temp = 1.0`, `top_k = 64`, `top_p = 0.95`).
+3. **El Trade-Off en un Copiloto Jurídico y Corporativo:**  
+   * A $T=0.8$ o $T=1.0$, el modelo posee gran riqueza de vocabulario, pero introduce una leve dispersión léxica (paráfrasis no literales de artículos normativos) y una ventana residual de alucinación en la cola larga (*long tail*).
+   * A $T=0.15 - 0.35$ con `min_p = 0.05 - 0.08`, el modelo congela la incertidumbre y maximiza la fidelidad matemática a los textos recuperados por el RAG (Ley 4 y Gate 1 MEA), manteniendo una redacción formal impecable sin rigidez robótica.
+
+---
+
+### 13.2. Arquitectura de la Cascada de Precedencia (*Sensible Defaults with Explicit Overrides*)
+
+Para conciliar la simplicidad para los usuarios de oficina (5 puestos con uso eventual) y el control técnico avanzado, se establece un esquema de tres niveles no excluyentes:
+
+```mermaid
+graph TD
+    A["Nivel 1: Open-WebUI (Frontend)<br>Perfiles Virtuales o Sliders de Chat"] -->|Payload JSON| B["Nivel 2: vLLM Gateway (Puerto 8000)<br>Gobernanza Perimétrica Central"]
+    B -->|Payload Normalizado| C["Nivel 3: llama-server (Puerto 18100)<br>Motor de Inferencia C++"]
+
+    subgraph "Lógica de Resolución en Gateway"
+    B1{"¿El cliente especificó<br>temperature / min_p?"}
+    B1 -- SÍ --> B2["Respeta el parámetro explícito<br>(Precedencia al Usuario)"]
+    B1 -- NO --> B3["Inyecta Default Perimétrico<br>(temp: 0.35, min_p: 0.05, top_k: 0)"]
+    end
+```
+
+1. **Precedencia Máxima (Usuario Explícito):** Si el usuario en Open-WebUI selecciona un modelo virtual especializado o ajusta los sliders de parámetros en el chat, el valor viaja en el payload y el Gateway lo preserva sin alteración.
+2. **Red de Seguridad Centralizada (Default Perimétrico):** Si una petición ingresa sin parámetros (o desde un script / integración externa que omite `temperature`), el Gateway intercepta la llamada e inyecta los valores corporativos validados, impidiendo que el motor caiga en temperaturas altas no deseadas.
+3. **Ejecución Determinista:** `llama-server` ejecuta la inferencia con el parámetro inyectado en el cuerpo HTTP `/v1/chat/completions`.
+
+---
+
+### 13.3. Catálogo de Modelos Virtuales para Open-WebUI (Espacio de Trabajo ➔ Modelos)
+
+Se planifica configurar tres perfiles derivados en Open-WebUI, todos apuntando al mismo modelo base local `local/CorpAI-Gen | Legal & Compliance` sin duplicar pesos ni consumir VRAM adicional:
+
+| Modelo Virtual en Open-WebUI | Rol y Caso de Uso Principal | `temperature` | `min_p` | `top_p` | `top_k` | Justificación Cognitiva |
+| :--- | :--- | :---: | :---: | :---: | :---: | :--- |
+| **`⚖️ CorpAI | Dictamen y Auditoría`** | Consultas jurídicas críticas, citas de artículos, cómputo de plazos, análisis de cláusulas contractuales. | **`0.15`** | **`0.08`** | `0.95` | **`0`** *(off)* | Congela la distribución de probabilidad en torno a la certeza documental. Cero licencias estilísticas. Máxima reproducibilidad. |
+| **`💼 CorpAI | Asesor Legal y Redacción`** *(Predeterminado)* | Redacción de cartas documento, escritos procesales, síntesis normativas, minutas y correspondencia formal. | **`0.35`** | **`0.05`** | `0.95` | **`0`** *(off)* | Equilibrio ideal: sintaxis elegante y natural con anclaje firme en la evidencia documental. |
+| **`💡 CorpAI | Estrategia y Creatividad`** | Lluvia de ideas, hipótesis argumentativas en litigios complejos, redacción de ensayos o divulgación. | **`0.80`** | **`0.03`** | `0.90` | **`40`** | Estimula conexiones semánticas divergentes y analogías doctrinales no convencionales. |
+
+---
+
+### 13.4. Plan de Implementación Técnica en el Gateway (`gateway/proxy/proxy_factory.py`)
+
+1. **Variables de Configuración en `.env`:**
+   ```bash
+   # Parámetros de Muestreo por Defecto en Gateway (Filtro Perimétrico)
+   GATEWAY_DEFAULT_TEMPERATURE=0.35
+   GATEWAY_DEFAULT_MIN_P=0.05
+   GATEWAY_DEFAULT_TOP_P=0.95
+   GATEWAY_DEFAULT_TOP_K=0
+   ```
+2. **Inyección Condicional en `proxy_factory.py`:**
+   En el método `handle_chat_request`, antes de despachar hacia `llama-server`:
+   * Si `data.get("temperature") is None`, asignar `data["temperature"] = float(os.getenv("GATEWAY_DEFAULT_TEMPERATURE", 0.35))`.
+   * Si `data.get("min_p") is None`, asignar `data["min_p"] = float(os.getenv("GATEWAY_DEFAULT_MIN_P", 0.05))`.
+   * Si `data.get("top_k") is None`, asignar `data["top_k"] = int(os.getenv("GATEWAY_DEFAULT_TOP_K", 0))`.
+3. **Métricas de Telemetría en MongoDB (`usage_logs`):**
+   Registrar en el log de auditoría los parámetros efectivos (`temp`, `min_p`) con los que se ejecutó cada turno asistido para trazabilidad forense.
+
+
