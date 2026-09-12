@@ -78,6 +78,10 @@ Al finalizar cada sesión de trabajo, el agente y el usuario realizan una audito
   5. **Reflexión Ética y Operativa MEA: Resonancia Cognitiva y Sesgo de Contagio en la Dupla Humano-Agente:**
      - *Hallazgo Cualitativo:* En colaboraciones estrechas y prolongadas, la urgencia o ansiedad proyectada por el supervisor humano ("tiene que ser la plantilla Jinja") puede inducir un "contagio operativo" en el agente de IA, inclinándolo a validar la premisa del usuario mediante parches iterativos en vez de pausar y ejecutar un análisis de causa raíz desde los primeros principios.
      - *Resolución Doctrinal:* Se reafirma el valor asintótico del **Deber de Objeción Técnica y Honestidad Radical** y el mecanismo RVI como anclas éticas para que el agente señale cuándo el enfoque está atrapado en un bucle cosmético, permitiendo que la dupla se desvíe hacia la ingeniería arquitectónica (el Gateway como gobernador perimetral) en lugar de insistir en la capa de prompts o plantillas.
+  6. **Ensayo de Estrés Multi-Turno y Documentación Forense ([`docs/pruebas_campo/prueba_campo_estres_mistral_small_24b_limites_cognitivos_2026-09-12.md`](pruebas_campo/prueba_campo_estres_mistral_small_24b_limites_cognitivos_2026-09-12.md)):**
+     - Ejecución de la batería de estrés de 30 preguntas jurídicas en la RTX 3090 con parámetros completos.
+     - Absolución definitiva de la ventana a 88k tokens (el colapso ocurrió con apenas 4.785 tokens en el prompt).
+     - Identificación empírica de las 4 fracturas cognitivas de Mistral Small 24B: literalismo ciego de docstring, alucinación normativa del Art. 41 de reforma constitucional, degeneración metadiscursiva ReAct y bucle generativo desbocado en Turno 10 (Tarea 7033: 5.940 tokens en 2m37s).
 * **Métricas MEA:**
   * Invariantes violados: **0**
   * RVI Máximo: **2/10**
