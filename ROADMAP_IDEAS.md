@@ -757,7 +757,10 @@ El análisis forense confirmó dos causas raíz convergentes:
 
 ---
 
-## 13. Gobernanza Perimétrica de Hiperparámetros de Muestreo (Sampling) y Perfiles Virtuales de Modelo
+## 13. Gobernanza Perimétrica de Hiperparámetros de Muestreo (Sampling) y Perfiles Virtuales de Modelo [COMPLETADA]
+
+> 🚀 **Estado de Implementación:** ✅ **Completada y Operativa (2026-09-13).**  
+> Implementada la inyección perimétrica condicional en `gateway/proxy/proxy_factory.py`, declarados los *sampling defaults* en `.env.example`/`.env` (`temp=0.80`, `min_p=0.05`, `top_p=0.95`, `top_k=40`), documentada la cascada en `MANUAL_OPENWEBUI.md` y validados empíricamente los 3 perfiles virtuales en Open-WebUI (`corpai-dictamen`, `corpai-redaccion`, `corpai-estrategia`).
 
 ### 13.1. Contexto y Hallazgos Empíricos (Sesión 2026-09-12)
 En las pruebas de estrés con **Gemma 4 26B MoE QAT** (`gemma-4-26B_q4_0-it.gguf`) sobre la GPU NVIDIA GeForce RTX 3090 (24 GB VRAM), se constataron dos realidades arquitectónicas determinantes:

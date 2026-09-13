@@ -29,7 +29,7 @@ elif [ -f "/home/${SERVICE_USER}/.local/bin/docling-serve" ]; then
 elif [ -f "/usr/local/bin/docling-serve" ]; then
     DOCLING_BIN="/usr/local/bin/docling-serve"
 else
-    DOCLING_BIN="/home/jose/anaconda3/bin/docling-serve"
+    DOCLING_BIN="/home/${SERVICE_USER}/anaconda3/bin/docling-serve"
 fi
 
 SERVICE_NAME="docling"
