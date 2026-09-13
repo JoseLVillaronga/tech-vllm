@@ -4,8 +4,14 @@ from datetime import datetime, timezone
 from bson import ObjectId
 from flask import Blueprint, request, jsonify
 from dashboard.core import get_db, check_and_reset_key_quota_dict, slugify_provider_name
+from dashboard.core.auth_service import admin_required
 
 keys_bp = Blueprint("keys", __name__)
+
+@keys_bp.before_request
+@admin_required
+def _keys_admin_only():
+    pass
 
 @keys_bp.route("/api/keys", methods=["GET"])
 def api_get_keys():

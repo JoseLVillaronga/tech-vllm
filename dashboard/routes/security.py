@@ -6,8 +6,14 @@ from datetime import datetime, timedelta, timezone
 from bson import ObjectId
 from flask import Blueprint, request, jsonify, make_response
 from dashboard.core import get_db
+from dashboard.core.auth_service import admin_required
 
 security_bp = Blueprint("security", __name__)
+
+@security_bp.before_request
+@admin_required
+def _security_admin_only():
+    pass
 
 @security_bp.route("/api/ip-rules", methods=["GET"])
 def api_get_ip_rules():

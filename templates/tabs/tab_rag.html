@@ -13,6 +13,7 @@
                             Sincronizador diferencial conectado a Teccam PDF (<span class="font-mono text-purple-300">http://192.168.1.33:5022</span>) con chunking jerárquico y vectores 1024D (Qwen3).
                         </p>
                     </div>
+                    {% if current_user and current_user.role == 'admin' %}
                     <div class="flex items-center gap-3 flex-wrap">
                         <button onclick="toggleRagMasterPower()" id="btn-toggle-rag-power" class="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all border bg-emerald-950/60 border-emerald-500/40 text-emerald-300 hover:bg-emerald-900/60" title="Activar o desactivar globalmente el acceso al RAG para el Gateway y LLM">
                             <span id="badge-rag-power" class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></span>
@@ -34,6 +35,7 @@
                             <span id="text-sync-rag">Sincronización Completa</span>
                         </button>
                     </div>
+                    {% endif %}
                 </div>
 
                 <!-- Barra de Selección y Gestión Multi-Tenant de Bases LanceDB -->
@@ -50,6 +52,7 @@
                             </div>
                         </div>
                     </div>
+                    {% if current_user and current_user.role == 'admin' %}
                     <div class="flex items-center gap-2 flex-wrap">
                         <button onclick="openNewRagBaseModal()" class="px-3.5 py-2 rounded-xl bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 border border-purple-500/30 text-xs font-semibold transition-all flex items-center gap-1.5 shadow-sm">
                             <span>➕</span> Nueva Base de Empresa
@@ -61,6 +64,7 @@
                             <span>🗑️</span> Eliminar Base
                         </button>
                     </div>
+                    {% endif %}
                 </div>
 
                 <!-- Banner de RAG Desactivado (si aplica) -->
@@ -72,9 +76,11 @@
                             <div class="text-xs text-amber-300/80">El API Gateway en el puerto 8000 rechazará las consultas al RAG y Gemma 4 responderá sin consultar LanceDB.</div>
                         </div>
                     </div>
+                    {% if current_user and current_user.role == 'admin' %}
                     <button onclick="toggleRagMasterPower(true)" class="px-3.5 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-xs font-bold text-white transition-all shadow-md">
                         Reactivar RAG
                     </button>
+                    {% endif %}
                 </div>
 
                 <!-- Métricas Clave RAG -->
@@ -287,6 +293,7 @@
                     </div>
                 </div>
 
+                {% if current_user and current_user.role == 'admin' %}
                 <!-- Modal: Crear Nueva Base de Empresa -->
                 <div id="modal-new-rag-base" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
                     <div class="glass-panel w-full max-w-xl rounded-2xl flex flex-col shadow-2xl border border-purple-500/30 overflow-hidden">
@@ -383,5 +390,6 @@
                         </div>
                     </div>
                 </div>
+                {% endif %}
             </div>
 

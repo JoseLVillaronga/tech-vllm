@@ -131,6 +131,7 @@ def verify_credentials(username: str, password: str, req):
             user_data = {
                 "username": "admin",
                 "role": "admin",
+                "allowed_rag_tables": ["*"],
                 "is_local": True,
                 "is_remote_account": False
             }
@@ -158,9 +159,14 @@ def verify_credentials(username: str, password: str, req):
             {"$set": {"last_login": datetime.now(timezone.utc)}}
         )
 
+        role = user_doc.get("role", "operator")
+        default_tables = ["*"] if role == "admin" else ["teccam_knowledge_base"]
+        allowed_tables = user_doc.get("allowed_rag_tables", default_tables)
+
         user_data = {
             "username": user_doc["username"],
-            "role": user_doc.get("role", "operator"),
+            "role": role,
+            "allowed_rag_tables": allowed_tables,
             "is_local": is_local,
             "is_remote_account": True
         }
@@ -177,10 +183,13 @@ def list_dashboard_users():
     db = get_db()
     users = []
     for doc in db.dashboard_users.find().sort("username", 1):
+        role = doc.get("role", "operator")
+        default_tables = ["*"] if role == "admin" else ["teccam_knowledge_base"]
         users.append({
             "id": str(doc.get("_id", "")),
             "username": doc.get("username", ""),
-            "role": doc.get("role", "operator"),
+            "role": role,
+            "allowed_rag_tables": doc.get("allowed_rag_tables", default_tables),
             "is_active": doc.get("is_active", True),
             "created_by": doc.get("created_by", "system"),
             "created_at": doc.get("created_at").isoformat() if doc.get("created_at") else None,
@@ -189,7 +198,7 @@ def list_dashboard_users():
     return users
 
 
-def create_dashboard_user(username: str, password: str, role: str = "operator", created_by: str = "admin"):
+def create_dashboard_user(username: str, password: str, role: str = "operator", allowed_rag_tables: list = None, created_by: str = "admin"):
     """Crea un nuevo usuario remoto con contraseña encriptada en MongoDB."""
     uname = username.strip().lower()
     if not uname:
@@ -217,11 +226,25 @@ def create_dashboard_user(username: str, password: str, role: str = "operator", 
     if existing:
         return False, f"El usuario '{uname}' ya existe."
 
+    # Normalizar bases RAG permitidas
+    if role == "admin":
+        final_allowed = ["*"]
+    else:
+        if allowed_rag_tables is None:
+            final_allowed = ["teccam_knowledge_base"]
+        else:
+            if not isinstance(allowed_rag_tables, list):
+                allowed_rag_tables = [str(allowed_rag_tables)]
+            final_allowed = [str(t).strip() for t in allowed_rag_tables if str(t).strip()]
+            if not final_allowed:
+                return False, "Debe seleccionar al menos una base RAG permitida para el operador."
+
     hashed = generate_password_hash(password)
     doc = {
         "username": uname,
         "password_hash": hashed,
         "role": role,
+        "allowed_rag_tables": final_allowed,
         "is_active": True,
         "created_by": created_by,
         "created_at": datetime.now(timezone.utc),
@@ -231,8 +254,8 @@ def create_dashboard_user(username: str, password: str, role: str = "operator", 
     return True, f"Usuario '{uname}' creado exitosamente."
 
 
-def update_dashboard_user(username: str, role: str = None, is_active: bool = None):
-    """Actualiza el rol o estado de activación de un usuario remoto."""
+def update_dashboard_user(username: str, role: str = None, is_active: bool = None, allowed_rag_tables: list = None):
+    """Actualiza el rol, estado de activación o bases RAG permitidas de un usuario remoto."""
     uname = username.strip().lower()
     if uname == "admin":
         return False, "No se puede modificar el usuario reservado 'admin' desde la base de datos."
@@ -251,6 +274,20 @@ def update_dashboard_user(username: str, role: str = None, is_active: bool = Non
 
     if is_active is not None:
         update_fields["is_active"] = bool(is_active)
+
+    target_role = update_fields.get("role", user.get("role", "operator"))
+    if allowed_rag_tables is not None:
+        if target_role == "admin":
+            update_fields["allowed_rag_tables"] = ["*"]
+        else:
+            if not isinstance(allowed_rag_tables, list):
+                allowed_rag_tables = [str(allowed_rag_tables)]
+            clean_allowed = [str(t).strip() for t in allowed_rag_tables if str(t).strip()]
+            if not clean_allowed:
+                return False, "Debe seleccionar al menos una base RAG permitida para el operador."
+            update_fields["allowed_rag_tables"] = clean_allowed
+    elif target_role == "admin" and "role" in update_fields:
+        update_fields["allowed_rag_tables"] = ["*"]
 
     if not update_fields:
         return True, "No se realizaron cambios."
@@ -309,14 +346,32 @@ def logout_user_session():
 
 def get_current_user():
     """Retorna los datos del usuario logueado en la sesión actual, o None."""
-    return session.get("user")
+    u = session.get("user")
+    if not u:
+        return None
+    # Si es cuenta remota, sincronizar en tiempo real estado y bases permitidas desde MongoDB
+    if u.get("is_remote_account"):
+        try:
+            db = get_db()
+            doc = db.dashboard_users.find_one({"username": u.get("username", "").lower()})
+            if not doc or not doc.get("is_active", True):
+                session.pop("user", None)
+                return None
+            u["role"] = doc.get("role", "operator")
+            default_tables = ["*"] if u["role"] == "admin" else ["teccam_knowledge_base"]
+            u["allowed_rag_tables"] = doc.get("allowed_rag_tables", default_tables)
+            session["user"] = u
+        except Exception:
+            pass
+    return u
 
 
 def login_required(f):
     """Decorador para proteger vistas y endpoints requiriendo sesión activa."""
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        if not session.get("user"):
+        user = get_current_user()
+        if not user:
             if request.path.startswith("/api/") or request.is_json:
                 return jsonify({"error": "No autenticado. Inicie sesión para continuar."}), 401
             return redirect(url_for("auth_bp.login_page", next=request.path))
@@ -328,7 +383,7 @@ def admin_required(f):
     """Decorador para endpoints que requieren rol de administrador."""
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        user = session.get("user")
+        user = get_current_user()
         if not user:
             if request.path.startswith("/api/") or request.is_json:
                 return jsonify({"error": "No autenticado."}), 401

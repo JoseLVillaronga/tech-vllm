@@ -4,21 +4,49 @@ import threading
 import subprocess
 from flask import Blueprint, request, jsonify
 from dashboard.core import get_db, REPO_ROOT
+from dashboard.core.auth_service import login_required, admin_required, get_current_user
 
 rag_bp = Blueprint("rag", __name__)
 
+
+def check_user_allowed_table(table_name: str = None):
+    """Verifica si el usuario autenticado tiene acceso a la base RAG solicitada.
+    Retorna (permitido: bool, tabla_efectiva: str, error_msg: str | None).
+    """
+    user = get_current_user() or {}
+    if user.get("role") == "admin":
+        return True, table_name or "teccam_knowledge_base", None
+
+    allowed = user.get("allowed_rag_tables", ["teccam_knowledge_base"])
+    if "*" in allowed:
+        return True, table_name or "teccam_knowledge_base", None
+
+    effective_table = table_name or (allowed[0] if allowed else "teccam_knowledge_base")
+    if effective_table not in allowed:
+        return False, effective_table, f"Acceso denegado: No tiene permisos asignados para operar la base de conocimiento '{effective_table}'."
+
+    return True, effective_table, None
+
+
 @rag_bp.route("/api/rag/bases", methods=["GET"])
+@login_required
 def api_rag_list_bases():
-    """Lista todas las bases de conocimiento LanceDB disponibles (multi-tenant)."""
+    """Lista las bases de conocimiento LanceDB disponibles (filtradas según permisos del operador)."""
     try:
         from rag_engine import list_knowledge_bases
         bases = list_knowledge_bases()
+        user = get_current_user() or {}
+        if user.get("role") != "admin":
+            allowed = user.get("allowed_rag_tables", ["teccam_knowledge_base"])
+            if "*" not in allowed:
+                bases = [b for b in bases if b.get("table_name") in allowed]
         return jsonify({"success": True, "bases": bases})
     except Exception as e:
         return jsonify({"error": f"Error listando bases RAG: {str(e)}"}), 500
 
 
 @rag_bp.route("/api/rag/bases", methods=["POST"])
+@admin_required
 def api_rag_create_base():
     """Crea una nueva base de conocimiento para una empresa, opcionalmente clonando dominios de otra base."""
     try:
@@ -43,6 +71,7 @@ def api_rag_create_base():
 
 
 @rag_bp.route("/api/rag/bases/clone-domain", methods=["POST"])
+@admin_required
 def api_rag_clone_domain():
     """Clona los fragmentos de un dominio temático desde una base origen a una base destino en memoria (Arrow)."""
     try:
@@ -62,6 +91,7 @@ def api_rag_clone_domain():
 
 
 @rag_bp.route("/api/rag/bases/<table_name>", methods=["DELETE"])
+@admin_required
 def api_rag_delete_base(table_name):
     """Elimina una base de conocimiento tenant en LanceDB (protegiendo teccam_knowledge_base)."""
     try:
@@ -73,11 +103,16 @@ def api_rag_delete_base(table_name):
 
 
 @rag_bp.route("/api/rag/stats", methods=["GET"])
+@login_required
 def api_rag_stats():
     """Obtiene métricas y estado actual de la base de conocimiento LanceDB (por defecto o por empresa)."""
     try:
         from rag_engine import get_rag_stats
-        table_name = request.args.get("table_name") or None
+        raw_table_name = request.args.get("table_name") or None
+        allowed, table_name, err = check_user_allowed_table(raw_table_name)
+        if not allowed:
+            return jsonify({"error": err}), 403
+
         stats = get_rag_stats(table_name=table_name)
         
         try:
@@ -108,6 +143,7 @@ def api_rag_stats():
 
 
 @rag_bp.route("/api/rag/sync", methods=["POST"])
+@admin_required
 def api_rag_sync():
     """Dispara una sincronización diferencial de Teccam PDF -> LanceDB en segundo plano utilizando el orquestador de VRAM."""
     try:
@@ -159,6 +195,7 @@ def api_rag_sync():
 
 
 @rag_bp.route("/api/rag/sync-metadata", methods=["POST"])
+@admin_required
 def api_rag_sync_metadata():
     """Actualiza en milisegundos y en caliente la metadata (vigencia, fecha_publicacion) desde Teccam PDF sin tocar GPU."""
     try:
@@ -216,11 +253,16 @@ def api_rag_sync_metadata():
 
 
 @rag_bp.route("/api/rag/settings", methods=["GET", "POST"])
+@login_required
 def api_rag_settings():
     """Lee o actualiza la configuración global de RAG (estado, dominios activos y modelo cloud para RAG)."""
     try:
         from rag_engine import get_rag_settings, save_rag_settings
         if request.method == "POST":
+            user = get_current_user() or {}
+            if user.get("role") != "admin":
+                return jsonify({"error": "Acceso denegado. Se requiere rol de administrador para modificar configuraciones globales de RAG."}), 403
+
             data = request.get_json() or {}
             active_topics = data.get("active_topics", None)
             enabled = data.get("enabled", None)
@@ -245,6 +287,7 @@ def api_rag_settings():
 
 
 @rag_bp.route("/api/rag/search", methods=["POST"])
+@login_required
 def api_rag_search():
     """Ejecuta una búsqueda de prueba en la base vectorial LanceDB (por defecto o tenant)."""
     try:
@@ -254,8 +297,12 @@ def api_rag_search():
         tema = data.get("tema") or None
         temas = data.get("temas") or None
         top_k = int(data.get("top_k", 5))
-        table_name = data.get("table_name", "").strip() or None
+        raw_table_name = data.get("table_name", "").strip() or None
         
+        allowed, table_name, err = check_user_allowed_table(raw_table_name)
+        if not allowed:
+            return jsonify({"error": err}), 403
+
         if not query:
             return jsonify({"error": "La consulta 'query' no puede estar vacía"}), 400
             
@@ -267,7 +314,7 @@ def api_rag_search():
             "query": query,
             "tema": tema,
             "temas": temas,
-            "table_name": table_name or "teccam_knowledge_base",
+            "table_name": table_name,
             "results_count": len(results),
             "latency_ms": dur_ms,
             "results": results
@@ -277,6 +324,7 @@ def api_rag_search():
 
 
 @rag_bp.route("/api/rag/documents/<doc_id>", methods=["DELETE"])
+@admin_required
 def api_rag_delete_document(doc_id):
     """Elimina todos los fragmentos vectoriales de un documento específico en LanceDB."""
     try:
@@ -305,11 +353,16 @@ def api_rag_delete_document(doc_id):
 
 
 @rag_bp.route("/api/rag/structure/<doc_id>", methods=["GET"])
+@login_required
 def api_rag_structure(doc_id):
     """Obtiene el GPS Documental y mapa de secciones de un documento desde LanceDB."""
     try:
         from rag_engine import get_document_structure
-        table_name = request.args.get("table_name") or None
+        raw_table_name = request.args.get("table_name") or None
+        allowed, table_name, err = check_user_allowed_table(raw_table_name)
+        if not allowed:
+            return jsonify({"error": err}), 403
+
         res = get_document_structure(doc_id=doc_id, table_name=table_name)
         if not res.get("success"):
             return jsonify({"error": res.get("error", "Error consultando estructura")}), 404
@@ -319,13 +372,18 @@ def api_rag_structure(doc_id):
 
 
 @rag_bp.route("/api/rag/library-index", methods=["GET"])
+@login_required
 def api_rag_library_index():
     """Obtiene el Mapa Ontológico Global y árbol temático jerárquico de la biblioteca LanceDB."""
     try:
         from rag_engine import get_library_index
         solo_vigentes = request.args.get("solo_vigentes", "false").lower() in ("true", "1", "yes")
         tema = request.args.get("tema") or None
-        table_name = request.args.get("table_name") or None
+        raw_table_name = request.args.get("table_name") or None
+        allowed, table_name, err = check_user_allowed_table(raw_table_name)
+        if not allowed:
+            return jsonify({"error": err}), 403
+
         res = get_library_index(solo_vigentes=solo_vigentes, tema=tema, table_name=table_name)
         if not res.get("success"):
             return jsonify({"error": res.get("error", "Error generando índice de biblioteca")}), 500

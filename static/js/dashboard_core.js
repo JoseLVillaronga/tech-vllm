@@ -81,6 +81,9 @@
 
         // Cambiar pestañas
         function showTab(tabId) {
+            const target = document.getElementById(tabId);
+            if (!target) return;
+
             window.currentActiveTab = tabId;
             document.querySelectorAll('.tab-content').forEach(content => content.classList.add('hidden'));
             document.querySelectorAll('.tab-btn').forEach(btn => {
@@ -94,25 +97,25 @@
                 activeBtn.classList.remove('text-slate-300', 'border-transparent');
             }
             
-            document.getElementById(tabId).classList.remove('hidden');
+            target.classList.remove('hidden');
             
             if (tabId === 'tab-voices') {
-                loadVoices();
+                if (typeof loadVoices === 'function') loadVoices();
             }
             if (tabId === 'tab-keys') {
-                loadApiKeys();
-                loadIpRules();
-                loadCloudProviders();
-                loadBlockedRequests();
+                if (typeof loadApiKeys === 'function') loadApiKeys();
+                if (typeof loadIpRules === 'function') loadIpRules();
+                if (typeof loadCloudProviders === 'function') loadCloudProviders();
+                if (typeof loadBlockedRequests === 'function') loadBlockedRequests();
             }
             if (tabId === 'tab-monitor') {
-                loadTelemetryHistory();
+                if (typeof loadTelemetryHistory === 'function') loadTelemetryHistory();
             }
             if (tabId === 'tab-metrics') {
-                loadMetrics();
+                if (typeof loadMetrics === 'function') loadMetrics();
             }
             if (tabId === 'tab-rag') {
-                loadRagStats();
+                if (typeof loadRagStats === 'function') loadRagStats();
             }
             if (tabId === 'tab-users') {
                 if (typeof loadUsers === 'function') loadUsers();

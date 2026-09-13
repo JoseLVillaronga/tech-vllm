@@ -10,7 +10,8 @@ from dashboard.core import (
     get_service_status,
     control_service,
     parse_env_to_dict,
-    save_env_from_dict
+    save_env_from_dict,
+    admin_required
 )
 
 system_bp = Blueprint("system", __name__)
@@ -48,6 +49,7 @@ def api_status():
 
 
 @system_bp.route("/api/service/<service_key>/<action>", methods=["POST"])
+@admin_required
 def api_control_service(service_key, action):
     """Inicia, detiene o reinicia un servicio systemd administrado."""
     if service_key not in SERVICES:
@@ -67,12 +69,14 @@ def api_control_service(service_key, action):
 
 
 @system_bp.route("/api/config", methods=["GET"])
+@admin_required
 def api_get_config():
     """Retorna las variables del archivo .env como un diccionario JSON."""
     return jsonify(parse_env_to_dict())
 
 
 @system_bp.route("/api/config", methods=["POST"])
+@admin_required
 def api_save_config():
     """Actualiza el archivo .env con los nuevos valores recibidos."""
     data = request.json

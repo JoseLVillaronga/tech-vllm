@@ -96,11 +96,13 @@
                                 </div>
                                 <p class="text-xs text-slate-400">Puerto 8000 (MEA) / 8010 (Raw) | Chat y Visión (vLLM)</p>
                             </div>
+                            {% if current_user and current_user.role == 'admin' %}
                             <div class="flex gap-2 mt-4 pt-4 border-t border-slate-800/50">
                                 <button onclick="controlService('gemma', 'start')" class="flex-1 py-1.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600 text-emerald-300 hover:text-white text-xs font-medium transition-all">Start</button>
                                 <button onclick="controlService('gemma', 'stop')" class="flex-1 py-1.5 rounded-lg bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white text-xs font-medium transition-all">Stop</button>
                                 <button onclick="controlService('gemma', 'restart')" class="flex-1 py-1.5 rounded-lg bg-indigo-600/20 hover:bg-indigo-600 text-indigo-300 hover:text-white text-xs font-medium transition-all">Restart</button>
                             </div>
+                            {% endif %}
                         </div>
 
                         <!-- Service Card: Llama.cpp LLM -->
@@ -112,11 +114,13 @@
                                 </div>
                                 <p class="text-xs text-slate-400">Puerto 8000 (MEA) / 8010 (Raw) | Qwen 3.6 35B A3B</p>
                             </div>
+                            {% if current_user and current_user.role == 'admin' %}
                             <div class="flex gap-2 mt-4 pt-4 border-t border-slate-800/50">
                                 <button onclick="controlService('llama', 'start')" class="flex-1 py-1.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600 text-emerald-300 hover:text-white text-xs font-medium transition-all">Start</button>
                                 <button onclick="controlService('llama', 'stop')" class="flex-1 py-1.5 rounded-lg bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white text-xs font-medium transition-all">Stop</button>
                                 <button onclick="controlService('llama', 'restart')" class="flex-1 py-1.5 rounded-lg bg-indigo-600/20 hover:bg-indigo-600 text-indigo-300 hover:text-white text-xs font-medium transition-all">Restart</button>
                             </div>
+                            {% endif %}
                         </div>
                         
                         <!-- Service Card: Whisper -->
@@ -128,11 +132,13 @@
                                 </div>
                                 <p class="text-xs text-slate-400">Puerto 8001 (18001) | GPU ASR</p>
                             </div>
+                            {% if current_user and current_user.role == 'admin' %}
                             <div class="flex gap-2 mt-4 pt-4 border-t border-slate-800/50">
                                 <button onclick="controlService('whisper', 'start')" class="flex-1 py-1.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600 text-emerald-300 hover:text-white text-xs font-medium transition-all">Start</button>
                                 <button onclick="controlService('whisper', 'stop')" class="flex-1 py-1.5 rounded-lg bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white text-xs font-medium transition-all">Stop</button>
                                 <button onclick="controlService('whisper', 'restart')" class="flex-1 py-1.5 rounded-lg bg-indigo-600/20 hover:bg-indigo-600 text-indigo-300 hover:text-white text-xs font-medium transition-all">Restart</button>
                             </div>
+                            {% endif %}
                         </div>
 
                         <!-- Service Card: Fallback STT -->
@@ -144,11 +150,13 @@
                                 </div>
                                 <p class="text-xs text-slate-400">Puerto 18011 | CPU INT8 (0 VRAM)</p>
                             </div>
+                            {% if current_user and current_user.role == 'admin' %}
                             <div class="flex gap-2 mt-4 pt-4 border-t border-slate-800/50">
                                 <button onclick="controlService('fallback_stt', 'start')" class="flex-1 py-1.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600 text-emerald-300 hover:text-white text-xs font-medium transition-all">Start</button>
                                 <button onclick="controlService('fallback_stt', 'stop')" class="flex-1 py-1.5 rounded-lg bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white text-xs font-medium transition-all">Stop</button>
                                 <button onclick="controlService('fallback_stt', 'restart')" class="flex-1 py-1.5 rounded-lg bg-indigo-600/20 hover:bg-indigo-600 text-indigo-300 hover:text-white text-xs font-medium transition-all">Restart</button>
                             </div>
+                            {% endif %}
                         </div>
 
                         <!-- Service Card: F5-TTS -->
@@ -160,11 +168,13 @@
                                 </div>
                                 <p class="text-xs text-slate-400">Puerto 8002 (18002) | GPU Clonación</p>
                             </div>
+                            {% if current_user and current_user.role == 'admin' %}
                             <div class="flex gap-2 mt-4 pt-4 border-t border-slate-800/50">
                                 <button onclick="controlService('tts', 'start')" class="flex-1 py-1.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600 text-emerald-300 hover:text-white text-xs font-medium transition-all">Start</button>
                                 <button onclick="controlService('tts', 'stop')" class="flex-1 py-1.5 rounded-lg bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white text-xs font-medium transition-all">Stop</button>
                                 <button onclick="controlService('tts', 'restart')" class="flex-1 py-1.5 rounded-lg bg-indigo-600/20 hover:bg-indigo-600 text-indigo-300 hover:text-white text-xs font-medium transition-all">Restart</button>
                             </div>
+                            {% endif %}
                         </div>
 
                         <!-- Service Card: Fallback TTS -->
@@ -176,11 +186,13 @@
                                 </div>
                                 <p class="text-xs text-slate-400">Puerto 18012 | Edge CPU (0 VRAM)</p>
                             </div>
+                            {% if current_user and current_user.role == 'admin' %}
                             <div class="flex gap-2 mt-4 pt-4 border-t border-slate-800/50">
                                 <button onclick="controlService('fallback_tts', 'start')" class="flex-1 py-1.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600 text-emerald-300 hover:text-white text-xs font-medium transition-all">Start</button>
                                 <button onclick="controlService('fallback_tts', 'stop')" class="flex-1 py-1.5 rounded-lg bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white text-xs font-medium transition-all">Stop</button>
                                 <button onclick="controlService('fallback_tts', 'restart')" class="flex-1 py-1.5 rounded-lg bg-indigo-600/20 hover:bg-indigo-600 text-indigo-300 hover:text-white text-xs font-medium transition-all">Restart</button>
                             </div>
+                            {% endif %}
                         </div>
 
                         <!-- Service Card: Diarization -->
@@ -192,11 +204,13 @@
                                 </div>
                                 <p class="text-xs text-slate-400">Puerto 8003 | Separación de Voces</p>
                             </div>
+                            {% if current_user and current_user.role == 'admin' %}
                             <div class="flex gap-2 mt-4 pt-4 border-t border-slate-800/50">
                                 <button onclick="controlService('diarization', 'start')" class="flex-1 py-1.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600 text-emerald-300 hover:text-white text-xs font-medium transition-all">Start</button>
                                 <button onclick="controlService('diarization', 'stop')" class="flex-1 py-1.5 rounded-lg bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white text-xs font-medium transition-all">Stop</button>
                                 <button onclick="controlService('diarization', 'restart')" class="flex-1 py-1.5 rounded-lg bg-indigo-600/20 hover:bg-indigo-600 text-indigo-300 hover:text-white text-xs font-medium transition-all">Restart</button>
                             </div>
+                            {% endif %}
                         </div>
 
                         <!-- Service Card: Qwen3 Embeddings -->
@@ -208,11 +222,13 @@
                                 </div>
                                 <p class="text-xs text-slate-400">Puerto 8005 (18005) | GPU CUDA (~1.1 GB VRAM)</p>
                             </div>
+                            {% if current_user and current_user.role == 'admin' %}
                             <div class="flex gap-2 mt-4 pt-4 border-t border-slate-800/50">
                                 <button onclick="controlService('embeddings', 'start')" class="flex-1 py-1.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600 text-emerald-300 hover:text-white text-xs font-medium transition-all">Start</button>
                                 <button onclick="controlService('embeddings', 'stop')" class="flex-1 py-1.5 rounded-lg bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white text-xs font-medium transition-all">Stop</button>
                                 <button onclick="controlService('embeddings', 'restart')" class="flex-1 py-1.5 rounded-lg bg-indigo-600/20 hover:bg-indigo-600 text-indigo-300 hover:text-white text-xs font-medium transition-all">Restart</button>
                             </div>
+                            {% endif %}
                         </div>
 
                         <!-- Service Card: Docling -->
@@ -224,11 +240,13 @@
                                 </div>
                                 <p class="text-xs text-slate-400">Puerto 5020 | Documentos & OCR</p>
                             </div>
+                            {% if current_user and current_user.role == 'admin' %}
                             <div class="flex gap-2 mt-4 pt-4 border-t border-slate-800/50">
                                 <button onclick="controlService('docling', 'start')" class="flex-1 py-1.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600 text-emerald-300 hover:text-white text-xs font-medium transition-all">Start</button>
                                 <button onclick="controlService('docling', 'stop')" class="flex-1 py-1.5 rounded-lg bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white text-xs font-medium transition-all">Stop</button>
                                 <button onclick="controlService('docling', 'restart')" class="flex-1 py-1.5 rounded-lg bg-indigo-600/20 hover:bg-indigo-600 text-indigo-300 hover:text-white text-xs font-medium transition-all">Restart</button>
                             </div>
+                            {% endif %}
                         </div>
 
                         <!-- Service Card: API Gateway -->
@@ -240,11 +258,13 @@
                                 </div>
                                 <p class="text-xs text-slate-400">Puertos 8000-8006 | Proxy & Auth</p>
                             </div>
+                            {% if current_user and current_user.role == 'admin' %}
                             <div class="flex gap-2 mt-4 pt-4 border-t border-slate-800/50">
                                 <button onclick="controlService('gateway', 'start')" class="flex-1 py-1.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600 text-emerald-300 hover:text-white text-xs font-medium transition-all">Start</button>
                                 <button onclick="controlService('gateway', 'stop')" class="flex-1 py-1.5 rounded-lg bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white text-xs font-medium transition-all">Stop</button>
                                 <button onclick="controlService('gateway', 'restart')" class="flex-1 py-1.5 rounded-lg bg-indigo-600/20 hover:bg-indigo-600 text-indigo-300 hover:text-white text-xs font-medium transition-all">Restart</button>
                             </div>
+                            {% endif %}
                         </div>
 
                         <!-- Service Card: Generador de Imágenes GPU (CUDA) -->
@@ -256,11 +276,13 @@
                                 </div>
                                 <p class="text-xs text-slate-400">Puerto 8006 (18004) | PyTorch Diffusers (GPU CUDA)</p>
                             </div>
+                            {% if current_user and current_user.role == 'admin' %}
                             <div class="flex gap-2 mt-4 pt-4 border-t border-slate-800/50">
                                 <button onclick="controlService('image_cuda', 'start')" class="flex-1 py-1.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600 text-emerald-300 hover:text-white text-xs font-medium transition-all">Start</button>
                                 <button onclick="controlService('image_cuda', 'stop')" class="flex-1 py-1.5 rounded-lg bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white text-xs font-medium transition-all">Stop</button>
                                 <button onclick="controlService('image_cuda', 'restart')" class="flex-1 py-1.5 rounded-lg bg-indigo-600/20 hover:bg-indigo-600 text-indigo-300 hover:text-white text-xs font-medium transition-all">Restart</button>
                             </div>
+                            {% endif %}
                         </div>
 
                         <!-- Service Card: Generador de Imágenes CPU (RAM) -->
@@ -272,11 +294,13 @@
                                 </div>
                                 <p class="text-xs text-slate-400">Puerto 8006 (18004) | SDXL Turbo GGUF (0 VRAM)</p>
                             </div>
+                            {% if current_user and current_user.role == 'admin' %}
                             <div class="flex gap-2 mt-4 pt-4 border-t border-slate-800/50">
                                 <button onclick="controlService('image', 'start')" class="flex-1 py-1.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600 text-emerald-300 hover:text-white text-xs font-medium transition-all">Start</button>
                                 <button onclick="controlService('image', 'stop')" class="flex-1 py-1.5 rounded-lg bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white text-xs font-medium transition-all">Stop</button>
                                 <button onclick="controlService('image', 'restart')" class="flex-1 py-1.5 rounded-lg bg-indigo-600/20 hover:bg-indigo-600 text-indigo-300 hover:text-white text-xs font-medium transition-all">Restart</button>
                             </div>
+                            {% endif %}
                         </div>
 
                         <!-- Service Card: Visión Llama (Qwen2.5-VL) -->
@@ -288,11 +312,13 @@
                                 </div>
                                 <p class="text-xs text-slate-400">Puerto 18200 | Llama.cpp Visión en RAM (0 VRAM)</p>
                             </div>
+                            {% if current_user and current_user.role == 'admin' %}
                             <div class="flex gap-2 mt-4 pt-4 border-t border-slate-800/50">
                                 <button onclick="controlService('vision', 'start')" class="flex-1 py-1.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600 text-emerald-300 hover:text-white text-xs font-medium transition-all">Start</button>
                                 <button onclick="controlService('vision', 'stop')" class="flex-1 py-1.5 rounded-lg bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white text-xs font-medium transition-all">Stop</button>
                                 <button onclick="controlService('vision', 'restart')" class="flex-1 py-1.5 rounded-lg bg-indigo-600/20 hover:bg-indigo-600 text-indigo-300 hover:text-white text-xs font-medium transition-all">Restart</button>
                             </div>
+                            {% endif %}
                         </div>
 
                         <!-- Service Card: Sincronizador RAG Timer -->
@@ -304,11 +330,13 @@
                                 </div>
                                 <p class="text-xs text-slate-400">Timer systemd | Actualización 08:00 y 20:00</p>
                             </div>
+                            {% if current_user and current_user.role == 'admin' %}
                             <div class="flex gap-2 mt-4 pt-4 border-t border-slate-800/50">
                                 <button onclick="controlService('rag_sync', 'start')" class="flex-1 py-1.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600 text-emerald-300 hover:text-white text-xs font-medium transition-all">Start</button>
                                 <button onclick="controlService('rag_sync', 'stop')" class="flex-1 py-1.5 rounded-lg bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white text-xs font-medium transition-all">Stop</button>
                                 <button onclick="controlService('rag_sync', 'restart')" class="flex-1 py-1.5 rounded-lg bg-indigo-600/20 hover:bg-indigo-600 text-indigo-300 hover:text-white text-xs font-medium transition-all">Restart</button>
                             </div>
+                            {% endif %}
                         </div>
                     </div>
                 </div>

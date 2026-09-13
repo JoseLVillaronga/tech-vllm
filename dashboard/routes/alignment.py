@@ -1,6 +1,12 @@
 from flask import Blueprint, request, jsonify
+from dashboard.core.auth_service import admin_required
 
 alignment_bp = Blueprint("alignment", __name__)
+
+@alignment_bp.before_request
+@admin_required
+def _alignment_admin_only():
+    pass
 
 @alignment_bp.route("/api/alignment/settings", methods=["GET", "POST"])
 def api_alignment_settings():

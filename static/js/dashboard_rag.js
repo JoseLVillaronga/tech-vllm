@@ -23,9 +23,11 @@
 
                         if (data.bases.some(b => b.table_name === prevVal)) {
                             select.value = prevVal;
+                        } else if (data.bases.length > 0) {
+                            select.value = data.bases[0].table_name;
+                            currentRagBase = data.bases[0].table_name;
                         } else {
-                            select.value = 'teccam_knowledge_base';
-                            currentRagBase = 'teccam_knowledge_base';
+                            currentRagBase = '';
                         }
                     }
 

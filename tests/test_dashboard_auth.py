@@ -220,6 +220,124 @@ class TestDashboardAuth(unittest.TestCase):
             resp_allowed = self.client.get("/api/users")
             self.assertEqual(resp_allowed.status_code, 200)
 
+    @patch("dashboard.core.auth_service.get_db")
+    def test_create_user_allowed_rag_tables(self, mock_get_db):
+        """Verifica la asignación y validación de bases RAG permitidas."""
+        mock_db = MagicMock()
+        mock_db.dashboard_users.find_one.return_value = None
+        mock_get_db.return_value = mock_db
+
+        # 1. Operador con tabla por defecto
+        success, _ = create_dashboard_user("op_default", "pass123456", role="operator")
+        self.assertTrue(success)
+        doc1 = mock_db.dashboard_users.insert_one.call_args[0][0]
+        self.assertEqual(doc1["allowed_rag_tables"], ["teccam_knowledge_base"])
+
+        # 2. Operador con tablas personalizadas
+        success, _ = create_dashboard_user("op_custom", "pass123456", role="operator", allowed_rag_tables=["kb_empresa_a", "kb_empresa_b"])
+        self.assertTrue(success)
+        doc2 = mock_db.dashboard_users.insert_one.call_args[0][0]
+        self.assertEqual(doc2["allowed_rag_tables"], ["kb_empresa_a", "kb_empresa_b"])
+
+        # 3. Operador sin ninguna tabla debe fallar
+        success, err = create_dashboard_user("op_empty", "pass123456", role="operator", allowed_rag_tables=[])
+        self.assertFalse(success)
+        self.assertIn("al menos una base RAG permitida", err)
+
+        # 4. Admin siempre recibe acceso total ["*"]
+        success, _ = create_dashboard_user("admin_remoto", "pass123456", role="admin", allowed_rag_tables=["kb_algo"])
+        self.assertTrue(success)
+        doc4 = mock_db.dashboard_users.insert_one.call_args[0][0]
+        self.assertEqual(doc4["allowed_rag_tables"], ["*"])
+
+    @patch("dashboard.core.auth_service.get_db")
+    def test_update_user_allowed_rag_tables(self, mock_get_db):
+        """Verifica la actualización de bases RAG y rol en usuarios existentes."""
+        mock_db = MagicMock()
+        mock_db.dashboard_users.find_one.return_value = {
+            "username": "op_test",
+            "role": "operator",
+            "allowed_rag_tables": ["teccam_knowledge_base"],
+            "is_active": True
+        }
+        mock_get_db.return_value = mock_db
+
+        # Actualizar bases RAG
+        success, _ = update_dashboard_user("op_test", allowed_rag_tables=["kb_nueva"])
+        self.assertTrue(success)
+        update_set = mock_db.dashboard_users.update_one.call_args[0][1]["$set"]
+        self.assertEqual(update_set["allowed_rag_tables"], ["kb_nueva"])
+
+        # Si se promueve a admin, recibe ["*"]
+        success, _ = update_dashboard_user("op_test", role="admin")
+        self.assertTrue(success)
+        update_set2 = mock_db.dashboard_users.update_one.call_args[0][1]["$set"]
+        self.assertEqual(update_set2["allowed_rag_tables"], ["*"])
+
+    def test_operator_tab_rag_restrictions(self):
+        """Verifica el filtrado multi-tenant de bases RAG y restricción de búsqueda para operadores."""
+        with self.client.session_transaction() as sess:
+            sess["user"] = {
+                "username": "op_tenant",
+                "role": "operator",
+                "allowed_rag_tables": ["kb_mi_empresa"],
+                "is_local": False
+            }
+
+        # 1. /api/rag/bases solo debe listar las bases permitidas al operador
+        mock_bases = [
+            {"table_name": "teccam_knowledge_base", "display_name": "Teccam"},
+            {"table_name": "kb_mi_empresa", "display_name": "Mi Empresa"},
+            {"table_name": "kb_otra_empresa", "display_name": "Otra Empresa"}
+        ]
+        with patch("rag_engine.list_knowledge_bases", return_value=mock_bases):
+            resp = self.client.get("/api/rag/bases")
+            self.assertEqual(resp.status_code, 200)
+            data = resp.get_json()
+            returned_tables = [b["table_name"] for b in data["bases"]]
+            self.assertEqual(returned_tables, ["kb_mi_empresa"])
+
+        # 2. Búsqueda RAG en una base no permitida debe dar 403 Forbidden
+        resp_denied = self.client.post("/api/rag/search", json={
+            "query": "consulta confidencial",
+            "table_name": "kb_otra_empresa"
+        })
+        self.assertEqual(resp_denied.status_code, 403)
+        self.assertIn("No tiene permisos asignados", resp_denied.get_json().get("error", ""))
+
+        # 3. Acciones administrativas de RAG bloqueadas para operador
+        self.assertEqual(self.client.post("/api/rag/bases", json={"empresa": "Nueva"}).status_code, 403)
+        self.assertEqual(self.client.post("/api/rag/sync", json={}).status_code, 403)
+        self.assertEqual(self.client.post("/api/rag/sync-metadata", json={}).status_code, 403)
+        self.assertEqual(self.client.delete("/api/rag/bases/kb_mi_empresa").status_code, 403)
+
+    def test_operator_blocked_from_admin_tabs_and_controls(self):
+        """Verifica que el operador tenga bloqueados el control de servicios, .env, keys, seguridad y alineación."""
+        with self.client.session_transaction() as sess:
+            sess["user"] = {
+                "username": "operador_prueba",
+                "role": "operator",
+                "allowed_rag_tables": ["teccam_knowledge_base"],
+                "is_local": False
+            }
+
+        # Control de servicios (Start, Stop, Restart)
+        self.assertEqual(self.client.post("/api/service/llm/restart").status_code, 403)
+        self.assertEqual(self.client.post("/api/service/tts/stop").status_code, 403)
+
+        # Variables .env
+        self.assertEqual(self.client.get("/api/config").status_code, 403)
+        self.assertEqual(self.client.post("/api/config", json={}).status_code, 403)
+
+        # Seguridad y Claves API
+        self.assertEqual(self.client.get("/api/keys").status_code, 403)
+        self.assertEqual(self.client.get("/api/ip-rules").status_code, 403)
+        self.assertEqual(self.client.get("/api/cloud-providers").status_code, 403)
+
+        # Alineación MEA
+        self.assertEqual(self.client.get("/api/alignment/settings").status_code, 403)
+        self.assertEqual(self.client.post("/api/alignment/settings", json={}).status_code, 403)
+
 
 if __name__ == "__main__":
     unittest.main()

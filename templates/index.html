@@ -75,8 +75,10 @@
             <!-- TAB 1: MONITOR & SYSTEM STATUS -->
             {% include "tabs/tab_monitor.html" %}
 
+            {% if current_user and current_user.role == 'admin' %}
             <!-- TAB 2: CONFIGURATION EDITOR -->
             {% include "tabs/tab_config.html" %}
+            {% endif %}
 
             <!-- TAB 3: PLAYGROUND / TESTING AREA -->
             {% include "tabs/tab_tests.html" %}
@@ -87,17 +89,21 @@
             <!-- TAB 5: BASE DE CONOCIMIENTO RAG & LANCEDB -->
             {% include "tabs/tab_rag.html" %}
 
+            {% if current_user and current_user.role == 'admin' %}
             <!-- TAB: ALINEACIÓN Y POLÍTICAS MEA -->
             {% include "tabs/tab_alignment.html" %}
 
             <!-- TAB 6: CLAVES API & SEGURIDAD -->
             {% include "tabs/tab_keys.html" %}
+            {% endif %}
 
             <!-- TAB 7: METRICS & API AUDIT -->
             {% include "tabs/tab_metrics.html" %}
 
+            {% if current_user and current_user.role == 'admin' %}
             <!-- TAB 8: GESTIÓN DE USUARIOS Y ACCESOS REMOTOS -->
             {% include "tabs/tab_users.html" %}
+            {% endif %}
         </main>
     </div>
 
@@ -106,9 +112,11 @@
     <script src="{{ url_for('static', filename='js/dashboard_tests.js') }}"></script>
     <script src="{{ url_for('static', filename='js/dashboard_voices.js') }}"></script>
     <script src="{{ url_for('static', filename='js/dashboard_rag.js') }}"></script>
+    {% if current_user and current_user.role == 'admin' %}
     <script src="{{ url_for('static', filename='js/dashboard_alignment.js') }}"></script>
     <script src="{{ url_for('static', filename='js/dashboard_keys.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/dashboard_metrics.js') }}"></script>
     <script src="{{ url_for('static', filename='js/dashboard_users.js') }}"></script>
+    {% endif %}
+    <script src="{{ url_for('static', filename='js/dashboard_metrics.js') }}"></script>
 </body>
 </html>

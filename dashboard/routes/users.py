@@ -38,6 +38,7 @@ def create_user():
     username = data.get("username", "")
     password = data.get("password", "")
     role = data.get("role", "operator")
+    allowed_rag_tables = data.get("allowed_rag_tables")
 
     current_user = get_current_user() or {}
     creator = current_user.get("username", "admin")
@@ -46,6 +47,7 @@ def create_user():
         username=username,
         password=password,
         role=role,
+        allowed_rag_tables=allowed_rag_tables,
         created_by=creator
     )
     if not success:
@@ -57,15 +59,17 @@ def create_user():
 @users_bp.route("/api/users/<username>", methods=["PUT"])
 @admin_required
 def update_user(username: str):
-    """Actualiza el rol o estado de activación de un usuario remoto."""
+    """Actualiza el rol, estado de activación o bases RAG permitidas de un usuario remoto."""
     data = request.get_json(silent=True) or {}
     role = data.get("role")
     is_active = data.get("is_active")
+    allowed_rag_tables = data.get("allowed_rag_tables")
 
     success, message = update_dashboard_user(
         username=username,
         role=role,
-        is_active=is_active
+        is_active=is_active,
+        allowed_rag_tables=allowed_rag_tables
     )
     if not success:
         return jsonify({"error": message}), 400

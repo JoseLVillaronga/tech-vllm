@@ -3,8 +3,14 @@ import requests
 from bson import ObjectId
 from flask import Blueprint, request, jsonify
 from dashboard.core import get_db, slugify_provider_name
+from dashboard.core.auth_service import admin_required
 
 cloud_bp = Blueprint("cloud", __name__)
+
+@cloud_bp.before_request
+@admin_required
+def _cloud_admin_only():
+    pass
 
 @cloud_bp.route("/api/cloud-providers", methods=["GET"])
 def api_get_cloud_providers():
