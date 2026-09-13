@@ -311,6 +311,30 @@ def create_proxy_app(
                     if not is_cloud_request and data.get("cache_prompt") is False:
                         background_tasks.add_task(flush_llama_slots, current_target_port)
 
+                    # Gobernanza Perimétrica Central de Muestreo (Sampling Defaults)
+                    # Red de seguridad condicional: solo inyecta el baseline si el cliente/modelo virtual no especificó sus propios parámetros.
+                    if not is_cloud_request and isinstance(data, dict):
+                        if data.get("temperature") is None:
+                            try:
+                                data["temperature"] = float(os.getenv("GATEWAY_DEFAULT_TEMPERATURE", "0.80"))
+                            except (ValueError, TypeError):
+                                data["temperature"] = 0.80
+                        if data.get("min_p") is None:
+                            try:
+                                data["min_p"] = float(os.getenv("GATEWAY_DEFAULT_MIN_P", "0.05"))
+                            except (ValueError, TypeError):
+                                data["min_p"] = 0.05
+                        if data.get("top_p") is None:
+                            try:
+                                data["top_p"] = float(os.getenv("GATEWAY_DEFAULT_TOP_P", "0.95"))
+                            except (ValueError, TypeError):
+                                data["top_p"] = 0.95
+                        if data.get("top_k") is None:
+                            try:
+                                data["top_k"] = int(os.getenv("GATEWAY_DEFAULT_TOP_K", "40"))
+                            except (ValueError, TypeError):
+                                data["top_k"] = 40
+
                 body = json.dumps(data).encode("utf-8")
             except Exception as json_err:
                 print(f"⚠️ Error al interceptar y parsear JSON en el Gateway: {json_err}", file=sys.stderr, flush=True)

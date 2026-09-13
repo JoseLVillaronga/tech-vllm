@@ -72,11 +72,28 @@ Ve al menú **Panel de Administración** ➔ **Ajustes** ➔ **Conexiones**:
 
 ## 2. Configuración de Modelos y Parámetros Clave
 
-### A. Catálogo de Modelos Locales y Virtuales
+### A. Catálogo de Modelos Locales y Modelos Virtuales Especializados
+
 En Open-WebUI verás los modelos organizados con el prefijo **`local/`**:
-* `local/google/gemma-4-E4B-it`: Modelo base de razonamiento de alto rendimiento.
+* `local/CorpAI-Gen | Legal & Compliance`: Modelo base de razonamiento de alto rendimiento homologado sobre la arquitectura Gemma 4 26B MoE QAT.
 * `local/gemma-4-web`: Modelo con búsqueda web en vivo inyectada automáticamente en cada consulta.
 * `local/gemma-4-rag`: Modelo con inyección automática de contexto documental desde LanceDB.
+
+#### Creación de Modelos Virtuales Especializados (Espacio de Trabajo ➔ Modelos)
+Para adaptar el comportamiento del modelo a distintas tareas profesionales sin duplicar pesos ni consumir VRAM adicional, se configuran perfiles virtuales derivados en Open-WebUI (**Espacio de Trabajo ➔ Modelos ➔ Crear Modelo `+`**). Cada modelo virtual utiliza como **Modelo Base** a `local/CorpAI-Gen | Legal & Compliance` y define sus propios parámetros de muestreo y prompt de rol:
+
+| Perfil / Modelo Virtual | ID / Slug Sugerido | `temperature` | `min_p` | `top_p` | `top_k` | Caso de Uso y Enfoque Cognitivo |
+| :--- | :--- | :---: | :---: | :---: | :---: | :--- |
+| **`⚖️ CorpAI \| Dictamen y Auditoría`** | `corpai-dictamen` | **`0.15`** | **`0.08`** | `0.95` | **`0`** *(off)* | **Auditoría y Certeza Documental:** Congela la dispersión estocástica. Respuestas periciales con tablas comparativas, citas literales taxativas de artículos, plazos y cláusulas contractuales. Cero licencias retóricas. |
+| **`💼 CorpAI \| Asesor Legal y Redacción`** *(Recomendado estándar)* | `corpai-redaccion` | **`0.35`** | **`0.05`** | `0.95` | **`0`** *(off)* | **Redacción Forense y Ejecutiva:** Equilibrio óptimo entre solidez normativa y fluidez sintáctica. Ideal para escritos procesales, cartas documento, contratos, minutas y correspondencia corporativa formal. |
+| **`💡 CorpAI \| Estrategia y Creatividad`** | `corpai-estrategia` | **`0.80`** | **`0.03`** | `0.90` | **`40`** | **Pensamiento Lateral y Escenarios:** Estimula conexiones semánticas divergentes, hipótesis litigiosas novedosas, vías doctrinarias alternativas y curiosidad agéntica profunda (lectura autónoma de textos íntegros). |
+| **Petición Estándar / Sin Parámetros** *(Gateway Default)* | *(Modelo Base directo)* | **`0.80`** | **`0.05`** | `0.95` | **`40`** | **Línea de Base Histórica:** Configuración por defecto inyectada por el Gateway si la petición llega sin parámetros definidos, preservando la reproducibilidad del benchmark de 34 turnos. |
+
+#### Gobernanza Perimétrica Central y Cascada de Precedencia
+El sistema opera bajo el principio arquitectónico de *Defaults Sensibles con Prevalencia Explícita (Sensible Defaults with Explicit Overrides)*:
+1. **Prevalencia Máxima (Usuario o Modelo Virtual):** Si el cliente envía parámetros explícitos (como los definidos en los modelos virtuales o en los controles del chat de Open-WebUI), el Gateway los respeta de forma íntegra e incondicional.
+2. **Red de Seguridad Centralizada (Gateway Defaults):** Si una petición ingresa sin parámetros (o con `params: {}`), el Gateway intercepta la llamada e inyecta los valores configurados en `.env` (`GATEWAY_DEFAULT_TEMPERATURE=0.80`, `GATEWAY_DEFAULT_MIN_P=0.05`, etc.), impidiendo que el motor caiga en configuraciones no deseadas.
+3. **Ajustabilidad Centralizada:** El administrador puede cambiar estos valores de referencia en el archivo `.env` en cualquier momento sin necesidad de recompilar `llama-server` ni reiniciar los pesos del modelo en VRAM.
 
 ---
 
