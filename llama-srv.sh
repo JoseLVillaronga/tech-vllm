@@ -183,4 +183,6 @@ exec "${LLAMA_BIN}" \
   --threads "${THREADS}" \
   --load-mode "${LOAD_MODE}" \
   --port "${PORT}" \
-  --api-key "${AUTH_KEY}"
+  --api-key "${AUTH_KEY}" \
+#  --spec-type draft-mtp \
+#  --spec-draft-n-max 3
