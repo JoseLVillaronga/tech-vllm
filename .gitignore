@@ -43,3 +43,6 @@ scripts/output/
 # Archivos temporales y scratch
 scratch/
 temp_*/
+
+# Carpeta privada
+private/
