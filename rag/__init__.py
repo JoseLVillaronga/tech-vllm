@@ -8,6 +8,7 @@ from .config import (
     LANCEDB_DIR,
     TABLE_NAME,
     EMBEDDINGS_BACKEND_PORT,
+    EVALUATOR_BACKEND_PORT,
     MASTER_KEY,
     get_mongo_uri,
     MONGO_DB,
@@ -49,6 +50,10 @@ from .search import (
     format_rag_context_for_llm,
 )
 
+from .evaluator import (
+    evaluate_context_sufficiency,
+)
+
 from .reader import (
     fetch_teccam_document_raw,
     get_document_structure,
@@ -63,6 +68,7 @@ __all__ = [
     "LANCEDB_DIR",
     "TABLE_NAME",
     "EMBEDDINGS_BACKEND_PORT",
+    "EVALUATOR_BACKEND_PORT",
     "MASTER_KEY",
     "get_mongo_uri",
     "MONGO_DB",
@@ -92,6 +98,8 @@ __all__ = [
     # search
     "search_knowledge_base",
     "format_rag_context_for_llm",
+    # evaluator
+    "evaluate_context_sufficiency",
     # reader
     "fetch_teccam_document_raw",
     "get_document_structure",

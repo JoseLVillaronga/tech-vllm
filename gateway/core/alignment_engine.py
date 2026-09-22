@@ -422,7 +422,14 @@ async def enrich_chat_payload(
             messages.insert(0, {"role": "system", "content": full_system_header})
 
     # Extraer última consulta del usuario para contextualización y anclaje
-    last_user_msg = next((m for m in reversed(messages) if m.get("role") == "user"), None)
+    last_user_idx = -1
+    last_user_msg = None
+    for i in range(len(messages) - 1, -1, -1):
+        if messages[i].get("role") == "user":
+            last_user_idx = i
+            last_user_msg = messages[i]
+            break
+
     user_query = ""
     if last_user_msg:
         content_val = last_user_msg.get("content", "")
@@ -476,7 +483,14 @@ async def enrich_chat_payload(
                         has_prior_grounding = True
                         break
 
-        should_inject = is_direct_grounding or has_prior_grounding
+        # Si ya se invocaron herramientas en el turno activo, la obligación inicial de grounding ya fue cumplida;
+        # NO re-inyectar la orden perentoria de emitir tool calls para permitir síntesis o abstención honesta.
+        has_active_turn_tools = any(
+            idx >= last_user_idx and (m.get("role") == "tool" or (m.get("role") == "assistant" and m.get("tool_calls")))
+            for idx, m in enumerate(messages)
+        )
+
+        should_inject = (is_direct_grounding or has_prior_grounding) and not has_active_turn_tools
         if should_inject:
             if is_direct_grounding:
                 is_deep = is_broad_or_deep_query(user_query)
@@ -498,7 +512,7 @@ async def enrich_chat_payload(
                     "Esta consulta involucra normativa, procedimientos, contratos, políticas o documentación interna. "
                     "Conforme a las Directivas Fundamentales, tienes ESTRICTAMENTE PROHIBIDO responder de memoria paramétrica, deducir o suponer el contenido. "
                     "PROHIBICIÓN ABSOLUTA de emitir texto preliminar, introducciones, preámbulos, razonamientos o saludos antes de invocar la herramienta (ej: NO escribas 'Para responder...', 'Siguiendo el protocolo...', 'Procedo a consultar...'). "
-                    "Tu primer token emitido DEBE ser la llamada a la herramienta formal (<tool_call>). "
+                    "Debes iniciar tu respuesta invocando formalmente la herramienta pertinente. "
                     f"{tool_directive} "
                     "Si se solicita jurisprudencia y no consta en las fuentes recuperadas, declara con honestidad su ausencia sin inventar fallos, carátulas ni salas."
                 )
@@ -508,7 +522,7 @@ async def enrich_chat_payload(
                     "Esta consulta es una repregunta o solicitud de detalles sobre la normativa, procedimiento, contrato o documentación técnica abordada previamente. "
                     "Conforme a las Directivas Fundamentales, tienes ESTRICTAMENTE PROHIBIDO responder de memoria paramétrica, inventar o suponer artículos o clasificaciones. "
                     "PROHIBICIÓN ABSOLUTA de emitir texto preliminar, introducciones, preámbulos, razonamientos o saludos antes de invocar la herramienta (ej: NO escribas 'Para responder...', 'Siguiendo el protocolo...', 'Procedo a consultar...'). "
-                    "Tu primer token emitido DEBE ser la llamada a la herramienta formal (<tool_call>). "
+                    "Debes iniciar tu respuesta invocando formalmente la herramienta pertinente. "
                     "Es OBLIGATORIO emitir de inmediato una llamada a tus herramientas ('obtener_estructura_documento', 'leer_documento_completo' o 'buscar_en_base_de_conocimiento') "
                     "para recuperar los textos oficiales, capítulos exactos y artículos literales antes de responder. "
                     "Si se solicita jurisprudencia y no consta en las fuentes recuperadas, declara con honestidad su ausencia sin inventar fallos, carátulas ni salas."
@@ -516,10 +530,10 @@ async def enrich_chat_payload(
 
             content_val = last_user_msg.get("content")
             if isinstance(content_val, str):
-                if "[DIRECTIVA DE CONTROL Y GROUNDING OBLIGATORIO" not in content_val:
+                if "[DIRECTIVA DE CONTROL Y GROUNDING OBLIGATORIO" not in content_val and "[FASE DE INVESTIGACIÓN" not in content_val:
                     last_user_msg["content"] = f"{content_val}{reminder_text}"
             elif isinstance(content_val, list):
-                if not any("[DIRECTIVA DE CONTROL Y GROUNDING OBLIGATORIO" in str(p.get("text", "")) for p in content_val if isinstance(p, dict)):
+                if not any("[DIRECTIVA DE CONTROL Y GROUNDING OBLIGATORIO" in str(p.get("text", "")) or "[FASE DE INVESTIGACIÓN" in str(p.get("text", "")) for p in content_val if isinstance(p, dict)):
                     content_val.append({"type": "text", "text": reminder_text})
 
     # 2.1 Refuerzo de Foco Activo en Salidas de Herramientas (Anti-Attention Decay & Anti-Crosstalk)

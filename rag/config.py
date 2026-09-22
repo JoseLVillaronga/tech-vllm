@@ -13,6 +13,7 @@ PROJECT_DIR = str(Path(__file__).resolve().parent.parent)
 LANCEDB_DIR = os.getenv("LANCEDB_PATH", os.path.join(PROJECT_DIR, "data", "lancedb"))
 TABLE_NAME = os.getenv("LANCEDB_TABLE_NAME", "teccam_knowledge_base")
 EMBEDDINGS_BACKEND_PORT = int(os.getenv("EMBEDDINGS_BACKEND_PORT", "18005"))
+EVALUATOR_BACKEND_PORT = int(os.getenv("EVALUATOR_BACKEND_PORT", "18300"))
 
 TECCAM_PDF_URL_BASE = os.getenv("TECCAM_PDF_URL_BASE", "http://127.0.0.1:5022").rstrip("/")
 TECCAM_PDF_API_KEY = os.getenv("TECCAM_PDF_API_KEY", "").strip()
@@ -25,6 +26,7 @@ __all__ = [
     "LANCEDB_DIR",
     "TABLE_NAME",
     "EMBEDDINGS_BACKEND_PORT",
+    "EVALUATOR_BACKEND_PORT",
     "MASTER_KEY",
     "get_mongo_uri",
     "MONGO_DB",

@@ -87,14 +87,13 @@ class TestToolGovernor(unittest.TestCase):
         self.assertIn("[FASE DE INVESTIGACIÓN CONCLUIDA - SÍNTESIS FINAL OBLIGATORIA (MEA)]", user_msg)
         self.assertIn("Queda TERMINANTEMENTE LEVANTADA la obligación de invocar herramientas", user_msg)
 
-    def test_insufficient_data_cut_after_4_calls(self):
-        # 4 llamadas con muy poco texto (< 5000 tokens, por ej: ~500 caracteres totales = ~180 tokens)
+    def test_conditional_governance_insufficient_data(self):
+        # 2 llamadas con texto insuficiente: las herramientas deben permanecer activas con dictamen condicional
         messages = [
-            {"role": "user", "content": "Tratado extraterrestre intergaláctico"},
+            {"role": "user", "content": "Tratado interplanetario sobre minería lunar"},
+            {"role": "assistant", "tool_calls": [{"id": "c_1", "function": {"name": "buscar"}}]},
+            {"role": "tool", "tool_call_id": "c_1", "content": "No se encontraron fragmentos relevantes en la base documental."},
         ]
-        for i in range(4):
-            messages.append({"role": "assistant", "tool_calls": [{"id": f"c_{i}", "function": {"name": "buscar"}}]})
-            messages.append({"role": "tool", "tool_call_id": f"c_{i}", "content": "Sin resultados en base de datos."})
 
         data = {
             "model": "Qwen3.6-35B-A3B-Q4_K_M",
@@ -104,40 +103,80 @@ class TestToolGovernor(unittest.TestCase):
 
         modified_data, report = apply_tool_budget_governor(data)
 
-        self.assertEqual(report["action"], "insufficient_data_cut")
-        self.assertTrue(report["tools_disabled"])
-        self.assertNotIn("tools", modified_data)
+        self.assertEqual(report["action"], "conditional_insufficient")
+        self.assertFalse(report["tools_disabled"])
+        self.assertIn("tools", modified_data)
 
         last_tool = modified_data["messages"][-1]
-        self.assertIn("⚠️ [GOBERNADOR RAG - FUENTES DOCUMENTALES INSUFICIENTES]", last_tool["content"])
-        self.assertIn("No tengo datos suficientes en las fuentes oficiales", last_tool["content"])
+        self.assertIn("⚠️ [DICTAMEN RAG - CONDICIÓN DE SUFICIENCIA]", last_tool["content"])
+        self.assertIn("SI Y SOLO SI vas a contestar definitivamente", last_tool["content"])
+        self.assertIn("DEBES ABSTENERTE", last_tool["content"])
+        self.assertIn("SI CONSIDERAS NECESARIO PROFUNDIZAR", last_tool["content"])
 
-    def test_discretionary_zone_after_4_calls(self):
-        # 4 llamadas con texto moderado (entre 5.000 y 10.000 tokens: ~20.000 caracteres = ~7.100 tokens)
-        chunk = "Contenido normativo oficial del tratado " * 125  # ~5.000 caracteres cada uno
+    def test_max_calls_abstention_after_7_calls(self):
+        # 7 llamadas con datos insuficientes: circuit breaker duro por cupo de consultas (abstención)
         messages = [
-            {"role": "user", "content": "Lista de acuerdos comerciales"},
+            {
+                "role": "user",
+                "content": "Tratado desconocido\n\n[DIRECTIVA DE CONTROL Y GROUNDING OBLIGATORIO (MEA)]:\nTu primer token emitido DEBE ser la llamada a la herramienta formal (<tool_call>)."
+            },
         ]
-        for i in range(4):
-            messages.append({"role": "assistant", "tool_calls": [{"id": f"c_{i}", "function": {"name": "leer"}}]})
-            messages.append({"role": "tool", "tool_call_id": f"c_{i}", "content": chunk})
+        for i in range(7):
+            messages.append({"role": "assistant", "tool_calls": [{"id": f"c_{i}", "function": {"name": "buscar"}}]})
+            messages.append({"role": "tool", "tool_call_id": f"c_{i}", "content": "No se encontraron fragmentos relevantes."})
 
         data = {
             "model": "Qwen3.6-35B-A3B-Q4_K_M",
-            "tools": [{"type": "function", "function": {"name": "leer"}}],
+            "tools": [{"type": "function", "function": {"name": "buscar"}}],
             "messages": messages
         }
 
         modified_data, report = apply_tool_budget_governor(data)
 
-        self.assertEqual(report["action"], "discretionary_zone")
-        # Herramientas NO deben estar deshabilitadas (el modelo puede continuar a su criterio)
-        self.assertFalse(report["tools_disabled"])
-        self.assertIn("tools", modified_data)
+        self.assertEqual(report["action"], "max_calls_abstention")
+        self.assertTrue(report["tools_disabled"])
+        self.assertNotIn("tools", modified_data)
 
         last_tool = modified_data["messages"][-1]
-        self.assertIn("ℹ️ [GOBERNADOR RAG - ZONA DISCRECIONAL]", last_tool["content"])
-        self.assertIn("puede continuar haciendo llamadas a herramientas a su propio criterio", last_tool["content"])
+        self.assertIn("⚠️ [GOBERNADOR RAG - LÍMITE DE CONSULTAS ALCANZADO (ABSTENCIÓN MEA)]", last_tool["content"])
+        self.assertIn("No tengo datos suficientes en las fuentes oficiales", last_tool["content"])
+
+        user_msg = modified_data["messages"][0]["content"]
+        self.assertNotIn("[DIRECTIVA DE CONTROL Y GROUNDING OBLIGATORIO", user_msg)
+        self.assertIn("[FASE DE INVESTIGACIÓN CONCLUIDA - INSUFICIENCIA DE FUENTES (MEA)]", user_msg)
+
+    def test_max_calls_synthesis_after_7_calls(self):
+        # 7 llamadas con datos suficientes (fast pass de alta coincidencia): circuit breaker duro (síntesis)
+        chunk = "--- FUENTE [1]: \"Ley Oficial\" (Tema: Derecho | Sección: General | Autor: Congreso | Coincidencia: 92%) ---\nEl artículo 1 establece claramente la norma aplicable."
+        messages = [
+            {
+                "role": "user",
+                "content": "¿Qué dispone el artículo 1 de la norma?\n\n[DIRECTIVA DE CONTROL Y GROUNDING OBLIGATORIO (MEA)]:\nTu primer token emitido DEBE ser la llamada a la herramienta formal (<tool_call>)."
+            },
+        ]
+        for i in range(7):
+            messages.append({"role": "assistant", "tool_calls": [{"id": f"c_{i}", "function": {"name": "buscar"}}]})
+            messages.append({"role": "tool", "tool_call_id": f"c_{i}", "content": chunk})
+
+        data = {
+            "model": "Qwen3.6-35B-A3B-Q4_K_M",
+            "tools": [{"type": "function", "function": {"name": "buscar"}}],
+            "messages": messages
+        }
+
+        modified_data, report = apply_tool_budget_governor(data)
+
+        self.assertEqual(report["action"], "max_calls_synthesis")
+        self.assertTrue(report["tools_disabled"])
+        self.assertNotIn("tools", modified_data)
+
+        last_tool = modified_data["messages"][-1]
+        self.assertIn("🛑 [GOBERNADOR RAG - LÍMITE DE CONSULTAS ALCANZADO]", last_tool["content"])
+        self.assertIn("Proceda de inmediato a redactar su respuesta final", last_tool["content"])
+
+        user_msg = modified_data["messages"][0]["content"]
+        self.assertNotIn("[DIRECTIVA DE CONTROL Y GROUNDING OBLIGATORIO", user_msg)
+        self.assertIn("[FASE DE INVESTIGACIÓN CONCLUIDA - SÍNTESIS FINAL OBLIGATORIA (MEA)]", user_msg)
 
     def test_healthy_zone_above_10k_tokens(self):
         # Acumulando > 10.000 tokens (ej: 29 chars * 1100 = 31.900 caracteres / 2.8 = ~11.392 tokens)

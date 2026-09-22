@@ -2,6 +2,7 @@
 rag.search - Búsqueda híbrida (Vectorial 1024D + FTS BM25), boosting normativo, expansión contigua y formateo LLM.
 """
 
+import os
 import re
 import sys
 import time
@@ -10,6 +11,9 @@ from .db import get_table
 from .embeddings import generate_embedding
 from .settings import get_rag_settings
 from .matching import normalize_text
+
+DEFAULT_RAG_MIN_SCORE = 0.50
+DEFAULT_RAG_MAX_DELTA = 0.30
 
 
 def search_knowledge_base(
@@ -21,7 +25,8 @@ def search_knowledge_base(
     vigencia: Optional[str] = None,
     solo_vigentes: bool = False,
     top_k: int = 5,
-    min_score: float = 0.25,
+    min_score: Optional[float] = None,
+    max_delta: Optional[float] = None,
     table_name: Optional[str] = None
 ) -> List[Dict[str, Any]]:
     """
@@ -36,7 +41,8 @@ def search_knowledge_base(
         vigencia: Filtro opcional por estado de vigencia ('vigente', 'derogado', etc.).
         solo_vigentes: Si es True, restringe exclusivamente a normas con doc_vigencia = 'vigente'.
         top_k: Cantidad de fragmentos más relevantes a retornar.
-        min_score: Umbral mínimo de similitud/relevancia.
+        min_score: Umbral mínimo de similitud/relevancia (por defecto 0.50).
+        max_delta: Caída máxima de coincidencia relativa respecto al mejor fragmento (por defecto 0.30).
         table_name: Nombre opcional de la tabla/base de la empresa.
         
     Returns:
@@ -46,6 +52,23 @@ def search_knowledge_base(
     table = get_table(table_name)
     if table is None or len(table) == 0:
         return []
+
+    # Resolver umbrales de corte (Paso 1 Criba Semántica)
+    if min_score is not None:
+        effective_min_score = float(min_score)
+    else:
+        try:
+            effective_min_score = float(os.getenv("RAG_MIN_SCORE", str(DEFAULT_RAG_MIN_SCORE)))
+        except (ValueError, TypeError):
+            effective_min_score = DEFAULT_RAG_MIN_SCORE
+
+    if max_delta is not None:
+        effective_max_delta = float(max_delta)
+    else:
+        try:
+            effective_max_delta = float(os.getenv("RAG_MAX_DELTA", str(DEFAULT_RAG_MAX_DELTA)))
+        except (ValueError, TypeError):
+            effective_max_delta = DEFAULT_RAG_MAX_DELTA
 
     query_str = query.strip()
     if not query_str:
@@ -220,7 +243,7 @@ def search_knowledge_base(
             if re.search(r"\b(?:disposiciones\s+generales|disposici[oó]n\s+general|parte\s+general|t[ií]tulo\s+preliminar)\b", sec_p, re.IGNORECASE):
                 final_sim += 0.06
             
-        if final_sim >= min_score or len(results) < top_k:
+        if final_sim >= effective_min_score:
             results.append({
                 "id": item.get("id"),
                 "doc_id": item.get("doc_id"),
@@ -242,6 +265,15 @@ def search_knowledge_base(
 
     # Ordenar por score híbrido preliminar
     preliminary_results = sorted(results, key=lambda x: x["similarity"], reverse=True)[:top_k]
+
+    # Criba de Caída de Pendiente Relativa (Relative Drop-Off / Anti-Ruido Secundario):
+    # Si el mejor fragmento supera el corte, no arrastrar fragmentos cuya distancia sea excesiva (> max_delta)
+    if preliminary_results and effective_max_delta > 0:
+        leader_sim = preliminary_results[0]["similarity"]
+        preliminary_results = [
+            r for r in preliminary_results
+            if (leader_sim - r["similarity"]) <= effective_max_delta
+        ]
 
     # Expansión de Chunks Adyacentes (Anti-Truncamiento / Ley 4):
     # Si un fragmento es breve (< 350 tokens) o forma parte de un artículo extenso fraccionado,
