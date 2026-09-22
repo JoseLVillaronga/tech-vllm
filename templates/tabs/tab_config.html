@@ -140,7 +140,54 @@
                             </div>
                         </div>
 
-                        <!-- Inferencia Llama.cpp (Motor Local Alternativo / MoE) -->
+                        <!-- Evaluador RAG y Gobernanza Deductiva (CRAG) -->
+                        <div class="space-y-4 pt-4 border-t border-slate-800/40">
+                            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-2">
+                                <div>
+                                    <h3 class="text-sm font-bold text-teal-400 uppercase font-mono tracking-wider flex items-center gap-2">
+                                        <span>⚖️</span> Evaluador RAG de Suficiencia & Gobernanza CRAG
+                                    </h3>
+                                    <p class="text-xs text-slate-400 mt-0.5">Microservicio `llama-server` desacoplado para evaluación formal de suficiencia documental (`twil-lm3-q4_k_m.gguf` en puerto 18300).</p>
+                                </div>
+                                <div class="flex flex-wrap gap-2">
+                                    <button type="button" onclick="controlService('evaluator', 'restart')" class="px-3 py-1.5 rounded-lg bg-teal-950/60 hover:bg-teal-900 border border-teal-600/40 text-xs font-semibold text-teal-200 transition-all flex items-center gap-1 cursor-pointer">
+                                        <span>🔄</span> Reiniciar vllm-evaluator
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                                <div>
+                                    <label class="block text-xs font-semibold text-slate-300 mb-1">EVALUATOR_BACKEND_PORT</label>
+                                    <input type="number" name="EVALUATOR_BACKEND_PORT" placeholder="18300" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-teal-500 font-mono">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-semibold text-slate-300 mb-1">EVALUATOR_ALIAS</label>
+                                    <input type="text" name="EVALUATOR_ALIAS" placeholder="twil-lm3-q4_k_m" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-teal-500 font-mono">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-semibold text-slate-300 mb-1">EVALUATOR_GPU_LAYERS</label>
+                                    <input type="number" name="EVALUATOR_GPU_LAYERS" placeholder="99" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-teal-500 font-mono">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-semibold text-slate-300 mb-1">EVALUATOR_CTX_SIZE</label>
+                                    <input type="number" name="EVALUATOR_CTX_SIZE" placeholder="8192" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-teal-500 font-mono">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-semibold text-slate-300 mb-1">RAG_MIN_SCORE (Criba)</label>
+                                    <input type="text" name="RAG_MIN_SCORE" placeholder="0.50" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-teal-500 font-mono">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-semibold text-slate-300 mb-1">RAG_MAX_DELTA (Caída)</label>
+                                    <input type="text" name="RAG_MAX_DELTA" placeholder="0.30" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-teal-500 font-mono">
+                                </div>
+                                <div class="sm:col-span-2 md:col-span-3 lg:col-span-6">
+                                    <label class="block text-xs font-semibold text-slate-300 mb-1">EVALUATOR_MODEL (Ruta del Modelo Deductivo GGUF)</label>
+                                    <input type="text" name="EVALUATOR_MODEL" placeholder="$LLAMA_DIR/models/twil-lm3-q4_k_m.gguf" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-teal-500 font-mono">
+                                </div>
+                            </div>
+                        </div>
+
                         <!-- Inferencia Llama.cpp (Motor Local Alternativo / MoE / Denso) -->
                         <div class="space-y-4 pt-4 border-t border-slate-800/40">
                             <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-2">

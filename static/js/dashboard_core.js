@@ -164,6 +164,7 @@
                 updateServiceBadge('status-rag_sync', data.services?.rag_sync?.status || 'inactive');
                 updateServiceBadge('status-docling', data.services?.docling?.status || 'inactive');
                 updateServiceBadge('status-gateway', data.services?.gateway?.status || 'inactive');
+                updateServiceBadge('status-evaluator', data.services?.evaluator?.status || 'inactive');
                 
                 // Hora de actualización
                 const now = new Date();

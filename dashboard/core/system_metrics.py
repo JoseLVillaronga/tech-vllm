@@ -18,7 +18,8 @@ SERVICES = {
     "vision": "vllm-vision",
     "rag_sync": "vllm-rag-sync.timer",
     "gateway": "vllm-gateway",
-    "docling": "docling"
+    "docling": "docling",
+    "evaluator": "vllm-evaluator"
 }
 
 # Puertos locales de cada servicio
@@ -36,7 +37,8 @@ SERVICE_PORTS = {
     "vision": 18200,
     "rag_sync": "00:00:00",
     "gateway": "8000-8020",
-    "docling": "5020 / 8020"
+    "docling": "5020 / 8020",
+    "evaluator": 18300
 }
 
 # Puertos internos de los motores reales detrás del Gateway
@@ -52,7 +54,8 @@ BACKEND_PORTS = {
     "image": int(os.getenv("IMAGE_BACKEND_PORT", "18004")),
     "vision": int(os.getenv("VISION_BACKEND_PORT", "18200")),
     "embeddings": int(os.getenv("EMBEDDINGS_BACKEND_PORT", "18005")),
-    "docling": int(os.getenv("DOCLING_BACKEND_PORT", "5020"))
+    "docling": int(os.getenv("DOCLING_BACKEND_PORT", "5020")),
+    "evaluator": int(os.getenv("EVALUATOR_BACKEND_PORT", "18300"))
 }
 
 
