@@ -58,6 +58,9 @@ BATCH_SIZE="${EVALUATOR_BATCH_SIZE:-2048}"
 UBATCH_SIZE="${EVALUATOR_UBATCH_SIZE:-512}"
 GPU_LAYERS="${EVALUATOR_GPU_LAYERS:-99}"
 THREADS="${EVALUATOR_THREADS:-8}"
+PARALLEL="${EVALUATOR_PARALLEL:-1}"
+CACHE_TYPE_K="${EVALUATOR_CACHE_TYPE_K:-q4_0}"
+CACHE_TYPE_V="${EVALUATOR_CACHE_TYPE_V:-q4_0}"
 AUTH_KEY="${API_KEY:-}"
 
 echo "============================================================"
@@ -73,6 +76,9 @@ echo "⚡ Batch Lógico:     ${BATCH_SIZE}"
 echo "🚀 Micro-Batch (uB): ${UBATCH_SIZE}"
 echo "🎮 GPU Layers:       ${GPU_LAYERS} (99 = Aceleración GPU CUDA)"
 echo "🧵 Hilos CPU:        ${THREADS}"
+echo "👥 Slots Paralelos:  ${PARALLEL}"
+echo "🗜️ KV Cache K:       ${CACHE_TYPE_K}"
+echo "🗜️ KV Cache V:       ${CACHE_TYPE_V}"
 echo "============================================================"
 
 # Ejecutar llama-server reemplazando el proceso actual
@@ -84,5 +90,8 @@ exec "${LLAMA_BIN}" \
   --ubatch-size "${UBATCH_SIZE}" \
   --gpu-layers "${GPU_LAYERS}" \
   --threads "${THREADS}" \
+  --parallel "${PARALLEL}" \
+  --cache-type-k "${CACHE_TYPE_K}" \
+  --cache-type-v "${CACHE_TYPE_V}" \
   --port "${PORT}" \
   --api-key "${AUTH_KEY}"

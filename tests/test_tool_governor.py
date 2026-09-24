@@ -13,7 +13,24 @@ from gateway.core.tool_governor import (
 )
 
 
+import os
+from unittest.mock import patch
+
+
 class TestToolGovernor(unittest.TestCase):
+
+    def setUp(self):
+        self._env_patch = patch.dict(os.environ, {
+            "GATEWAY_MAX_TOOL_CALLS_PER_TURN": "7",
+            "GATEWAY_MAX_TOOL_TOKENS": "50000",
+            "GATEWAY_MIN_TOOL_TOKENS": "10000",
+            "GATEWAY_INSUFFICIENT_TOOL_TOKENS": "5000",
+            "GATEWAY_MAX_EXPLORATION_CALLS": "4",
+        })
+        self._env_patch.start()
+
+    def tearDown(self):
+        self._env_patch.stop()
 
     def test_broad_or_deep_query_detection(self):
         self.assertTrue(is_broad_or_deep_query("Pasame una lista de tratados internacionales vigentes, fundamenta en profundidad"))
@@ -147,7 +164,7 @@ class TestToolGovernor(unittest.TestCase):
 
     def test_max_calls_synthesis_after_7_calls(self):
         # 7 llamadas con datos suficientes (fast pass de alta coincidencia): circuit breaker duro (síntesis)
-        chunk = "--- FUENTE [1]: \"Ley Oficial\" (Tema: Derecho | Sección: General | Autor: Congreso | Coincidencia: 92%) ---\nEl artículo 1 establece claramente la norma aplicable."
+        chunk = "--- FUENTE [1]: \"Ley Oficial\" (Tema: Derecho | Sección: General | Autor: Congreso | Similitud: 92%) ---\nEl artículo 1 establece claramente la norma aplicable."
         messages = [
             {
                 "role": "user",

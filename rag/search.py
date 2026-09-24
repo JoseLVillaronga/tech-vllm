@@ -381,7 +381,7 @@ def format_rag_context_for_llm(results: List[Dict[str, Any]]) -> str:
             action_hint = f"💡 [Acción Disponible: Para leer este documento completo o hacer una síntesis integral usa: leer_documento_completo(doc_id=\"{doc_id}\")]"
         
         snippets.append(
-            f"--- FUENTE [{idx}]: \"{doc_title}\" [doc_id: {doc_id}] (Tema: {doc_topic}{vig_tag}{pub_tag} | Sección: {section} | Autor: {author}{tokens_tag} | Coincidencia: {sim_pct}%) ---\n"
+            f"--- FUENTE [{idx}]: \"{doc_title}\" [doc_id: {doc_id}] (Tema: {doc_topic}{vig_tag}{pub_tag} | Sección: {section} | Autor: {author}{tokens_tag} | Similitud: {sim_pct}%) ---\n"
             f"{vig_alert}"
             f"{action_hint}\n"
             f"{content}"

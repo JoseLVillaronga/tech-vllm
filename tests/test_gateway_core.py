@@ -681,6 +681,14 @@ class TestGatewayCore(unittest.TestCase):
         q4 = "¿Cuáles son los derechos fundamentales de los empleados?"
         self.assertIsNotNone(GROUNDING_TRIGGERS_PATTERN.search(q4))
 
+        # Consulta 15 del benchmark: Minería de asteroides, marco regulatorio y legislación provincial
+        q5 = "**Detalla el marco regulatorio tributario y ambiental aplicable a la explotación y aprovechamiento de minerales en asteroides cercanos a la Tierra según la legislación provincial de Catamarca.**"
+        self.assertIsNotNone(GROUNDING_TRIGGERS_PATTERN.search(q5))
+
+        # Consultas de control negativo (saludos y casuales no deben activar)
+        self.assertIsNone(GROUNDING_TRIGGERS_PATTERN.search("Hola, ¿cómo estás?"))
+        self.assertIsNone(GROUNDING_TRIGGERS_PATTERN.search("Escribe un poema sobre el mar"))
+
     def test_company_profile_thematic_neutrality_clause(self):
         from gateway.core.alignment_engine import format_company_profile_block
 

@@ -61,12 +61,18 @@ DEFAULT_INVARIANTS_PROMPT = """🏛️ [DIRECTIVAS FUNDAMENTALES Y DEBER DE VERA
 
 GROUNDING_TRIGGERS_PATTERN = re.compile(
     r"\b("
-    # 1. Normas, leyes, códigos, tratados y jurisprudencia
-    r"constituci[oó]n|art[ií]culo|art[ií]culos|art\.|ley|leyes|c[oó]digo|c[oó]digos|dnu|decreto|decretos|"
+    # 1. Normas, leyes, códigos, tratados, regulación y jurisprudencia
+    r"constituci[oó]n|art[ií]culo|art[ií]culos|art\.|ley|leyes|legislaci[oó]n|legislaciones|legislativ[ao]s?|legislatura|legislaturas|"
+    r"c[oó]digo|c[oó]digos|dnu|decreto|decretos|"
     r"tratado|tratados|convenio|convenios|convenci[oó]n|convenciones|pacto|pactos|"
-    r"resoluci[oó]n|resoluciones|reglamento|reglamentos|estatuto|estatutos|ordenanza|ordenanzas|"
+    r"resoluci[oó]n|resoluciones|reglamento|reglamentos|regulatori[ao]s?|estatuto|estatutos|ordenanza|ordenanzas|"
     r"jurisprudencia|fallo|fallos|doctrina|precedente|precedentes|"
-    r"derecho|derechos|jur[ií]dic[ao]s?|legal|legales|normativ[ao]s?|"
+    r"derecho|derechos|jur[ií]dic[ao]s?|legal|legales|normativ[ao]s?|marco\s+(regulatorio|normativo|legal|jur[ií]dico)|"
+    r"tributari[ao]s?|tributo|tributos|impositiv[ao]s?|impuesto|impuestos|fiscal|fiscales|arancel|aranceles|arancelari[ao]s?|gravamen|grav[aá]menes|"
+    r"ambiental|ambientales|ecol[oó]gic[ao]s?|miner[ií]a|minero|minera|mineros|mineras|mineral|minerales|hidrocarburos|hidrocarbur[ií]fer[ao]s?|energ[ií]a|energ[eé]tic[ao]s?|"
+    r"penal|penales|delito|delitos|civil|civiles|comercial|comerciales|societari[ao]s?|laboral|laborales|"
+    r"administrativ[ao]s?|constitucional|constitucionales|prescripci[oó]n|derogaci[oó]n|"
+    r"provincial|provinciales|nacional|nacionales|municipal|municipales|"
     # 2. Procedimientos, instructivos y circuitos operativos
     r"procedimiento|procedimientos|instructivo|instructivos|protocolo|protocolos|flujograma|flujogramas|pasos|circuito|circuitos|"
     r"tr[aá]mite|tr[aá]mites|expediente|expedientes|requisito|requisitos|condici[oó]n|condiciones|etapa|etapas|gu[ií]a|gu[ií]as|"
@@ -375,6 +381,8 @@ async def enrich_chat_payload(
             fn = t.get("function", {})
             if isinstance(fn, dict) and "name" in fn:
                 tool_names.append(fn["name"])
+            elif "name" in t:
+                tool_names.append(t["name"])
 
     has_pdf_tool = "generate_pdf_document" in tool_names or "generate_pdf" in tool_names
     has_doc_tool = "leer_documento_completo" in tool_names or "read_document" in tool_names
@@ -452,7 +460,19 @@ async def enrich_chat_payload(
                         first_part["text"] = f"[CONSULTA ACTUAL DEL USUARIO]:\n{txt}"
 
     # 2. Refuerzo Dinámico de Grounding Anti-Decay (MEA) en Consultas Sensibles y Repreguntas Contextuales (sólo en 'full')
-    has_rag_tools = any(t in tool_names for t in ["buscar_en_base_de_conocimiento", "obtener_estructura_documento", "leer_documento_completo", "obtener_indice_biblioteca", "rag_search"])
+    rag_tool_signatures = [
+        "buscar_en_base_de_conocimiento",
+        "obtener_estructura_documento",
+        "leer_documento_completo",
+        "obtener_indice_biblioteca",
+        "rag_search",
+        "busqueda_rag_teccam_lancedb",
+        "base_de_conocimiento",
+    ]
+    has_rag_tools = any(
+        t in rag_tool_signatures or any(kw in t.lower() for kw in ["rag", "lancedb", "base_de_conocimiento"])
+        for t in tool_names
+    )
     if mode == "full" and has_rag_tools and user_query and last_user_msg:
         is_direct_grounding = bool(GROUNDING_TRIGGERS_PATTERN.search(user_query))
         

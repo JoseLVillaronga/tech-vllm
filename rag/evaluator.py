@@ -105,8 +105,8 @@ def evaluate_context_sufficiency(
                 "faltantes": ["información documental"],
                 "evaluador": "vacio"
             }
-        # Intentar extraer porcentaje de coincidencia si el texto proviene de format_rag_context_for_llm
-        sim_match = re.search(r"Coincidencia:\s*(\d+)%", context_text)
+        # Intentar extraer porcentaje de similitud si el texto proviene de format_rag_context_for_llm
+        sim_match = re.search(r"(?:Similitud|Coincidencia):\s*(\d+)%", context_text)
         if sim_match:
             top_similarity = float(sim_match.group(1)) / 100.0
     else:
