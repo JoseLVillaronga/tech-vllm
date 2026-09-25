@@ -54,7 +54,13 @@ fi
 
 # 5. Parámetros de Inferencia con Fallbacks Deterministas
 PORT="${LLAMA_PORT:-${GEMMA_BACKEND_PORT:-18100}}"
-ALIAS="${LLAMA_ALIAS:-Qwen3.6-35B-A3B-Q4_K_M}"
+MODEL_ID="${LLAMA_MODEL_ID:-CorpAI-Gen}"
+ALIAS="${LLAMA_ALIAS:-${MODEL_ID}}"
+if [ -n "${MODEL_ID}" ] && [ "${MODEL_ID}" != "${ALIAS}" ]; then
+    FULL_ALIAS="${MODEL_ID},${ALIAS}"
+else
+    FULL_ALIAS="${ALIAS}"
+fi
 CTX_SIZE="${LLAMA_CTX_SIZE:-131072}"
 BATCH_SIZE="${LLAMA_BATCH_SIZE:-4096}"
 UBATCH_SIZE="${LLAMA_UBATCH_SIZE:-1024}"
@@ -147,6 +153,7 @@ echo "============================================================"
 echo "👤 Usuario Ejecutor: $(whoami) (Directorio Base: ${USER_HOME})"
 echo "📍 Binario:          ${LLAMA_BIN}"
 echo "📦 Modelo:           ${MODEL_PATH}"
+echo "🆔 Model ID:         ${MODEL_ID}"
 echo "🏷️ Alias:            ${ALIAS}"
 echo "🏗️ Arquitectura:     ${ARCH_TYPE} (MoE: ${MOE_DESC})"
 echo "💾 KV Cache:         ${KV_CACHE_DESC}"
@@ -167,7 +174,7 @@ echo "============================================================"
 # Reemplazar la shell por el proceso llama-server para gestión nativa en systemd
 exec "${LLAMA_BIN}" \
   --model "${MODEL_PATH}" \
-  --alias "${ALIAS}" \
+  --alias "${FULL_ALIAS}" \
   "${MMPROJ_ARGS[@]}" \
   "${MOE_ARGS[@]}" \
   "${CACHE_ARGS[@]}" \

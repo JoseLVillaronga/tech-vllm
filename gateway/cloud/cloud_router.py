@@ -3,7 +3,7 @@ import sys
 import json
 import time
 import httpx
-from datetime import datetime
+from datetime import datetime, timezone
 from fastapi import Response, HTTPException, status
 from config import API_KEY as MASTER_KEY, env
 from gateway.core.database import get_db
@@ -32,12 +32,50 @@ async def handle_models_list(token: str, key_doc: dict, current_target_port: int
                     headers_local = {"Authorization": f"Bearer {MASTER_KEY}"}
                     resp_local = await temp_cli.get(f"http://127.0.0.1:{current_target_port}/v1/models", headers=headers_local)
                     if resp_local.status_code == 200:
-                        local_data = resp_local.json().get("data", [])
+                        local_json = resp_local.json()
+                        local_data = local_json.get("data", [])
+                        ollama_models = local_json.get("models", [])
                         for lm in local_data:
                             raw_id = lm.get("id", "")
-                            prefixed_id = f"local/{raw_id}" if not raw_id.startswith("local/") else raw_id
+                            aliases = lm.get("aliases", [])
+                            if isinstance(aliases, str):
+                                aliases = [aliases]
+                            elif not isinstance(aliases, list):
+                                aliases = []
+
+                            # 1. Determinar ID limpio (slug compatible con regex estricto de Open-WebUI)
+                            clean_id = raw_id
+                            if not clean_id or any(c in clean_id for c in ["|", "&", " ", "\t"]):
+                                env_id = get_env_setting("LLAMA_MODEL_ID") or get_env_setting("VLLM_MODEL_ID")
+                                if env_id:
+                                    clean_id = env_id.strip()
+                                elif "|" in raw_id:
+                                    clean_id = raw_id.split("|")[0].strip()
+
+                            # 2. Determinar nombre descriptivo de visualización (DisplayName)
+                            display_name = ""
+                            for a in aliases:
+                                if a and a != clean_id:
+                                    display_name = a
+                                    break
+                            if not display_name and aliases:
+                                display_name = aliases[0]
+                            if not display_name and ollama_models and isinstance(ollama_models, list):
+                                display_name = ollama_models[0].get("name", "")
+                            if not display_name:
+                                display_name = get_env_setting("LLAMA_ALIAS") or get_env_setting("VLLM_ALIAS") or clean_id
+
+                            # Prefijar con local/ para consistencia visual con el resto de proveedores (ollama/, deepseek/, etc.)
+                            if not display_name.startswith("local/"):
+                                display_name = f"local/{display_name}"
+
+                            prefixed_id = f"local/{clean_id}" if not clean_id.startswith("local/") else clean_id
+                            all_aliases = list(dict.fromkeys([display_name, prefixed_id, clean_id] + aliases))
+
                             combined_models.append({
                                 "id": prefixed_id,
+                                "name": display_name,
+                                "aliases": all_aliases,
                                 "object": "model",
                                 "created": lm.get("created", int(time.time())),
                                 "owned_by": "local"
@@ -49,6 +87,7 @@ async def handle_models_list(token: str, key_doc: dict, current_target_port: int
                         if ollama_search_on and ollama_api_key:
                             combined_models.append({
                                 "id": "local/gemma-4-web",
+                                "name": "local/gemma-4-web (Búsqueda Web)",
                                 "object": "model",
                                 "created": int(time.time()),
                                 "owned_by": "local-web-search"
@@ -57,6 +96,7 @@ async def handle_models_list(token: str, key_doc: dict, current_target_port: int
                         # Exponer modelo virtual local/gemma-4-rag (Base de Conocimiento LanceDB)
                         combined_models.append({
                             "id": "local/gemma-4-rag",
+                            "name": "local/gemma-4-rag (LanceDB RAG)",
                             "object": "model",
                             "created": int(time.time()),
                             "owned_by": "local-rag-lancedb"
@@ -65,12 +105,14 @@ async def handle_models_list(token: str, key_doc: dict, current_target_port: int
                         # Exponer modelo virtual cloud-rag (Base de Conocimiento LanceDB + Proveedor en la Nube)
                         combined_models.append({
                             "id": "cloud-rag",
+                            "name": "cloud-rag (LanceDB + Cloud LLM)",
                             "object": "model",
                             "created": int(time.time()),
                             "owned_by": "cloud-rag-lancedb"
                         })
                         combined_models.append({
                             "id": "local/cloud-rag",
+                            "name": "local/cloud-rag (LanceDB + Cloud LLM)",
                             "object": "model",
                             "created": int(time.time()),
                             "owned_by": "cloud-rag-lancedb"
@@ -80,12 +122,14 @@ async def handle_models_list(token: str, key_doc: dict, current_target_port: int
                         if is_master or ("embeddings" in allowed_services):
                             combined_models.append({
                                 "id": "Qwen/Qwen3-Embedding-0.6B",
+                                "name": "Qwen/Qwen3-Embedding-0.6B",
                                 "object": "model",
                                 "created": int(time.time()),
                                 "owned_by": "local-embeddings"
                             })
                             combined_models.append({
                                 "id": "text-embedding-3-small",
+                                "name": "text-embedding-3-small",
                                 "object": "model",
                                 "created": int(time.time()),
                                 "owned_by": "openai-alias"
@@ -96,12 +140,14 @@ async def handle_models_list(token: str, key_doc: dict, current_target_port: int
                             img_model = get_env_setting("IMAGE_MODEL", "stabilityai/sdxl-turbo")
                             combined_models.append({
                                 "id": img_model,
+                                "name": img_model,
                                 "object": "model",
                                 "created": int(time.time()),
                                 "owned_by": "local-diffusion"
                             })
                             combined_models.append({
                                 "id": "local/image-generator",
+                                "name": "local/image-generator",
                                 "object": "model",
                                 "created": int(time.time()),
                                 "owned_by": "local-diffusion"
@@ -117,6 +163,7 @@ async def handle_models_list(token: str, key_doc: dict, current_target_port: int
                     prov_name = p_info.get("provider_name", "")
                     combined_models.append({
                         "id": pref_id,
+                        "name": pref_id,
                         "object": "model",
                         "created": int(time.time()),
                         "owned_by": prov_name
@@ -132,6 +179,7 @@ async def handle_models_list(token: str, key_doc: dict, current_target_port: int
                         prov_name = km.get("provider_name", "cloud")
                         combined_models.append({
                             "id": pref_id,
+                            "name": pref_id,
                             "object": "model",
                             "created": int(time.time()),
                             "owned_by": prov_name
@@ -146,6 +194,7 @@ async def handle_models_list(token: str, key_doc: dict, current_target_port: int
                             if ("*" in key_allowed_providers) or (prov_id in key_allowed_providers) or (prov_name in key_allowed_providers) or (prov_slug in key_allowed_providers):
                                 combined_models.append({
                                     "id": pref_id,
+                                    "name": pref_id,
                                     "object": "model",
                                     "created": int(time.time()),
                                     "owned_by": prov_name
@@ -153,8 +202,31 @@ async def handle_models_list(token: str, key_doc: dict, current_target_port: int
             except Exception as me:
                 print(f"⚠️ Gateway: Error obteniendo modelos cloud para clave: {me}", file=sys.stderr, flush=True)
 
+        models_ollama = [
+            {
+                "name": m.get("name", m["id"]),
+                "model": m["id"],
+                "modified_at": datetime.now(timezone.utc).isoformat(),
+                "size": 0,
+                "digest": "",
+                "details": {
+                    "parent_model": "",
+                    "format": "gguf",
+                    "family": "custom",
+                    "families": [],
+                    "parameter_size": "",
+                    "quantization_level": ""
+                }
+            }
+            for m in combined_models
+        ]
+
         return Response(
-            content=json.dumps({"object": "list", "data": combined_models}),
+            content=json.dumps({
+                "object": "list",
+                "data": combined_models,
+                "models": models_ollama
+            }),
             media_type="application/json",
             status_code=200
         )
@@ -304,5 +376,11 @@ async def resolve_cloud_model(req_model: str, token: str, key_doc: dict) -> tupl
                 else:
                     is_cloud_request = False
                     actual_model = clean_req_model
+
+    if not is_cloud_request and actual_model not in ["gemma-4-web", "gemma-4-rag", "local/gemma-4-web", "local/gemma-4-rag"]:
+        local_target_id = get_env_setting("LLAMA_MODEL_ID") or get_env_setting("VLLM_MODEL_ID") or "CorpAI-Gen"
+        local_target_alias = get_env_setting("LLAMA_ALIAS") or get_env_setting("VLLM_ALIAS")
+        if local_target_alias and (actual_model == local_target_alias or actual_model in local_target_alias or "|" in actual_model):
+            actual_model = local_target_id
 
     return is_cloud_request, actual_model, cloud_provider, apply_rag_injection, base_vllm_model
