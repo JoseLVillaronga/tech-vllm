@@ -288,7 +288,7 @@ def create_proxy_app(
                 if path.strip("/") == "v1/chat/completions":
                     if "messages" in data and isinstance(data["messages"], list):
                         try:
-                            await bridge_multimodal_messages(data["messages"])
+                            await bridge_multimodal_messages(data["messages"], is_cloud_request=is_cloud_request, model_name=actual_model)
                         except Exception as bridge_err:
                             print(f"⚠️ Error en Vision Bridge: {bridge_err}", file=sys.stderr, flush=True)
 

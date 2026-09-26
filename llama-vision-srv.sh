@@ -11,11 +11,26 @@ export CUDA_VISIBLE_DEVICES=""
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+ORIG_VISION_ON="${VISION_ON:-}"
+
 # 1. Cargar variables desde .env si existe
 if [ -f "${PROJECT_DIR}/.env" ]; then
     set -a
     source "${PROJECT_DIR}/.env"
     set +a
+fi
+
+# Si se pasó explícitamente en el entorno del proceso, priorizar sobre .env
+if [ -n "${ORIG_VISION_ON}" ]; then
+    VISION_ON="${ORIG_VISION_ON}"
+fi
+
+# 1.1 Verificar si el microservicio de visión está habilitado
+VISION_ON="${VISION_ON:-true}"
+if [[ "${VISION_ON,,}" =~ ^(false|0|no|off)$ ]]; then
+    echo "⏸️ Microservicio de visión desactivado por configuración (VISION_ON=${VISION_ON})."
+    echo "💡 Para habilitarlo, define VISION_ON=true en .env y reinicia el servicio."
+    exit 0
 fi
 
 # 2. Resolución dinámica del usuario y home real

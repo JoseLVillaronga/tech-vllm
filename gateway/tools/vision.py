@@ -15,6 +15,15 @@ from config import env
 # Alias unificado hacia config.env
 get_env_setting = env
 
+
+def is_vision_enabled() -> bool:
+    """Verifica si el microservicio de visión y el Vision Bridge están habilitados en .env (VISION_ON)."""
+    val = get_env_setting("VISION_ON", "true")
+    if isinstance(val, bool):
+        return val
+    return str(val).strip().lower() in ["true", "1", "yes", "on"]
+
+
 # Caché en memoria para extracciones OCR / visuales (evita re-procesar en hilos multi-turno)
 _VISION_CACHE: Dict[str, Dict[str, Any]] = {}
 _MAX_VISION_CACHE_SIZE = 256
@@ -150,6 +159,13 @@ async def analyze_image_with_vision_backend(
     Realiza la llamada multimodal a la instancia de visión de llama-server en RAM (:18200).
     Cuenta con caché en memoria LRU por hash SHA-256 para evitar re-análisis en hilos multi-turno.
     """
+    if not is_vision_enabled():
+        return {
+            "success": False,
+            "error": "El microservicio de visión está deshabilitado en la configuración (VISION_ON=false).",
+            "analysis": ""
+        }
+
     image_uri = optimize_image_resolution_for_vit(image_uri)
     vision_port = int(get_env_setting("VISION_BACKEND_PORT", "18200"))
     vision_alias = get_env_setting("VISION_ALIAS", "Qwen2.5-VL-3B-Instruct")
@@ -221,7 +237,11 @@ async def analyze_image_with_vision_backend(
             }
 
 
-async def bridge_multimodal_messages(messages: List[Dict[str, Any]]) -> bool:
+async def bridge_multimodal_messages(
+    messages: List[Dict[str, Any]],
+    is_cloud_request: bool = False,
+    model_name: str = ""
+) -> bool:
     """
     Puente de Visión Multimodal Transparente (Vision Bridge):
     Detecta bloques 'image_url' en mensajes dirigidos a modelos de solo texto (como Gemma 4 12B IT).
@@ -229,12 +249,18 @@ async def bridge_multimodal_messages(messages: List[Dict[str, Any]]) -> bool:
     obtiene la transcripción OCR y análisis visual fiel, y reemplaza los bloques 'image_url'
     por texto estructurado limpio.
     
-    Esto evita que llama-server falle con 'image input is not supported - hint: provide mmproj'
-    y provee capacidad multimodal automática a modelos de texto sin tocar la GPU.
+    Si VISION_ON=false, omite llamadas a :18200 y, en modelos locales de texto, inyecta un
+    aviso limpio para evitar que el motor falle con 'image input is not supported'.
+    En peticiones dirigidas a la nube, preserva los bloques image_url para procesamiento nativo.
     """
     if not messages or not isinstance(messages, list):
         return False
 
+    # Si es una petición hacia la nube, delegar el procesamiento visual al proveedor externo
+    if is_cloud_request:
+        return False
+
+    vision_on = is_vision_enabled()
     transformed_any = False
 
     for msg in messages:
@@ -246,6 +272,24 @@ async def bridge_multimodal_messages(messages: List[Dict[str, Any]]) -> bool:
 
         has_image = any(isinstance(p, dict) and p.get("type") == "image_url" for p in content)
         if not has_image:
+            continue
+
+        # Si el servicio de visión está deshabilitado pero el usuario envía una imagen a un modelo local de texto
+        if not vision_on:
+            visual_blocks = [
+                "<imagen_adjunta>\n"
+                "[AVISO DEL SISTEMA]: El usuario ha adjuntado una imagen a la conversación, pero el microservicio de análisis visual está desactivado en la suite (VISION_ON=false).\n"
+                "INSTRUCCIÓN PARA EL MODELO: Informa educadamente al usuario que no puedes analizar o visualizar la imagen porque el servicio de visión está temporalmente apagado en la configuración.\n"
+                "</imagen_adjunta>"
+            ]
+            user_text_blocks = [
+                p.get("text", "").strip()
+                for p in content
+                if isinstance(p, dict) and p.get("type") == "text" and p.get("text", "").strip()
+            ]
+            final_parts = visual_blocks + user_text_blocks
+            msg["content"] = "\n\n".join(final_parts).strip()
+            transformed_any = True
             continue
 
         total_images = sum(1 for p in content if isinstance(p, dict) and p.get("type") == "image_url")
@@ -313,6 +357,17 @@ async def handle_vision_analysis(request: Request) -> Response:
     Soporta multipart/form-data (archivos subidos) y JSON (base64, URL o ruta local).
     """
     try:
+        if not is_vision_enabled():
+            return Response(
+                content=json.dumps({
+                    "success": False,
+                    "error": "El microservicio de visión está deshabilitado en la configuración (VISION_ON=false).",
+                    "analysis": ""
+                }),
+                media_type="application/json",
+                status_code=503
+            )
+
         content_type = request.headers.get("content-type", "")
         image_uri = None
         prompt = None
