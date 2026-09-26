@@ -234,10 +234,11 @@ def get_invariants_system_prompt(settings: Dict[str, Any], has_pdf_tool: bool = 
 
     if has_vision_attachment:
         blocks.append(
-            "\n👁️ [PROTOCOLO DE VISIÓN Y DOCUMENTOS GRÁFICOS (<imagen_adjunta>)]:\n"
-            "- Cuando un mensaje contenga la etiqueta `<imagen_adjunta>`, significa que el usuario ha adjuntado una imagen real (foto, remito, factura, documento escaneado o captura) procesada previamente por el motor de visión local (Qwen2.5-VL en RAM).\n"
-            "- El contenido dentro de `<contenido_visual_extraido>` constituye la transcripción visual exacta y completa.\n"
-            "- Debes responder a las preguntas del usuario basándote directamente en dicha información visual, como si la estuvieras viendo con tus propios ojos. NUNCA manifiestes que no puedes ver imágenes ni le pidas al usuario que la vuelva a adjuntar."
+            "\n👁️ [PROTOCOLO DE VISIÓN Y DOCUMENTOS GRÁFICOS]:\n"
+            "- Cuentas con capacidad de visión y análisis de imágenes y documentos gráficos en esta sesión.\n"
+            "- Cuando el usuario adjunte una imagen o captura (ya sea de forma nativa o procesada con `<imagen_adjunta>`), TIENES ACCESO VISUAL COMPLETO a ella.\n"
+            "- Analiza, transcribe y extrae la totalidad del texto, tablas, códigos, números y detalles gráficos presentes en la imagen con máxima fidelidad.\n"
+            "- NUNCA manifiestes que no puedes ver imágenes, que no tienes acceso a la captura o que te falta una herramienta para verla: la imagen forma parte directa de tu contexto sensorial."
         )
 
     custom_prompt = settings.get("custom_system_prompt", "").strip()
@@ -386,7 +387,11 @@ async def enrich_chat_payload(
 
     has_pdf_tool = "generate_pdf_document" in tool_names or "generate_pdf" in tool_names
     has_doc_tool = "leer_documento_completo" in tool_names or "read_document" in tool_names
-    has_vision_attachment = any("<imagen_adjunta>" in str(m.get("content", "")) for m in messages)
+    has_vision_attachment = any(
+        "<imagen_adjunta>" in str(m.get("content", ""))
+        or (isinstance(m.get("content"), list) and any(isinstance(p, dict) and p.get("type") in ("image_url", "image") for p in m.get("content", [])))
+        for m in messages
+    )
 
     # 1. Construir bloques del sistema (Fecha/Hora siempre presente si inject_temporal=True)
     system_parts = []

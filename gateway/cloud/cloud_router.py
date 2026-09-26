@@ -72,14 +72,29 @@ async def handle_models_list(token: str, key_doc: dict, current_target_port: int
                             prefixed_id = f"local/{clean_id}" if not clean_id.startswith("local/") else clean_id
                             all_aliases = list(dict.fromkeys([display_name, prefixed_id, clean_id] + aliases))
 
-                            combined_models.append({
+                            is_multimodal = (
+                                "multimodal" in lm.get("capabilities", [])
+                                or any("multimodal" in om.get("capabilities", []) for om in ollama_models if isinstance(om, dict))
+                            )
+                            model_entry = {
                                 "id": prefixed_id,
                                 "name": display_name,
                                 "aliases": all_aliases,
                                 "object": "model",
                                 "created": lm.get("created", int(time.time())),
                                 "owned_by": "local"
-                            })
+                            }
+                            if is_multimodal:
+                                model_entry["capabilities"] = ["completion", "multimodal"]
+                                model_entry["info"] = {
+                                    "meta": {
+                                        "capabilities": {
+                                            "vision": True,
+                                            "multimodal": True
+                                        }
+                                    }
+                                }
+                            combined_models.append(model_entry)
 
                         # Si la búsqueda web está configurada, exponer también el modelo virtual local/gemma-4-web
                         ollama_api_key = get_env_setting("OLLAMA_API_KEY", "").strip()
@@ -202,24 +217,25 @@ async def handle_models_list(token: str, key_doc: dict, current_target_port: int
             except Exception as me:
                 print(f"⚠️ Gateway: Error obteniendo modelos cloud para clave: {me}", file=sys.stderr, flush=True)
 
-        models_ollama = [
-            {
+        models_ollama = []
+        for m in combined_models:
+            is_mm = "multimodal" in m.get("capabilities", []) or m.get("info", {}).get("meta", {}).get("capabilities", {}).get("vision", False)
+            models_ollama.append({
                 "name": m.get("name", m["id"]),
                 "model": m["id"],
                 "modified_at": datetime.now(timezone.utc).isoformat(),
                 "size": 0,
                 "digest": "",
+                "capabilities": ["completion", "multimodal"] if is_mm else ["completion"],
                 "details": {
                     "parent_model": "",
                     "format": "gguf",
-                    "family": "custom",
-                    "families": [],
+                    "family": "multimodal" if is_mm else "custom",
+                    "families": ["clip", "qwen2vl"] if is_mm else [],
                     "parameter_size": "",
                     "quantization_level": ""
                 }
-            }
-            for m in combined_models
-        ]
+            })
 
         return Response(
             content=json.dumps({

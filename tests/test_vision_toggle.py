@@ -47,8 +47,9 @@ class TestVisionToggle(unittest.IsolatedAsyncioTestCase):
         self.assertIn("VISION_ON=false", result["error"])
         mock_client.assert_not_called()
 
+    @patch("gateway.tools.vision.is_local_backend_multimodal", new_callable=AsyncMock, return_value=False)
     @patch("gateway.tools.vision.is_vision_enabled", return_value=False)
-    async def test_bridge_multimodal_messages_local_disabled(self, mock_enabled):
+    async def test_bridge_multimodal_messages_local_disabled(self, mock_enabled, mock_is_local_mm):
         """Verifica que mensajes multimodales locales se protegen con aviso educado cuando VISION_ON=false."""
         messages = [
             {
@@ -85,9 +86,10 @@ class TestVisionToggle(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(transformed)
         self.assertEqual(messages[0]["content"], original_content)
 
+    @patch("gateway.tools.vision.is_local_backend_multimodal", new_callable=AsyncMock, return_value=False)
     @patch("gateway.tools.vision.is_vision_enabled", return_value=True)
     @patch("gateway.tools.vision.analyze_image_with_vision_backend")
-    async def test_bridge_multimodal_messages_local_enabled(self, mock_analyze, mock_enabled):
+    async def test_bridge_multimodal_messages_local_enabled(self, mock_analyze, mock_enabled, mock_is_local_mm):
         """Verifica que cuando VISION_ON=true, el puente transcribe la imagen e inyecta el análisis visual."""
         mock_analyze.return_value = {
             "success": True,
