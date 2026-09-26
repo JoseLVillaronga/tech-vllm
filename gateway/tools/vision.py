@@ -5,6 +5,7 @@ import json
 import base64
 import mimetypes
 import hashlib
+import time
 import httpx
 from pathlib import Path
 from typing import Optional, Dict, Any, List
@@ -22,6 +23,43 @@ def is_vision_enabled() -> bool:
     if isinstance(val, bool):
         return val
     return str(val).strip().lower() in ["true", "1", "yes", "on"]
+
+
+_LOCAL_VISION_CAPABLE: Optional[bool] = None
+_LOCAL_VISION_CHECK_TIME: float = 0.0
+
+
+async def is_local_backend_multimodal() -> bool:
+    """
+    Verifica si el backend local de inferencia (llama-server en :18100)
+    cuenta con soporte nativo de visión (--mmproj activo).
+    Si cuenta con visión nativa, el Vision Bridge no necesita transcribir
+    ni reemplazar las imágenes, permitiendo que el modelo las procese directamente.
+    """
+    global _LOCAL_VISION_CAPABLE, _LOCAL_VISION_CHECK_TIME
+    now = time.time()
+    if _LOCAL_VISION_CAPABLE is not None and (now - _LOCAL_VISION_CHECK_TIME) < 30.0:
+        return _LOCAL_VISION_CAPABLE
+
+    try:
+        backend_port = int(get_env_setting("GEMMA_BACKEND_PORT", get_env_setting("LLAMA_PORT", "18100")))
+        api_key = get_env_setting("API_KEY", "")
+        headers = {}
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
+
+        async with httpx.AsyncClient(timeout=1.0) as client:
+            resp = await client.get(f"http://127.0.0.1:{backend_port}/props", headers=headers)
+            if resp.status_code == 200:
+                data = resp.json()
+                modalities = data.get("modalities", {})
+                _LOCAL_VISION_CAPABLE = bool(modalities.get("vision", False))
+                _LOCAL_VISION_CHECK_TIME = now
+                return _LOCAL_VISION_CAPABLE
+    except Exception:
+        pass
+
+    return False
 
 
 # Caché en memoria para extracciones OCR / visuales (evita re-procesar en hilos multi-turno)
@@ -256,8 +294,9 @@ async def bridge_multimodal_messages(
     if not messages or not isinstance(messages, list):
         return False
 
-    # Si es una petición hacia la nube, delegar el procesamiento visual al proveedor externo
-    if is_cloud_request:
+    # Si es una petición hacia la nube o el motor local cuenta con proyector visual propio (--mmproj),
+    # delegar el procesamiento multimodal nativo sin interposición.
+    if is_cloud_request or await is_local_backend_multimodal():
         return False
 
     vision_on = is_vision_enabled()

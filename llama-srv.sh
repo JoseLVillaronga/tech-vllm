@@ -73,12 +73,26 @@ PARALLEL="${LLAMA_PARALLEL:-2}"
 SLOT_SAVE_PATH="${LLAMA_SLOT_SAVE_PATH:-${PROJECT_DIR}/scratch/slots}"
 mkdir -p "${SLOT_SAVE_PATH}"
 
-# 5.1 Parámetro Opcional Multimodal Projector (Visión)
-MMPROJ_PATH="${LLAMA_MMPROJ_PATH:-}"
+# 5.1 Parámetro Opcional Multimodal Projector (Visión Condicional)
+RAW_MMPROJ="${LLAMA_MMPROJ:-${VISION_MMPROJ:-${LLAMA_MMPROJ_PATH:-}}}"
 MMPROJ_ARGS=()
-if [ -n "${MMPROJ_PATH}" ] && [ -f "${MMPROJ_PATH}" ]; then
-    MMPROJ_DESC="${MMPROJ_PATH}"
-    MMPROJ_ARGS=(--mmproj "${MMPROJ_PATH}")
+if [ -n "${RAW_MMPROJ}" ]; then
+    # Reemplazar variables $LLAMA_DIR o $HOME si venían como texto literal en .env
+    MMPROJ_PATH="${RAW_MMPROJ/\$LLAMA_DIR/$RESOLVED_LLAMA_DIR}"
+    MMPROJ_PATH="${MMPROJ_PATH/\$HOME/$USER_HOME}"
+
+    # Si se pasó un nombre simple o ruta que comienza con /root
+    if [[ "${MMPROJ_PATH}" == /root* || "${MMPROJ_PATH}" != /* ]]; then
+        MMPROJ_PATH="${RESOLVED_LLAMA_DIR}/models/$(basename "${MMPROJ_PATH}")"
+    fi
+
+    if [ -f "${MMPROJ_PATH}" ]; then
+        MMPROJ_DESC="${MMPROJ_PATH}"
+        MMPROJ_ARGS=(--mmproj "${MMPROJ_PATH}")
+    else
+        echo "⚠️ Advertencia: Archivo mmproj no encontrado en ${MMPROJ_PATH}. Continuando en modo Solo Texto." >&2
+        MMPROJ_DESC="Desactivado (Archivo no encontrado)"
+    fi
 else
     MMPROJ_DESC="Desactivado (Solo Texto)"
 fi

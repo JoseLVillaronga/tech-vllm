@@ -11,6 +11,7 @@ from gateway.tools.vision import (
     analyze_image_with_vision_backend,
     bridge_multimodal_messages,
     handle_vision_analysis,
+    is_local_backend_multimodal,
 )
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -137,6 +138,100 @@ class TestVisionToggle(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(proc.returncode, 0)
         self.assertIn("Microservicio de visión desactivado por configuración (VISION_ON=false)", proc.stdout)
+
+
+    @patch("gateway.tools.vision.is_local_backend_multimodal", return_value=True)
+    async def test_bridge_multimodal_messages_delegates_to_native_local_vision(self, mock_local_vision):
+        """Verifica que si el backend local cuenta con visión nativa (--mmproj), el Vision Bridge no interviene."""
+        original_content = [
+            {"type": "text", "text": "Analiza esta imagen con Qwen3.6 nativo"},
+            {"type": "image_url", "image_url": {"url": "data:image/png;base64,iVBORw0KGgo="}}
+        ]
+        messages = [
+            {
+                "role": "user",
+                "content": list(original_content)
+            }
+        ]
+
+        # No debe transformar los mensajes, permitiendo que llama-server los procese de forma nativa
+        transformed = await bridge_multimodal_messages(messages, is_cloud_request=False, model_name="local/CorpAI-Gen")
+        self.assertFalse(transformed)
+        self.assertEqual(messages[0]["content"], original_content)
+
+    @patch("httpx.AsyncClient")
+    async def test_is_local_backend_multimodal_detection(self, mock_client_cls):
+        """Verifica la detección dinámica de visión nativa leyendo /props de llama-server."""
+        import gateway.tools.vision as vision_mod
+        vision_mod._LOCAL_VISION_CAPABLE = None
+        vision_mod._LOCAL_VISION_CHECK_TIME = 0.0
+
+        # Caso 1: Backend reporta vision: true
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {"modalities": {"vision": True}}
+
+        mock_client = AsyncMock()
+        mock_client.get.return_value = mock_resp
+        mock_client.__aenter__.return_value = mock_client
+        mock_client_cls.return_value = mock_client
+
+        is_capable = await is_local_backend_multimodal()
+        self.assertTrue(is_capable)
+
+        # Caso 2: Backend reporta vision: false
+        vision_mod._LOCAL_VISION_CAPABLE = None
+        vision_mod._LOCAL_VISION_CHECK_TIME = 0.0
+        mock_resp.json.return_value = {"modalities": {"vision": False}}
+
+        is_capable = await is_local_backend_multimodal()
+        self.assertFalse(is_capable)
+
+    def test_llama_srv_sh_conditional_mmproj_logic(self):
+        """Verifica la lógica condicional de --mmproj en llama-srv.sh cuando la variable está comentada vs activa."""
+        script_path = BASE_DIR / "llama-srv.sh"
+        if not script_path.exists():
+            self.skipTest("llama-srv.sh no encontrado")
+
+        # Prueba con bash extrayendo el bloque condicional 5.1
+        test_script = """
+        RESOLVED_LLAMA_DIR="/tmp/test_llama_dir"
+        USER_HOME="/tmp/test_home"
+        mkdir -p "${RESOLVED_LLAMA_DIR}/models"
+        touch "${RESOLVED_LLAMA_DIR}/models/test-mmproj.gguf"
+
+        test_block() {
+            RAW_MMPROJ="$1"
+            RAW_MMPROJ="${LLAMA_MMPROJ:-${VISION_MMPROJ:-${LLAMA_MMPROJ_PATH:-}}}"
+            MMPROJ_ARGS=()
+            if [ -n "${RAW_MMPROJ}" ]; then
+                MMPROJ_PATH="${RAW_MMPROJ/\\$LLAMA_DIR/$RESOLVED_LLAMA_DIR}"
+                MMPROJ_PATH="${MMPROJ_PATH/\\$HOME/$USER_HOME}"
+                if [[ "${MMPROJ_PATH}" == /root* || "${MMPROJ_PATH}" != /* ]]; then
+                    MMPROJ_PATH="${RESOLVED_LLAMA_DIR}/models/$(basename "${MMPROJ_PATH}")"
+                fi
+                if [ -f "${MMPROJ_PATH}" ]; then
+                    MMPROJ_ARGS=(--mmproj "${MMPROJ_PATH}")
+                fi
+            fi
+            echo "COUNT:${#MMPROJ_ARGS[@]}"
+        }
+
+        # 1. Comentada o vacía -> 0 argumentos agregados
+        LLAMA_MMPROJ="" test_block
+        # 2. Con archivo existente -> 2 argumentos (--mmproj <ruta>)
+        LLAMA_MMPROJ="$RESOLVED_LLAMA_DIR/models/test-mmproj.gguf" test_block
+        # 3. Compatible con VISION_MMPROJ
+        LLAMA_MMPROJ="" VISION_MMPROJ="$RESOLVED_LLAMA_DIR/models/test-mmproj.gguf" test_block
+
+        rm -rf "${RESOLVED_LLAMA_DIR}"
+        """
+        proc = subprocess.run(["bash", "-c", test_script], capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 0)
+        lines = proc.stdout.strip().splitlines()
+        self.assertEqual(lines[0], "COUNT:0")
+        self.assertEqual(lines[1], "COUNT:2")
+        self.assertEqual(lines[2], "COUNT:2")
 
 
 if __name__ == "__main__":
