@@ -73,8 +73,8 @@ PARALLEL="${LLAMA_PARALLEL:-2}"
 SLOT_SAVE_PATH="${LLAMA_SLOT_SAVE_PATH:-${PROJECT_DIR}/scratch/slots}"
 mkdir -p "${SLOT_SAVE_PATH}"
 
-# 5.1 Parámetro Opcional Multimodal Projector (Visión Condicional)
-RAW_MMPROJ="${LLAMA_MMPROJ:-${VISION_MMPROJ:-${LLAMA_MMPROJ_PATH:-}}}"
+# 5.1 Parámetro Opcional Multimodal Projector (Visión Condicional en GPU)
+RAW_MMPROJ="${LLAMA_MMPROJ:-${LLAMA_MMPROJ_PATH:-}}"
 MMPROJ_ARGS=()
 if [ -n "${RAW_MMPROJ}" ]; then
     # Reemplazar variables $LLAMA_DIR o $HOME si venían como texto literal en .env

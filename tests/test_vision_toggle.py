@@ -203,8 +203,7 @@ class TestVisionToggle(unittest.IsolatedAsyncioTestCase):
         touch "${RESOLVED_LLAMA_DIR}/models/test-mmproj.gguf"
 
         test_block() {
-            RAW_MMPROJ="$1"
-            RAW_MMPROJ="${LLAMA_MMPROJ:-${VISION_MMPROJ:-${LLAMA_MMPROJ_PATH:-}}}"
+            RAW_MMPROJ="${LLAMA_MMPROJ:-${LLAMA_MMPROJ_PATH:-}}"
             MMPROJ_ARGS=()
             if [ -n "${RAW_MMPROJ}" ]; then
                 MMPROJ_PATH="${RAW_MMPROJ/\\$LLAMA_DIR/$RESOLVED_LLAMA_DIR}"
@@ -219,11 +218,13 @@ class TestVisionToggle(unittest.IsolatedAsyncioTestCase):
             echo "COUNT:${#MMPROJ_ARGS[@]}"
         }
 
-        # 1. Comentada o vacía -> 0 argumentos agregados
+        # 1. Comentada o vacía -> 0 argumentos agregados (Solo Texto)
         LLAMA_MMPROJ="" test_block
         # 2. Con archivo existente -> 2 argumentos (--mmproj <ruta>)
         LLAMA_MMPROJ="$RESOLVED_LLAMA_DIR/models/test-mmproj.gguf" test_block
-        # 3. Compatible con VISION_MMPROJ
+        # 3. Compatible con LLAMA_MMPROJ_PATH
+        LLAMA_MMPROJ="" LLAMA_MMPROJ_PATH="$RESOLVED_LLAMA_DIR/models/test-mmproj.gguf" test_block
+        # 4. VISION_MMPROJ de RAM NO debe filtrarse al motor principal
         LLAMA_MMPROJ="" VISION_MMPROJ="$RESOLVED_LLAMA_DIR/models/test-mmproj.gguf" test_block
 
         rm -rf "${RESOLVED_LLAMA_DIR}"
@@ -234,6 +235,7 @@ class TestVisionToggle(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(lines[0], "COUNT:0")
         self.assertEqual(lines[1], "COUNT:2")
         self.assertEqual(lines[2], "COUNT:2")
+        self.assertEqual(lines[3], "COUNT:0")
 
 
 if __name__ == "__main__":
