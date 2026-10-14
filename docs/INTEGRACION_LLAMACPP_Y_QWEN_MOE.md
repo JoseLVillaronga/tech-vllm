@@ -92,17 +92,35 @@ Este subsistema de inferencia de alto rendimiento utiliza el binario de servidor
 * **Decisión de Diseño Canónica:**  
   Se mantiene **`--parallel 1` como configuración predeterminada de producción**. Para una oficina de 5 personas humanas, una espera de 2 a 3 segundos en picos estadísticos de colisión es imperceptible frente al tiempo de lectura y análisis humano, garantizando que el 100% del contexto (131.072 tokens) permanezca siempre disponible sin riesgo de colapso para cualquier consulta profunda.
 
+### F. Optimización de Compilación CUDA Nativa y Flash Attention (Ampere sm_86)
+* **Problema:** En compilaciones predeterminadas con `cmake -B build -DGGML_CUDA=ON`, CMake genera código PTX genérico multi-arquitectura (`CMAKE_CUDA_ARCHITECTURES="all"`) y desactiva los kernels de Flash Attention para combinaciones mixtas de cuantización (`GGML_CUDA_FA_ALL_QUANTS=OFF`). Esto provocaba una degradación silenciosa del throughput de prefill, limitando la velocidad de evaluación a ~800–1.000 t/s en prompts medianos y largos.
+* **Causa Raíz:** Falta de especialización de microcódigo SASS para la arquitectura Ampere (sm_86) de la RTX 3090 y omisión de los kernels Flash Attention completos para tensores cuantizados de KV cache (q4_0 / q8_0).
+* **Solución de Arquitectura:**  
+  Se estandarizó la compilación canónica en `compilar-cuda.sh` con flags explícitos de arquitectura:
+  ```bash
+  cmake -B build \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DGGML_CUDA=ON \
+    -DCMAKE_CUDA_ARCHITECTURES=86 \
+    -DGGML_CUDA_FA_ALL_QUANTS=ON
+  cmake --build build --config Release -j$(nproc)
+  ```
+* **Impacto Empírico Medido:**
+  * **Prefill Corto (~762 tokens):** Saltó de **812 t/s** a **2.165 tokens/segundo** (mejora de **2.66x**).
+  * **Prefill Largo (~9.112 tokens):** Saltó de **1.063 t/s** a **3.334 tokens/segundo** (mejora de **3.14x**, reduciendo el tiempo de 8.57s a 2.73s).
+  * **A través del Gateway MEA (:8000):** **2.987 tokens/segundo** en prefill y **117.5 tokens/segundo** en generación sostenida.
+
 ---
 
 ## 📊 4. Métricas de Rendimiento en Producción (RTX 3090)
 
 | Métrica | Valor Empírico | Comportamiento |
 | :--- | :---: | :--- |
-| **Prefill / Ingesta de Prompt** | **650.0 – 675.0 t/s** | Estable a lo largo de prompts de 1.400 hasta 20.582 tokens. |
-| **Generación (Inferencia Activa)** | **47.5 – 51.5 t/s** | ~20 ms por token generado sostenidos. |
-| **Contexto Máximo** | **131.072 tokens** | 128k nativo asignado en VRAM. |
-| **Ocupación de VRAM** | **21.8 GB / 24.0 GB (90.8%)** | Con 256 capas en GPU y 18 expertos MoE en CPU. |
-| **Aceleración LCP Prefix Caching** | **> 7.000 grafos reutilizados** | En 15 llamadas consecutivas de herramientas, redujo la latencia intermedia a < 900 ms por paso. |
+| **Prefill / Ingesta de Prompt (sm_86 + FA)** | **2.165 – 3.334 t/s** | Tasa récord en prompts de 700 a 10.000 tokens (0.30 - 0.35 ms/token). |
+| **Generación (Inferencia Activa MoE A3B)** | **95.0 – 117.5 t/s** | ~8.5 ms por token generado sostenidos en GPU pura. |
+| **Contexto Máximo** | **131.072 – 262.144 tokens** | Hasta 262k con KV Cache cuantizado (`q4_0`). |
+| **Ocupación de VRAM** | **17.5 – 22.4 GB / 24.0 GB** | 100% de capas y expertos en GPU (`--n-cpu-moe 0`). |
+| **Aceleración LCP Prefix Caching** | **> 7.000 grafos reutilizados** | En llamadas consecutivas de herramientas, latencia intermedia < 500 ms. |
 
 ---
 
