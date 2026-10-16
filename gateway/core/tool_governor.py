@@ -210,11 +210,38 @@ def apply_tool_budget_governor(data: Dict[str, Any]) -> Tuple[Dict[str, Any], Di
         str(m.get("content", "")) for idx, m in enumerate(messages)
         if idx >= last_user_idx and m.get("role") == "tool"
     ]
-    combined_tool_text = "\n\n".join(active_tool_contents)
+
+    # Distinguir herramientas de navegación (índice de biblioteca / mapa estructural) de evidencia dispositiva real,
+    # salvo que el usuario esté preguntando explícitamente por el catálogo o qué obras existen en la biblioteca.
+    is_catalog_inventory_query = bool(re.search(
+        r"\b(?:cat[aá]logo|biblioteca|obras\s+disponibles|qu[eé]\s+(?:leyes|obras|documentos|normas)\s+(?:hay|existen|ten[eé]s|contiene|figuran))\b",
+        user_query,
+        re.IGNORECASE
+    ))
+    substantive_tool_contents = []
+    for txt in active_tool_contents:
+        is_nav_map = (
+            "Mapa Ontológico Global de la Biblioteca" in txt
+            or "Mapa Estructural / Índice de Secciones" in txt
+            or "ESTRUCTURA DEL DOCUMENTO:" in txt
+        )
+        if is_nav_map and not is_catalog_inventory_query:
+            continue
+        substantive_tool_contents.append(txt)
+
+    combined_tool_text = "\n\n".join(substantive_tool_contents)
+    substantive_tokens = sum(max(1, len(t) // 4) for t in substantive_tool_contents)
 
     # Evaluar suficiencia documental lógica (CRAG)
     eval_result = {"suficiente": True, "motivo": "", "faltantes": [], "evaluador": "none"}
-    if evaluate_context_sufficiency and user_query and combined_tool_text:
+    if not substantive_tool_contents and active_tool_contents:
+        eval_result = {
+            "suficiente": False,
+            "motivo": "Solo se ha consultado el índice o mapa estructural de la biblioteca; aún no se ha leído el texto dispositivo de las normas.",
+            "faltantes": ["lectura del texto normativo o búsqueda de fragmentos dispositivos"],
+            "evaluador": "nav_only"
+        }
+    elif evaluate_context_sufficiency and user_query and combined_tool_text:
         try:
             eval_result = evaluate_context_sufficiency(user_query, combined_tool_text)
         except Exception as eval_err:
@@ -280,12 +307,12 @@ def apply_tool_budget_governor(data: Dict[str, Any]) -> Tuple[Dict[str, Any], Di
                 flush=True
             )
 
-    # 3. ZONA ÓPTIMA POR VOLUMEN DOCUMENTAL (>= 10.000 tokens)
-    elif tool_tokens >= min_tokens:
+    # 3. ZONA ÓPTIMA POR VOLUMEN DOCUMENTAL DISPOSITIVO (>= 10.000 tokens y suficiencia validada)
+    elif substantive_tokens >= min_tokens and is_sufficient:
         governor_action = "healthy_zone"
         banner = (
             f"\n\n✅ [GOBERNADOR RAG - EVIDENCIA ROBUSTA]: "
-            f"~{tool_tokens:,} tokens de fuentes oficiales acumulados en este turno. "
+            f"~{substantive_tokens:,} tokens de fuentes oficiales dispositivas acumulados en este turno. "
             f"Proceda a redactar su fundamentación completa cuando la evidencia sea suficiente, o continúe explorando si restan puntos específicos."
         )
 

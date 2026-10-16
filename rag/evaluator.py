@@ -118,11 +118,17 @@ def evaluate_context_sufficiency(
         }
 
     # 1. Filtro Heurístico de Pase Rápido (Latencia Cero - 0ms CPU)
-    # Si la coincidencia es concluyente (>= 85%), el fragmento termina en punto/cierre y no es consulta de catálogo extenso
-    is_deep_catalog = bool(re.search(r"\b(?:lista|todos|todas|tratados|convenios|cat[aá]logo|exhaustiv[ao])\b", query_str, re.IGNORECASE))
+    # Si la coincidencia es concluyente (>= 85%), el fragmento termina en punto/cierre y no es consulta de catálogo, doctrinal o conceptual
+    is_deep_or_conceptual = bool(re.search(
+        r"\b(?:lista|todos|todas|tratados|convenios|cat[aá]logo|exhaustiv[ao]|doctrina|jurisprudencia|fallos?|precedentes?|"
+        r"bien\s+jur[ií]dico|principios?|jerarqu[ií]a|comparativ[ao]|diferencias?|evoluci[oó]n|fundamento)\b",
+        query_str,
+        re.IGNORECASE
+    ))
+    is_index_only = "Mapa Ontológico Global de la Biblioteca" in context_text and "--- FUENTE [" not in context_text
     ends_cleanly = bool(re.search(r"[.!?\"'»]\s*$", context_text))
 
-    if top_similarity >= fast_pass_threshold and ends_cleanly and not is_deep_catalog:
+    if top_similarity >= fast_pass_threshold and ends_cleanly and not is_deep_or_conceptual and not is_index_only:
         print(f"⚡ [RAG Evaluator] Fast-Pass activado: suficiente=True ({int(top_similarity * 100)}% de coincidencia semántica)", file=sys.stderr, flush=True)
         return {
             "suficiente": True,
@@ -138,7 +144,11 @@ def evaluate_context_sufficiency(
     system_prompt = (
         "Eres un evaluador de suficiencia lógica y factual (CRAG). Tu tarea es determinar con rigor deductivo "
         "si el contexto documental provisto contiene suficiente información para responder a la consulta del usuario "
-        "de manera concluyente y verídica, sin necesidad de inferir o adivinar datos ausentes.\n\n"
+        "de manera concluyente y verídica, sin necesidad de inferir o adivinar datos ausentes.\n"
+        "REGLA CRÍTICA: Si el contexto solo contiene un índice/catálogo de títulos de leyes, o si los fragmentos "
+        "solo coinciden en palabras aisladas (ej. 'ordenamiento jurídico' o 'hecho jurídico') pero NO responden "
+        "específicamente a lo preguntado (ej. doctrina, autores, jurisprudencia o la figura consultada), "
+        "debes responder \"suficiente\": false.\n\n"
         "Responde ÚNICAMENTE un objeto JSON válido con este esquema exacto:\n"
         "{\n"
         '  "suficiente": true o false,\n'
