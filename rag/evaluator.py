@@ -213,10 +213,36 @@ def evaluate_context_sufficiency(
         print(f"ℹ️ [RAG Evaluator] Fallback heurístico activado (puerto {backend_port} no disponible o timeout: {exc})", file=sys.stderr, flush=True)
 
     # 3. Fallback Heurístico (Resiliencia ante fallo del backend 18300)
-    if (top_similarity >= 0.70 and len(context_text) > 400) or len(context_text) >= 20000:
+    has_direct_doc_read = (
+        "Modo de Recuperación:" in context_text
+        or "Aviso de Paginación Jerárquica:" in context_text
+    )
+    if is_index_only:
+        fb_res = {
+            "suficiente": False,
+            "motivo": "Solo se ha consultado el índice de la biblioteca; aún falta leer el articulado sustantivo.",
+            "faltantes": ["lectura de secciones o artículos dispositivos"],
+            "evaluador": "fallback_heuristico"
+        }
+    elif is_deep_or_conceptual and not has_direct_doc_read and len(context_text) < 15000:
+        fb_res = {
+            "suficiente": False,
+            "motivo": (
+                "En consultas conceptuales, doctrinales o de jerarquía normativa, los fragmentos preliminares "
+                "de búsqueda vectorial son insuficientes; es necesario consultar obtener_indice_biblioteca / "
+                "obtener_estructura_documento y leer_documento_completo en las secciones pertinentes."
+            ),
+            "faltantes": ["lectura focalizada de las normas fundamentales aplicables"],
+            "evaluador": "fallback_heuristico"
+        }
+    elif (top_similarity >= 0.70 and len(context_text) > 400) or has_direct_doc_read or len(context_text) >= 20000:
         fb_res = {
             "suficiente": True,
-            "motivo": f"Evaluación heurística de respaldo por volumen documental sustancial ({len(context_text):,} caracteres)." if len(context_text) >= 20000 else f"Evaluación heurística de respaldo por coincidencia semántica aceptable ({int(top_similarity * 100)}%).",
+            "motivo": (
+                f"Evaluación heurística de respaldo por lectura documental verificada ({len(context_text):,} caracteres)."
+                if (has_direct_doc_read or len(context_text) >= 20000)
+                else f"Evaluación heurística de respaldo por coincidencia semántica aceptable ({int(top_similarity * 100)}%)."
+            ),
             "faltantes": [],
             "evaluador": "fallback_heuristico"
         }
