@@ -280,17 +280,55 @@
                                 <div>
                                     <label class="block text-xs font-semibold text-slate-300 mb-1">LLAMA_CACHE_TYPE_K</label>
                                     <select name="LLAMA_CACHE_TYPE_K" id="llama-cache-k-select" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-amber-500 font-mono cursor-pointer">
-                                        <option value="f16">f16 (Precisión Nativa)</option>
-                                        <option value="q4_0">q4_0 (Ahorro ~70% VRAM / 128K)</option>
-                                        <option value="q8_0">q8_0 (Ahorro ~50% VRAM)</option>
+                                        <optgroup label="Estándar (llama.cpp Universal)">
+                                            <option value="f16">f16 (Precisión Nativa 16-bit)</option>
+                                            <option value="bf16">bf16 (BFloat16 Nativo)</option>
+                                            <option value="q8_0">q8_0 (8-bit / Ahorro ~50% VRAM)</option>
+                                            <option value="q5_0">q5_0 (5-bit Estándar)</option>
+                                            <option value="q5_1">q5_1 (5-bit + Min)</option>
+                                            <option value="q4_0">q4_0 (4-bit / Ahorro ~70% VRAM)</option>
+                                            <option value="q4_1">q4_1 (4-bit + Min)</option>
+                                            <option value="iq4_nl">iq4_nl (4-bit No-Lineal)</option>
+                                        </optgroup>
+                                        <optgroup label="TurboQuant (llamAmpere SM86 - Velocidad)">
+                                            <option value="tq5_0">tq5_0 / turbo5 (5-bit - Recomendado K)</option>
+                                            <option value="turbo4">turbo4 / tq4_0 (4-bit TurboQuant)</option>
+                                            <option value="tq6_0">tq6_0 / turbo6 (6-bit TurboQuant)</option>
+                                            <option value="turbo3">turbo3 / tq3_0 (3-bit TurboQuant)</option>
+                                            <option value="turbo2">turbo2 / tq2 (2-bit TurboQuant)</option>
+                                        </optgroup>
+                                        <optgroup label="SJ-KVaRN (llamAmpere v0.5 - Mínimo KL)">
+                                            <option value="sjkvarn4">sjkvarn4 (4-bit - Mínimo KL / 262K)</option>
+                                            <option value="sjkvarn3">sjkvarn3 (3-bit Trellis - Bajo VRAM)</option>
+                                            <option value="sjkvarn2">sjkvarn2 (2-bit Trellis - Max Contexto)</option>
+                                        </optgroup>
                                     </select>
                                 </div>
                                 <div>
                                     <label class="block text-xs font-semibold text-slate-300 mb-1">LLAMA_CACHE_TYPE_V</label>
                                     <select name="LLAMA_CACHE_TYPE_V" id="llama-cache-v-select" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-amber-500 font-mono cursor-pointer">
-                                        <option value="f16">f16 (Precisión Nativa)</option>
-                                        <option value="q4_0">q4_0 (Ahorro ~70% VRAM / 128K)</option>
-                                        <option value="q8_0">q8_0 (Ahorro ~50% VRAM)</option>
+                                        <optgroup label="Estándar (llama.cpp Universal)">
+                                            <option value="f16">f16 (Precisión Nativa 16-bit)</option>
+                                            <option value="bf16">bf16 (BFloat16 Nativo)</option>
+                                            <option value="q8_0">q8_0 (8-bit / Ahorro ~50% VRAM)</option>
+                                            <option value="q5_0">q5_0 (5-bit Estándar)</option>
+                                            <option value="q5_1">q5_1 (5-bit + Min)</option>
+                                            <option value="q4_0">q4_0 (4-bit / Ahorro ~70% VRAM)</option>
+                                            <option value="q4_1">q4_1 (4-bit + Min)</option>
+                                            <option value="iq4_nl">iq4_nl (4-bit No-Lineal)</option>
+                                        </optgroup>
+                                        <optgroup label="TurboQuant (llamAmpere SM86 - Velocidad)">
+                                            <option value="turbo4">turbo4 / tq4_0 (4-bit - Recomendado V)</option>
+                                            <option value="tq5_0">tq5_0 / turbo5 (5-bit TurboQuant)</option>
+                                            <option value="tq6_0">tq6_0 / turbo6 (6-bit TurboQuant)</option>
+                                            <option value="turbo3">turbo3 / tq3_0 (3-bit TurboQuant)</option>
+                                            <option value="turbo2">turbo2 / tq2 (2-bit TurboQuant)</option>
+                                        </optgroup>
+                                        <optgroup label="SJ-KVaRN (llamAmpere v0.5 - Mínimo KL)">
+                                            <option value="sjkvarn4">sjkvarn4 (4-bit - Mínimo KL / 262K)</option>
+                                            <option value="sjkvarn3">sjkvarn3 (3-bit Trellis - Bajo VRAM)</option>
+                                            <option value="sjkvarn2">sjkvarn2 (2-bit Trellis - Max Contexto)</option>
+                                        </optgroup>
                                     </select>
                                 </div>
                                 <div>

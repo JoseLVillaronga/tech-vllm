@@ -23,10 +23,11 @@ fi
 USER_HOME=$(eval echo "~${TARGET_USER}")
 
 # 3. Resolver directorio de llama.cpp evitando rutas /root
-if [[ -z "${LLAMA_DIR}" || "${LLAMA_DIR}" == /root* || "${LLAMA_DIR}" == *"\$HOME"* ]]; then
+if [ -z "${LLAMA_DIR}" ]; then
     RESOLVED_LLAMA_DIR="${USER_HOME}/llama.cpp"
 else
-    RESOLVED_LLAMA_DIR="${LLAMA_DIR}"
+    RESOLVED_LLAMA_DIR="${LLAMA_DIR/\$HOME/$USER_HOME}"
+    RESOLVED_LLAMA_DIR="${RESOLVED_LLAMA_DIR/#\/root/$USER_HOME}"
 fi
 LLAMA_BIN="${RESOLVED_LLAMA_DIR}/build/bin/llama-server"
 
@@ -45,6 +46,9 @@ MODEL_PATH="${MODEL_PATH/\$HOME/$USER_HOME}"
 # Si se pasó un nombre simple o ruta que comienza con /root
 if [[ "${MODEL_PATH}" == /root* || "${MODEL_PATH}" != /* ]]; then
     MODEL_PATH="${RESOLVED_LLAMA_DIR}/models/$(basename "${MODEL_PATH}")"
+fi
+if [ ! -f "${MODEL_PATH}" ] && [ -f "${USER_HOME}/llama.cpp/models/$(basename "${MODEL_PATH}")" ]; then
+    MODEL_PATH="${USER_HOME}/llama.cpp/models/$(basename "${MODEL_PATH}")"
 fi
 
 if [ ! -f "${MODEL_PATH}" ]; then
@@ -85,6 +89,9 @@ if [ -n "${RAW_MMPROJ}" ]; then
     if [[ "${MMPROJ_PATH}" == /root* || "${MMPROJ_PATH}" != /* ]]; then
         MMPROJ_PATH="${RESOLVED_LLAMA_DIR}/models/$(basename "${MMPROJ_PATH}")"
     fi
+    if [ ! -f "${MMPROJ_PATH}" ] && [ -f "${USER_HOME}/llama.cpp/models/$(basename "${MMPROJ_PATH}")" ]; then
+        MMPROJ_PATH="${USER_HOME}/llama.cpp/models/$(basename "${MMPROJ_PATH}")"
+    fi
 
     if [ -f "${MMPROJ_PATH}" ]; then
         MMPROJ_DESC="${MMPROJ_PATH}"
@@ -123,6 +130,9 @@ if [ -n "${CACHE_K}" ] && [ "${CACHE_K}" != "f16" ]; then
 fi
 if [ -n "${CACHE_V}" ] && [ "${CACHE_V}" != "f16" ]; then
     CACHE_ARGS+=(--cache-type-v "${CACHE_V}")
+fi
+if [[ "${CACHE_K}" == sjkvarn* || "${CACHE_V}" == sjkvarn* ]]; then
+    CACHE_ARGS+=(--sjkvarn-body-type "${LLAMA_SJKVARN_BODY_TYPE:-auto}")
 fi
 KV_CACHE_DESC="K=${CACHE_K:-f16} / V=${CACHE_V:-f16}"
 

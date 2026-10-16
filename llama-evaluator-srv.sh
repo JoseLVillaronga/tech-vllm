@@ -23,10 +23,11 @@ fi
 USER_HOME=$(eval echo "~${TARGET_USER}")
 
 # 3. Resolver directorio de llama.cpp evitando rutas /root
-if [[ -z "${LLAMA_DIR}" || "${LLAMA_DIR}" == /root* || "${LLAMA_DIR}" == *"\$HOME"* ]]; then
+if [ -z "${LLAMA_DIR}" ]; then
     RESOLVED_LLAMA_DIR="${USER_HOME}/llama.cpp"
 else
-    RESOLVED_LLAMA_DIR="${LLAMA_DIR}"
+    RESOLVED_LLAMA_DIR="${LLAMA_DIR/\$HOME/$USER_HOME}"
+    RESOLVED_LLAMA_DIR="${RESOLVED_LLAMA_DIR/#\/root/$USER_HOME}"
 fi
 LLAMA_BIN="${RESOLVED_LLAMA_DIR}/build/bin/llama-server"
 
@@ -43,6 +44,9 @@ MODEL_PATH="${MODEL_PATH/\$HOME/$USER_HOME}"
 
 if [[ "${MODEL_PATH}" == /root* || "${MODEL_PATH}" != /* ]]; then
     MODEL_PATH="${RESOLVED_LLAMA_DIR}/models/$(basename "${MODEL_PATH}")"
+fi
+if [ ! -f "${MODEL_PATH}" ] && [ -f "${USER_HOME}/llama.cpp/models/$(basename "${MODEL_PATH}")" ]; then
+    MODEL_PATH="${USER_HOME}/llama.cpp/models/$(basename "${MODEL_PATH}")"
 fi
 
 if [ ! -f "${MODEL_PATH}" ]; then

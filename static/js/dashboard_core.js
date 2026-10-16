@@ -213,15 +213,36 @@
                 const res = await fetch('/api/config');
                 const config = await res.json();
                 const form = document.getElementById('config-form');
+                const cacheAliases = {
+                    'turbo5': 'tq5_0', 'tq5': 'tq5_0',
+                    'tq4_0': 'turbo4', 'tq4': 'turbo4',
+                    'tq3_0': 'turbo3', 'tq3': 'turbo3',
+                    'turbo6': 'tq6_0', 'tq6': 'tq6_0',
+                    'tq2': 'turbo2'
+                };
                 
                 for (const key in config) {
                     const input = form.elements[key];
                     if (input) {
+                        let val = config[key];
                         if (key === 'LOAD_8_BITS') {
-                            input.value = String(config[key]).toLowerCase() === 'true' ? 'true' : 'false';
-                        } else {
-                            input.value = config[key];
+                            val = String(val).toLowerCase() === 'true' ? 'true' : 'false';
+                        } else if ((key === 'LLAMA_CACHE_TYPE_K' || key === 'LLAMA_CACHE_TYPE_V') && val) {
+                            const lowerVal = String(val).toLowerCase();
+                            if (cacheAliases[lowerVal]) {
+                                val = cacheAliases[lowerVal];
+                            }
                         }
+                        if (input.tagName === 'SELECT' && val !== undefined && val !== null && val !== '') {
+                            const exists = Array.from(input.options).some(opt => opt.value === String(val));
+                            if (!exists) {
+                                const customOpt = document.createElement('option');
+                                customOpt.value = String(val);
+                                customOpt.textContent = `${val} (Personalizado .env)`;
+                                input.appendChild(customOpt);
+                            }
+                        }
+                        input.value = val;
                     }
                 }
             } catch (err) {
