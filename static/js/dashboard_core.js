@@ -341,7 +341,7 @@
             const form = document.getElementById('config-form');
             if (!form) return;
             const cleanModel = modelName.replace(/\.gguf$/, '');
-            if (form.elements['LLAMA_DIR'] && !form.elements['LLAMA_DIR'].value) form.elements['LLAMA_DIR'].value = '$HOME/llama.cpp';
+            if (form.elements['LLAMA_DIR'] && !form.elements['LLAMA_DIR'].value) form.elements['LLAMA_DIR'].value = '$HOME/llamAmpere';
             if (form.elements['LLAMA_MODEL']) form.elements['LLAMA_MODEL'].value = `$LLAMA_DIR/models/${cleanModel}.gguf`;
             
             // Mantener o asignar el alias funcional genérico aplicable a todos los modelos de llama.cpp
@@ -352,6 +352,13 @@
                     form.elements['LLAMA_ALIAS'].value = genericAlias;
                 }
             }
+
+            // Si LLAMA_DIR apunta a un fork clásico (no llamAmpere), degradar tipos exclusivos (tq*, turbo*, sjkvarn*) a q4_0
+            const currentLlamaDir = (form.elements['LLAMA_DIR']?.value || '$HOME/llamAmpere').toLowerCase();
+            const isAmpereFork = currentLlamaDir.includes('llamampere');
+            const isAmpereCache = (t) => /^(tq|turbo|sjkvarn)/i.test(t || '');
+            const resolvedCacheK = (!isAmpereFork && isAmpereCache(cacheK)) ? 'q4_0' : (cacheK || 'f16');
+            const resolvedCacheV = (!isAmpereFork && isAmpereCache(cacheV)) ? 'q4_0' : (cacheV || 'f16');
 
             if (form.elements['LLAMA_PORT']) form.elements['LLAMA_PORT'].value = 18100;
             if (form.elements['LLAMA_CTX_SIZE']) form.elements['LLAMA_CTX_SIZE'].value = ctx;
@@ -364,7 +371,7 @@
             if (form.elements['LLAMA_THREADS']) form.elements['LLAMA_THREADS'].value = threads;
             if (form.elements['LLAMA_PARALLEL']) form.elements['LLAMA_PARALLEL'].value = parallel || 2;
             if (form.elements['LLAMA_IS_MOE']) form.elements['LLAMA_IS_MOE'].value = String(isMoe);
-            if (form.elements['LLAMA_CACHE_TYPE_K']) form.elements['LLAMA_CACHE_TYPE_K'].value = cacheK || 'f16';
-            if (form.elements['LLAMA_CACHE_TYPE_V']) form.elements['LLAMA_CACHE_TYPE_V'].value = cacheV || 'f16';
+            if (form.elements['LLAMA_CACHE_TYPE_K']) form.elements['LLAMA_CACHE_TYPE_K'].value = resolvedCacheK;
+            if (form.elements['LLAMA_CACHE_TYPE_V']) form.elements['LLAMA_CACHE_TYPE_V'].value = resolvedCacheV;
         }
 
