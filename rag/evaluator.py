@@ -117,16 +117,54 @@ def evaluate_context_sufficiency(
             "evaluador": "vacio"
         }
 
-    # 1. Filtro Heurístico de Pase Rápido (Latencia Cero - 0ms CPU)
-    # Si la coincidencia es concluyente (>= 85%), el fragmento termina en punto/cierre y no es consulta de catálogo, doctrinal o conceptual
+    # 1. Filtro Determinista y de Pase Rápido (Latencia Cero - 0ms CPU)
     is_deep_or_conceptual = bool(re.search(
         r"\b(?:lista|todos|todas|tratados|convenios|cat[aá]logo|exhaustiv[ao]|doctrina|jurisprudencia|fallos?|precedentes?|"
         r"bien\s+jur[ií]dico|principios?|jerarqu[ií]a|comparativ[ao]|diferencias?|evoluci[oó]n|fundamento)\b",
         query_str,
         re.IGNORECASE
     ))
-    is_index_only = "Mapa Ontológico Global de la Biblioteca" in context_text and "--- FUENTE [" not in context_text
+    has_direct_doc_read = (
+        "Modo de Recuperación:" in context_text
+        or "Aviso de Paginación Jerárquica:" in context_text
+    )
+    is_index_only = (
+        ("Mapa Ontológico Global de la Biblioteca" in context_text or "GPS Documental: Mapa de Estructura" in context_text)
+        and "--- FUENTE [" not in context_text
+        and not has_direct_doc_read
+    )
     ends_cleanly = bool(re.search(r"[.!?\"'»]\s*$", context_text))
+
+    if is_index_only:
+        print("⚡ [RAG Evaluator] Gate determinista: suficiente=False (solo mapa/índice de navegación)", file=sys.stderr, flush=True)
+        return {
+            "suficiente": False,
+            "motivo": "Solo se ha consultado el índice o mapa estructural; aún falta extraer el articulado sustantivo con leer_documento_completo.",
+            "faltantes": ["lectura de secciones o artículos dispositivos"],
+            "evaluador": "fast_gate"
+        }
+
+    if is_deep_or_conceptual and not has_direct_doc_read and len(context_text) < 15000:
+        print("⚡ [RAG Evaluator] Gate determinista: suficiente=False (consulta doctrinal/conceptual sin lectura de sección)", file=sys.stderr, flush=True)
+        return {
+            "suficiente": False,
+            "motivo": (
+                "En consultas conceptuales, doctrinales o de jerarquía normativa, los fragmentos preliminares "
+                "de búsqueda vectorial son insuficientes; es obligatorio usar obtener_indice_biblioteca / "
+                "obtener_estructura_documento y leer_documento_completo en las secciones pertinentes."
+            ),
+            "faltantes": ["lectura focalizada de las normas fundamentales aplicables"],
+            "evaluador": "fast_gate"
+        }
+
+    if has_direct_doc_read:
+        print("⚡ [RAG Evaluator] Fast-Pass activado: suficiente=True (lectura directa de sección/documento verificada)", file=sys.stderr, flush=True)
+        return {
+            "suficiente": True,
+            "motivo": "Evidencia normativa verificada mediante lectura directa de sección o documento oficial.",
+            "faltantes": [],
+            "evaluador": "fast_pass"
+        }
 
     if top_similarity >= fast_pass_threshold and ends_cleanly and not is_deep_or_conceptual and not is_index_only:
         print(f"⚡ [RAG Evaluator] Fast-Pass activado: suficiente=True ({int(top_similarity * 100)}% de coincidencia semántica)", file=sys.stderr, flush=True)
@@ -157,7 +195,10 @@ def evaluate_context_sufficiency(
         "}"
     )
 
-    truncated_context = context_text[:5000]
+    if len(context_text) > 5000:
+        truncated_context = context_text[:1500] + "\n\n[...]\n\n" + context_text[-3500:]
+    else:
+        truncated_context = context_text
     user_prompt = f"CONSULTA DEL USUARIO:\n{query_str}\n\nCONTEXTO DOCUMENTAL RECUPERADO:\n{truncated_context}"
 
     payload = {
