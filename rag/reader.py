@@ -215,9 +215,25 @@ def get_document_structure(doc_id: str, filtro: Optional[str] = None, table_name
         else:
             sec_display = clean_sec
 
-        clean_param = s["section"].split(">")[-1].strip().replace('"', '')
-        if len(clean_param) < 4 and ">" in s["section"]:
-            clean_param = s["section"].split(">")[-2].strip().replace('"', '')
+        leaf_param = clean_sec.split(">")[-1].strip().replace('"', '')
+        # Si la ruta tiene jerarquía compuesta ('>') y el nodo hoja es corto o genérico
+        # (ej: 'art. 35', 'CAPÍTULO II', 'Sección 1'), conservar la ruta jerárquica completa
+        # para evitar colisiones ambiguas entre distintos títulos o capítulos de la misma obra.
+        is_generic_leaf = (
+            len(leaf_param) < 14
+            or bool(re.match(
+                r"^(?:art(?:[ií]culo|\.)?|cap[ií]tulo|secci[oó]n|t[ií]tulo|libro|parte|§)\s*[\dIVXLCDM°º]+(?:\s*(?:bis|ter|qu[aá]ter|quinquies|sexies|septies|octies|nonies|decies|\-+.*))?$",
+                leaf_param,
+                re.IGNORECASE
+            ))
+        )
+        parts_sec = [p.strip() for p in clean_sec.split(">") if p.strip()]
+        if ">" in clean_sec and (is_generic_leaf or len(clean_sec) <= 115):
+            clean_param = clean_sec.strip().replace('"', '')
+        elif len(parts_sec) >= 2:
+            clean_param = " > ".join(parts_sec[-2:]).replace('"', '')
+        else:
+            clean_param = leaf_param
         md_rows.append(
             f"| `{s['index']:02d}` | **{sec_display}** | {s['chunks_count']} | ~{s['estimated_tokens']:,} | `leer_documento_completo(doc_id=\"{actual_doc_id}\", seccion=\"{clean_param}\")` |"
         )

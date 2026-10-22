@@ -15,6 +15,7 @@ def normalize_text(text: str) -> str:
     text = str(text).lower().strip()
     nfkd = unicodedata.normalize('NFKD', text)
     cleaned = ''.join(c for c in nfkd if not unicodedata.combining(c))
+    cleaned = re.sub(r"§\s*", "§ ", cleaned)
     return ' '.join(cleaned.split())
 
 
@@ -51,9 +52,12 @@ def match_section_query(query: str, target: str) -> bool:
         return True
 
     # 2. Inverso: si el target (o su parte final) está contenido en la consulta
-    target_pat = build_boundary_regex(t_norm)
-    if re.search(target_pat, q_norm):
-        return True
+    # Solo aplica cuando la consulta NO especifica una ruta jerárquica explícita con '>'
+    # (para evitar que 'TÍTULO IV > art. 35' matchee el nodo padre genérico 'TÍTULO IV').
+    if ">" not in q_norm:
+        target_pat = build_boundary_regex(t_norm)
+        if re.search(target_pat, q_norm):
+            return True
 
     # 3. Consultas compuestas estructuradas (ej: "Titulo I del Libro II", "Libro II Titulo I")
     raw_clauses = re.split(r"\s*(?:>|-|,|\bdel\b|\bde\s+la\b|\bde\s+los\b|\bde\b|\ben\s+el\b|\ben\b)\s*", q_norm)

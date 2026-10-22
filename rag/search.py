@@ -371,7 +371,11 @@ def format_rag_context_for_llm(results: List[Dict[str, Any]]) -> str:
         
         # Si el documento supera los 30.000 tokens o 100 fragmentos, incluir guía de GPS Documental y lectura por sección
         if tot_tokens > 30000 or item.get("total_chunks", 0) > 100:
-            clean_sec_hint = section.split(">")[-1].strip() if ">" in section else section
+            clean_sec_hint = section.replace('"', '').strip()
+            for pfx in [f"{doc_title} > ", f"{doc_id} > ", "Codigo Penal Argentino > "]:
+                if clean_sec_hint.lower().startswith(pfx.lower()):
+                    clean_sec_hint = clean_sec_hint[len(pfx):].strip()
+                    break
             action_hint = (
                 f"💡 [Acción Disponible (Obra Extensa ~{tot_tokens:,} tokens)]:\n"
                 f"   - Para explorar el índice/GPS de capítulos usa: obtener_estructura_documento(doc_id=\"{doc_id}\")\n"

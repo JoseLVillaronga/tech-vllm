@@ -109,7 +109,167 @@ def split_into_sentences(text: str) -> List[str]:
             sentences.append(s_clean)
     return sentences
 
-def unpack_pseudo_tables(text: str) -> str:
+# Mapa canónico de anclas de capítulos y secciones para el Tratado de Derecho Penal de Zaffaroni (Tomos I, II y III),
+# cuyos encabezados originales en la edición impresa de 1981 sufrieron recorte o distorsión OCR ('CAP~TULO', 'TÍTULO 11').
+ZAFFARONI_CANONICAL_ANCHORS: Dict[str, List[Tuple[int, re.Pattern, str, str]]] = {
+    "parte i": [
+        (24, re.compile(r"\b2\.\s+La\s+legis", re.I),
+         "TÍTULO I: Delimitación del objeto de la ciencia del derecho penal",
+         "CAPÍTULO I: El horizonte de proyección de la ciencia jurídico-penal"),
+        (80, re.compile(r"\b8\.\s+Planeamie", re.I),
+         "TÍTULO I: Delimitación del objeto de la ciencia del derecho penal",
+         "CAPÍTULO I: El horizonte de proyección > II y III - Función del derecho penal y tutela de bienes jurídicos"),
+        (135, re.compile(r"\b13\.\s+El\s+concepto\s+previo\s+de\s+coerci", re.I),
+         "TÍTULO I: Delimitación del objeto de la ciencia del derecho penal",
+         "CAPÍTULO I: El horizonte de proyección > IV y V - La coerción penal, penas y medidas"),
+        (330, re.compile(r"\b24\.\s+Precisi[oó]n\s+de\s+algunos\s+conceptos", re.I),
+         "TÍTULO I: Delimitación del objeto de la ciencia del derecho penal",
+         "CAPÍTULO II: Las fuentes del derecho penal"),
+        (525, re.compile(r"\b34\.\s+Derecho\s+pe[an]{1,2}al\s+[y7]\s+derecho", re.I),
+         "TÍTULO I: Delimitación del objeto de la ciencia del derecho penal",
+         "CAPÍTULO III: El derecho penal y otras disciplinas: límites y relaciones"),
+        (825, re.compile(r"\b44\.\s+La\s+dogm[iíaá]tica\s+jur[ií]", re.I),
+         "TÍTULO I: Delimitación del objeto de la ciencia del derecho penal",
+         "CAPÍTULO IV: El método de la ciencia jurídico-penal"),
+        (945, re.compile(r"\b59\.\s+Panorama\s+general", re.I),
+         "TÍTULO I: Delimitación del objeto de la ciencia del derecho penal",
+         "CAPÍTULO V: Historia de la legislación penal"),
+        (1200, re.compile(r"\b77\.\s+El\s+de[rs]echo\s+penal\s+indiano", re.I),
+         "TÍTULO I: Delimitación del objeto de la ciencia del derecho penal",
+         "CAPÍTULO VI: La codificación penal argentina"),
+        (1370, re.compile(r"\b96\.\s+El\s+principio\s+general", re.I),
+         "TÍTULO I: Delimitación del objeto de la ciencia del derecho penal",
+         "CAPÍTULO VII: La ley penal en relación al tiempo y a personas"),
+    ],
+    "parte ii": [
+        (0, re.compile(r"\b105\.\s+El\s+criterio\s+expositivo", re.I),
+         "TÍTULO II: Fundamentación filosófico-política del horizonte",
+         "CAPÍTULO VIII: El pensamiento antiguo y medieval"),
+        (160, re.compile(r"\b120\.\s+Su\s+gestaci[oó]n", re.I),
+         "TÍTULO II: Fundamentación filosófico-política del horizonte",
+         "CAPÍTULO IX: El racionalismo penal (Iluminismo y Criticismo)"),
+        (430, re.compile(r"\b139\.\s+Caracterizaci[oó]n\s+general", re.I),
+         "TÍTULO II: Fundamentación filosófico-política del horizonte",
+         "CAPÍTULO X: El romanticismo penal (Hegel, Positivismo y Materialismo)"),
+        (805, re.compile(r"\b162\.\s+Caracterizaci[oó]n\s+genera", re.I),
+         "TÍTULO II: Fundamentación filosófico-política del horizonte",
+         "CAPÍTULO XI: El derecho penal y corrientes del pensamiento contemporáneo"),
+        (1020, re.compile(r"\b183\.\s+Justificaci[oó]n", re.I),
+         "TÍTULO II: Fundamentación filosófico-política del horizonte",
+         "CAPÍTULO XII: El derecho penal y líneas del pensamiento político"),
+        (1195, re.compile(r"\b197\.\s+La\s+inevitabilidad\s+de\s+las\s+pregunta", re.I),
+         "TÍTULO II: Fundamentación filosófico-política del horizonte",
+         "CAPÍTULO XIII: Fundamentación antropológica de la ciencia del derecho penal (Co-existencia y bienes jurídicos)"),
+    ],
+    "parte iii": [
+        (0, re.compile(r"\b214\.\s+El\s+delito\s+en\s+el\s+derecho\s+positivo", re.I),
+         "TÍTULO I: Estructuración general de la teoría del delito",
+         "CAPÍTULO XIV: Necesidad y criterios de construcción teórica"),
+        (90, re.compile(r"\b232\.\s+Conducta\s+e\s+injusto", re.I),
+         "TÍTULO II: La conducta",
+         "CAPÍTULO XV: Ubicación y estructura de la conducta"),
+        (210, re.compile(r"\b244\.\s+Los\s+tipos\s+penales\s+individualizan\s+conductas", re.I),
+         "TÍTULO II: La conducta",
+         "CAPÍTULO XVI: La conducta como carácter genérico para todas las formas de tipicidad"),
+        (251, re.compile(r"\b252\.\s+\"?Idealismo\"?\s+y\s+\"?realismo\"?", re.I),
+         "TÍTULO II: La conducta",
+         "CAPÍTULO XVII: Los conceptos 'idealistas' de acción y su crítica"),
+        (365, re.compile(r"\b269\.\s+Concepto\s+y\s+enumeraci[oó]n", re.I),
+         "TÍTULO II: La conducta",
+         "CAPÍTULO XVIII: Ausencia de conducta (Fuerza física irresistible e involuntabilidad)"),
+        (454, re.compile(r"\b282\.\s+Definici[oó]n", re.I),
+         "TÍTULO III: Tipicidad",
+         "CAPÍTULO XIX: Conceptuación general del tipo penal"),
+        (530, re.compile(r"\b291\.\s+El\s+tipo\s+penal\s+antes\s+de\s+1906", re.I),
+         "TÍTULO III: Tipicidad",
+         "CAPÍTULO XX: Distintas concepciones doctrinarias del tipo penal"),
+        (605, re.compile(r"\b302\.\s+Inter[eé]s\s+jur[ií]dico\s+[yv]\s+bien\s+jur[ií]dico", re.I),
+         "TÍTULO III: Tipicidad",
+         "CAPÍTULO XXI: El bien jurídico y la norma (Tipicidad legal y conglobante)"),
+        (660, re.compile(r"\b310\.\s+Los\s+entes\s+que\s+son\s+\"?objeto\"?", re.I),
+         "TÍTULO III: Tipicidad",
+         "CAPÍTULO XXI: El bien jurídico y la norma > IV y V - Los bienes jurídicos y su afectación"),
+        (735, re.compile(r"\b320\.\s+La\s+manifestaci[oó]n\s+t[ií]pica\s+de\s+la\s+voluntad", re.I),
+         "TÍTULO III: Tipicidad",
+         "CAPÍTULO XXII: Aspecto objetivo del tipo doloso"),
+        (825, re.compile(r"\b331\.\s+Estructura\s+general\s+d\s*e\s+los\s+tipos\s+dolosos", re.I),
+         "TÍTULO III: Tipicidad",
+         "CAPÍTULO XXIII: Aspecto subjetivo de los tipos dolosos (El dolo)"),
+        (1024, re.compile(r"\b351\.\s+E[l1]\s+concepto\s+y\s+su\s+origen", re.I),
+         "TÍTULO III: Tipicidad",
+         "CAPÍTULO XXIV: Elementos subjetivos del tipo distintos del dolo"),
+        (1085, re.compile(r"\b358\.\s+Panorama\s+de\s+su\s+problem[aá]tica", re.I),
+         "TÍTULO III: Tipicidad",
+         "CAPÍTULO XXV: Los tipos activos: tipos culposos"),
+        (1204, re.compile(r"\b370\.\s+E[l1]\s+principio\s+de\s+culpabilidad", re.I),
+         "TÍTULO III: Tipicidad",
+         "CAPÍTULO XXVI: El 'nullum crimen sine culpa' y las violaciones al mismo"),
+        (1275, re.compile(r"\b380\.\s+La\s+o?misi[oó]n\s+co[am]{1,2}o\s+estructura", re.I),
+         "TÍTULO III: Tipicidad",
+         "CAPÍTULO XXVII: Los tipos omisivos"),
+        (1380, re.compile(r"\b390\.\s+Planteamiento", re.I),
+         "TÍTULO III: Tipicidad",
+         "CAPÍTULO XXVIII: La tipicidad conglobante"),
+        (1474, re.compile(r"\b399\.\s+La\s+aquiescencia:\s+titularidad\s+y\s+disponibilidad", re.I),
+         "TÍTULO III: Tipicidad",
+         "CAPÍTULO XXVIII: La tipicidad conglobante > IV - La disposición del bien jurídico y aquiescencia"),
+        (1595, re.compile(r"\b415\.\s+Planteamiento", re.I),
+         "TÍTULO IV: La antijuridicidad",
+         "CAPÍTULO XXIX: La antijuridicidad y la justificación"),
+        (1665, re.compile(r"\b423\.\s+Naturalez[az]\s+y\s+fundamento", re.I),
+         "TÍTULO IV: La antijuridicidad",
+         "CAPÍTULO XXX: Las causas de justificación en particular (Legítima defensa y Estado de necesidad)"),
+    ],
+}
+
+
+def is_doctrinal_document(doc_topic: str = "", doc_title: str = "", doc_author: str = "") -> bool:
+    """
+    Determina si un documento jurídico corresponde a una obra de doctrina (tratado académico, manual, comentario)
+    y no a una norma positiva o tratado internacional ratificado por ley.
+    """
+    topic_l = (doc_topic or "").lower()
+    title_l = (doc_title or "").lower().strip()
+    author_l = (doc_author or "").lower().strip()
+
+    # Si el título contiene número de Ley, Decreto, Resolución o Acuerdo Internacional, o su autor es el Estado -> Norma Positiva
+    if re.search(r"\b(?:ley\s+\d+|decreto\s+\d+|resoluci[oó]n\s+\d+|acuerdo\s+mercosur|tratado\s+ant[aá]rtico|tratados\s+internacionales)\b", title_l):
+        return False
+    if author_l in ("estado argentino", "congreso de la nación", "congreso de la nacion", "poder ejecutivo nacional", "infoleg"):
+        return False
+
+    if "doctrina" in topic_l:
+        return True
+
+    normative_prefixes = (
+        "ley ", "código ", "codigo ", "decreto ", "constitución ", "constitucion ",
+        "resolución ", "resolucion ", "acordada ", "convenio ", "convención ",
+        "convencion ", "pacto ", "declaración ", "declaracion ", "estatuto ", "reglamento "
+    )
+    if title_l.startswith(normative_prefixes):
+        return False
+
+    doctrinal_title_markers = (
+        "tratado de derecho", "manual de", "parte especial", "parte general",
+        "fundamentos del anteproyecto", "curso de", "lecciones de",
+        "teoría del delito", "teoria del delito", "derecho penal",
+        "derecho constitucional", "derecho civil"
+    )
+    if any(m in title_l for m in doctrinal_title_markers):
+        return True
+
+    non_doctrinal_authors = (
+        "", "estado argentino", "desconocido", "congreso de la nación",
+        "congreso de la nacion", "poder ejecutivo nacional", "infoleg",
+        "teccam", "teccam s.r.l.", "n/a", "none"
+    )
+    if "derecho" in topic_l and author_l not in non_doctrinal_authors:
+        return True
+
+    return False
+
+
+def unpack_pseudo_tables(text: str, is_doctrina: bool = False) -> str:
     """
     Detecta líneas o tablas masivas (>1500 caracteres o con marcadores estructurales)
     y las desarticula insertando saltos de línea para que los encabezados y artículos
@@ -118,13 +278,23 @@ def unpack_pseudo_tables(text: str) -> str:
     lines = text.split("\n")
     processed_lines = []
     
-    header_pattern = re.compile(
-        r"(?:^|\s+)(#{1,6}\s+|LIBRO\s+(?:PRIMERO|SEGUNDO|TERCERO|CUARTO|QUINTO|SEXTO|[IVXLCDM\d]+)|"
-        r"T[IÍ]TULO\s+(?:PRELIMINAR|[IVXLCDM\d]+)|CAP[IÍ]TULO\s+\d+|SECCI[OÓ]N\s+\d+|"
-        r"ART[IÍ]CULO\s+\d+[°º]?(?:\s*(?:bis|ter|qu[aá]ter|quinquies|sexies|septies|octies|nonies|decies))?|"
-        r"Art\.\s*\d+[°º]?(?:\s*(?:bis|ter|qu[aá]ter|quinquies|sexies|septies|octies|nonies|decies))?)",
-        re.IGNORECASE
-    )
+    if is_doctrina:
+        # En obras de doctrina (Ley 4), NUNCA partir párrafos por menciones en línea a 'Art.' / 'Artículo'
+        # ni por sustantivos en minúscula/título ('Libro Tercero, que trataba...').
+        # Solo desempaquetar encabezados Markdown, títulos estructurales en MAYÚSCULAS o parágrafos '§ N.'.
+        header_pattern = re.compile(
+            r"(?:^|\s+)(#{1,6}\s+|(?:LIBRO|PARTE)\s+(?:PRIMERO|SEGUNDO|TERCERO|CUARTO|QUINTO|SEXTO|PRIMERA|SEGUNDA|TERCERA|[IVXLCDM\d]+)\b|"
+            r"T[IÍ]TULO\s+(?:PRELIMINAR|[IVXLCDM\d]+)\b|CAP[IÍ]TULO\s+[IVXLCDM\d]+\b|SECCI[OÓ]N\s+[IVXLCDM\d]+\b|"
+            r"§\s*\d+\s*[\.\-])"
+        )
+    else:
+        header_pattern = re.compile(
+            r"(?:^|\s+)(#{1,6}\s+|LIBRO\s+(?:PRIMERO|SEGUNDO|TERCERO|CUARTO|QUINTO|SEXTO|[IVXLCDM\d]+)|"
+            r"T[IÍ]TULO\s+(?:PRELIMINAR|[IVXLCDM\d]+)|CAP[IÍ]TULO\s+[IVXLCDM\d]+|SECCI[OÓ]N\s+[IVXLCDM\d]+|"
+            r"ART[IÍ]CULO\s+\d+[°º]?(?:\s*(?:bis|ter|qu[aá]ter|quinquies|sexies|septies|octies|nonies|decies))?|"
+            r"Art\.\s*\d+[°º]?(?:\s*(?:bis|ter|qu[aá]ter|quinquies|sexies|septies|octies|nonies|decies))?)",
+            re.IGNORECASE
+        )
     
     for line in lines:
         stripped = line.strip()
@@ -155,11 +325,11 @@ def unpack_pseudo_tables(text: str) -> str:
                 
     return "\n".join(processed_lines)
 
-def detect_heuristic_header(line: str) -> Optional[Tuple[int, str, bool]]:
+def detect_heuristic_header(line: str, is_doctrina: bool = False) -> Optional[Tuple[int, str, bool]]:
     """
     Detecta si una línea corresponde a un encabezado jerárquico (Markdown, legal o literario).
     Retorna: (nivel: int, titulo_limpio: str, incluir_en_contenido: bool) o None.
-    incluir_en_contenido: True para Artículos (para no perder el texto del artículo en el chunk).
+    incluir_en_contenido: True para Artículos/Parágrafos (para no perder el texto del artículo en el chunk).
     """
     stripped = line.strip()
     if not stripped:
@@ -178,23 +348,43 @@ def detect_heuristic_header(line: str) -> Optional[Tuple[int, str, bool]]:
         return (3, clean[4:].strip()[:90], False)
     if stripped.startswith("#### "):
         return (4, clean[5:].strip()[:90], False)
+
+    # Filtro de verbos narrativos e indicadores de oración común para evitar falsos encabezados
+    narrative_verbs = (
+        r"\b(?:rige|establece|dispone|aplica|debe|pueden?|trataba|trata|dec[ií]a|dice|"
+        r"regulaba|regula|conten[ií]a|contiene|dividido|sancionado|prev[eé]|exige|requiere|fue|era)\b"
+    )
         
     # Nivel 1: Macro-estructuras (Libro, Parte, Título Preliminar)
-    if re.match(r"^(?:LIBRO\s+(?:PRIMERO|SEGUNDO|TERCERO|CUARTO|QUINTO|SEXTO|[IVXLCDM\d]+)|PARTE\s+[IVXLCDM\d]+|T[IÍ]TULO\s+PRELIMINAR|TITULO\s+PRELIMINAR)\b", clean, re.IGNORECASE):
-        if len(clean) < 120 and not re.search(r"\b(?:rige|establece|dispone|aplica|debe|pueden?)\b", clean, re.IGNORECASE):
+    if re.match(r"^(?:LIBRO\s+(?:PRIMERO|SEGUNDO|TERCERO|CUARTO|QUINTO|SEXTO|[IVXLCDM\d]+)|PARTE\s+(?:PRIMERA|SEGUNDA|TERCERA|CUARTA|QUINTA|[IVXLCDM\d]+)|T[IÍ]TULO\s+PRELIMINAR|TITULO\s+PRELIMINAR)\b", clean, re.IGNORECASE):
+        if len(clean) < 120 and not re.search(narrative_verbs, clean, re.IGNORECASE):
             return (1, clean[:90].strip(), False)
             
     # Nivel 2: Títulos
     if re.match(r"^T[IÍ]TULO\s+[IVXLCDM\d]+\b", clean, re.IGNORECASE):
-        if len(clean) < 120 and not re.search(r"\b(?:rige|establece|dispone|aplica|debe|pueden?)\b", clean, re.IGNORECASE):
+        if len(clean) < 120 and not re.search(narrative_verbs, clean, re.IGNORECASE):
             return (2, clean[:90].strip(), False)
             
     # Nivel 3: Capítulos y Secciones
-    if re.match(r"^(?:CAP[IÍ]TULO\s+[IVXLCDM\d]+|SECCI[OÓ]N\s+\d+|SECCION\s+\d+)\b", clean, re.IGNORECASE):
-        if len(clean) < 120:
+    if re.match(r"^(?:CAP[IÍ]TULO\s+[IVXLCDM\d]+|SECCI[OÓ]N\s+[IVXLCDM\d]+|SECCION\s+[IVXLCDM\d]+)\b", clean, re.IGNORECASE):
+        if len(clean) < 120 and not re.search(narrative_verbs, clean, re.IGNORECASE):
             return (3, clean[:90].strip(), False)
+
+    if is_doctrina:
+        # En obras de doctrina:
+        # 1) Subdivisiones romanas I..XX en mayúsculas (ej. 'II. - FUNCIÓN DEL DERECHO PENAL', 'IV. - LA IMPORTANCIA DE LA AUSENCIA DE CONDUCTA')
+        # Se restringe a numerales I..XX (sin L, C, D, M iniciales de nombres de autores en citas bibliográficas)
+        m_rom = re.match(r"^((?:I{1,3}|IV|VI{0,3}|IX|X{1,2}(?:I{1,3}|IV|V)?)\.?\s*[\-—]\s*[A-ZÁÉÍÓÚÑ]{2,}[^,\n]{3,80})$", clean)
+        if m_rom and not re.search(narrative_verbs, clean, re.IGNORECASE):
+            return (4, m_rom.group(1).strip()[:90], True)
+        # 2) Parágrafos doctrinales (§ 1., § 2., etc.)
+        m_par = re.match(r"^(§\s*\d+\s*[\.\-]?\s*[^.\n]{1,75})(?:\.|$|\s*[\-—])", clean)
+        if m_par:
+            return (4, m_par.group(1).strip()[:90], True)
+        # No seccionar por menciones a 'Art. X' dentro de tratados de doctrina
+        return None
             
-    # Nivel 4: Artículos Normativos (Soporta números, ordinales y sufijos bis/ter/quater con o sin espacio OCR)
+    # Nivel 4 (Leyes y Códigos): Artículos Normativos (Soporta números, ordinales y sufijos bis/ter/quater con o sin espacio OCR)
     m = re.match(
         r"^((?:ART[IÍ]CULO|Art\.)\s*\d+[°º]?(?:\s*(?:bis|ter|qu[aá]ter|quinquies|sexies|septies|octies|nonies|decies))?)"
         r"(?:\s*[\.\-:]\s*([^.\n]{1,60})|(?=[A-ZÁÉÍÓÚa-záéíóú])|[\.\-:\s]|$)",
@@ -213,7 +403,8 @@ def hierarchical_chunk_markdown(
     text: str,
     max_chars: int = 1100,
     min_chars: int = 100,
-    overlap_chars: int = 180
+    overlap_chars: int = 180,
+    is_doctrina: bool = False
 ) -> List[Dict[str, str]]:
     """
     Trocea un texto en Markdown preservando la jerarquía de títulos, tablas y fronteras de oración,
@@ -223,14 +414,15 @@ def hierarchical_chunk_markdown(
         Lista de dicts: [{'section': 'H1 > H2 > H3', 'content': '...'}]
     """
     # Desempaquetar previamente pseudo-tablas gigantes
-    text = unpack_pseudo_tables(text)
-    # Normalizar artículos pegados al texto sin espacio por artefactos OCR (ej: 'Artículo 14Todos' -> 'Artículo 14 Todos')
-    text = re.sub(
-        r"\b((?:ART[IÍ]CULO|Art\.)\s*\d+[°º]?(?:\s*(?:bis|ter|qu[aá]ter|quinquies|sexies|septies|octies|nonies|decies))?)([A-ZÁÉÍÓÚa-záéíóú])",
-        r"\1 \2",
-        text,
-        flags=re.IGNORECASE
-    )
+    text = unpack_pseudo_tables(text, is_doctrina=is_doctrina)
+    if not is_doctrina:
+        # Normalizar artículos pegados al texto sin espacio por artefactos OCR (ej: 'Artículo 14Todos' -> 'Artículo 14 Todos')
+        text = re.sub(
+            r"\b((?:ART[IÍ]CULO|Art\.)\s*\d+[°º]?(?:\s*(?:bis|ter|qu[aá]ter|quinquies|sexies|septies|octies|nonies|decies))?)([A-ZÁÉÍÓÚa-záéíóú])",
+            r"\1 \2",
+            text,
+            flags=re.IGNORECASE
+        )
     lines = text.split('\n')
     sections = [] # Lista de tuplas: (section_path, list_of_blocks)
     
@@ -288,7 +480,7 @@ def hierarchical_chunk_markdown(
             table_buffer = []
             
         # Detección Heurística y Multicriterio de Encabezados (Markdown, Legal y Literario)
-        header_info = detect_heuristic_header(line)
+        header_info = detect_heuristic_header(line, is_doctrina=is_doctrina)
         if header_info:
             lvl, h_title, include_in_content = header_info
             flush_section()
@@ -498,6 +690,178 @@ def fetch_teccam_document_detail(doc_id: str) -> Dict[str, Any]:
             raise RuntimeError(f"Error HTTP {resp.status_code} al descargar documento {doc_id}: {resp.text}")
         return resp.json()
 
+def repair_doctrina_sections_inplace(table_name: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Sanea in-place (0 GPU / 0 re-vectorización) el árbol de 'section_path' de los libros de doctrina
+    ya indexados en LanceDB que hayan sido contaminados por citas en línea a artículos ('> art. 35')
+    o falsos encabezados narrativos ('Libro Tercero, que trataba...').
+    """
+    target_table_name = table_name or TABLE_NAME
+    table = get_table(target_table_name)
+    if table is None or len(table) == 0:
+        return {"repaired_docs": 0, "repaired_chunks": 0}
+
+    narrative_verbs_re = re.compile(
+        r"\b(?:rige|establece|dispone|aplica|debe|pueden?|trataba|trata|dec[ií]a|dice|"
+        r"regulaba|regula|conten[ií]a|contiene|dividido|sancionado|prev[eé]|exige|requiere|fue|era)\b",
+        re.IGNORECASE
+    )
+    fake_art_leaf_re = re.compile(r"^(?:art[ií]culo|art\.)\s*\d+", re.IGNORECASE)
+    fake_initial_leaf_re = re.compile(r"^[LCDM]\.?\s*[\-—]", re.IGNORECASE)
+    embedded_title_re = re.compile(
+        r"(?:^|\n|\.\s+)(T[IÍ]TULO\s+(?:PRELIMINAR|[IVXLCDM\d]+)(?:\s*[:\-—.]\s*[A-ZÁÉÍÓÚÑ][^.\n]{2,70})?)(?=\n|\.|$)"
+    )
+    embedded_cap_re = re.compile(
+        r"(?:^|\n|\.\s+)(CAP[IÍ]TULO\s+[IVXLCDM\d]+(?:\s*[:\-—.]\s*[A-ZÁÉÍÓÚÑ][^.\n]{2,70})?)(?=\n|\.|$)"
+    )
+    doctrinal_sub_re = re.compile(
+        r"(?:^|\s)((?:§\s*\d+\s*[\.\-]?\s*[A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑa-záéíóúñ\s,;:()\"'-]{3,65})|"
+        r"(?:(?:I{1,3}|IV|VI{0,3}|IX|X{1,2}(?:I{1,3}|IV|V)?)\.?\s*[\-—]\s*[A-ZÁÉÍÓÚÑ]{2,}[A-ZÁÉÍÓÚÑ\s;:()\"'-]{3,65}))(?=\.|\n|$)"
+    )
+
+    df = table.to_arrow()
+    rows = df.to_pylist()
+    docs_by_id: Dict[str, List[Dict[str, Any]]] = {}
+    for r in rows:
+        d_id = r.get("doc_id")
+        if d_id:
+            docs_by_id.setdefault(d_id, []).append(r)
+
+    repaired_docs = 0
+    repaired_chunks = 0
+
+    for d_id, doc_rows in docs_by_id.items():
+        if not doc_rows:
+            continue
+        sample = doc_rows[0]
+        d_topic = sample.get("doc_topic") or ""
+        d_title = sample.get("doc_title") or ""
+        d_author = sample.get("doc_author") or ""
+
+        if not is_doctrinal_document(d_topic, d_title, d_author):
+            continue
+
+        is_zaffaroni = "zaffaroni" in d_author.lower() or "tratado de derecho penal" in d_title.lower()
+        vol_key = ""
+        if is_zaffaroni:
+            t_low = d_title.lower()
+            if "parte iii" in t_low:
+                vol_key = "parte iii"
+            elif "parte ii" in t_low:
+                vol_key = "parte ii"
+            elif "parte i" in t_low:
+                vol_key = "parte i"
+        vol_anchors = ZAFFARONI_CANONICAL_ANCHORS.get(vol_key, [])
+
+        doc_rows.sort(key=lambda x: (x.get("chunk_index") or 0, x.get("id") or ""))
+        last_valid_parents: List[str] = ["Introducción y Plan de la Obra"] if is_zaffaroni else []
+        current_sub: str = ""
+        in_indice_final = False
+        doc_changed = 0
+
+        for r in doc_rows:
+            sp = r.get("section_path") or "Sección General"
+            cnt = r.get("content") or ""
+            c_idx = r.get("chunk_index") or 0
+
+            # En obras de Zaffaroni, aplicar el mapa canónico de Títulos, Capítulos e Índice General
+            if is_zaffaroni and vol_anchors:
+                if (vol_key == "parte i" and c_idx >= 1485) or (
+                    c_idx > len(doc_rows) - 35 and re.search(r"I\s*N\s*D\s*I\s*C\s*E|PLAN\s+DE\s+EXPOSIC", cnt, re.I)
+                ):
+                    in_indice_final = True
+                if in_indice_final:
+                    new_sp = "ÍNDICE GENERAL DE LA OBRA"
+                else:
+                    for min_c, pat, z_tit, z_cap in vol_anchors:
+                        if c_idx >= min_c and pat.search(cnt):
+                            last_valid_parents = [z_tit, z_cap]
+                    new_sp = " > ".join(last_valid_parents)
+                if new_sp != sp:
+                    r["section_path"] = new_sp
+                    old_text = r.get("text") or ""
+                    if f"SECCIÓN: {sp}" in old_text:
+                        r["text"] = old_text.replace(f"SECCIÓN: {sp}", f"SECCIÓN: {new_sp}", 1)
+                    doc_changed += 1
+                continue
+
+            raw_parts = [p.strip() for p in sp.split(">") if p.strip()]
+
+            # 1. Filtrar hojas falsas de artículos ('art. 35', 'art. 19') o iniciales bibliográficas ('C. - SWANEPOEL')
+            clean_parts = [
+                p for p in raw_parts
+                if not fake_art_leaf_re.match(p) and not fake_initial_leaf_re.match(p)
+            ]
+
+            # 2. Filtrar segmentos narrativos falsos ('Libro Tercero, que trataba...')
+            if any(narrative_verbs_re.search(p) for p in clean_parts):
+                clean_parts = list(last_valid_parents) if last_valid_parents else ["Sección General"]
+            elif clean_parts and clean_parts != ["Sección General"]:
+                # Quitar cualquier sub-encabezado previo si ya estaba pegado al final
+                if len(clean_parts) > 1 and doctrinal_sub_re.search(clean_parts[-1]):
+                    parent_candidate = clean_parts[:-1]
+                else:
+                    parent_candidate = clean_parts
+                if parent_candidate != last_valid_parents:
+                    current_sub = ""
+                last_valid_parents = list(parent_candidate)
+            elif last_valid_parents:
+                clean_parts = list(last_valid_parents)
+
+            # 3. Detectar TÍTULO o CAPÍTULO romano embebido en el contenido que el regex antiguo (\d+) omitió
+            cnt = r.get("content") or ""
+            m_tit = embedded_title_re.search(cnt)
+            if m_tit:
+                cand_tit = " ".join(m_tit.group(1).strip().split())[:85]
+                if not narrative_verbs_re.search(cand_tit):
+                    last_valid_parents = [cand_tit]
+                    clean_parts = list(last_valid_parents)
+                    current_sub = ""
+
+            m_cap = embedded_cap_re.search(cnt)
+            if m_cap:
+                cand_cap = " ".join(m_cap.group(1).strip().split())[:85]
+                if not narrative_verbs_re.search(cand_cap):
+                    if last_valid_parents and last_valid_parents[0].upper().startswith(("TÍTULO", "TITULO", "LIBRO", "PARTE")):
+                        last_valid_parents = [last_valid_parents[0], cand_cap]
+                    else:
+                        last_valid_parents = [cand_cap]
+                    clean_parts = list(last_valid_parents)
+                    current_sub = ""
+
+            # 4. Detectar sub-encabezado doctrinal genuino en el contenido ('§ 2. ...' o 'II. - FUNCIÓN...')
+            m_sub = doctrinal_sub_re.search(cnt)
+            if m_sub:
+                candidate_sub = " ".join(m_sub.group(1).strip().split())[:80]
+                if not narrative_verbs_re.search(candidate_sub):
+                    current_sub = candidate_sub
+
+            final_parts = list(last_valid_parents) if last_valid_parents else (list(clean_parts) if clean_parts else ["Sección General"])
+            if current_sub and (not final_parts or final_parts[-1] != current_sub):
+                if final_parts == ["Sección General"]:
+                    final_parts = [current_sub]
+                else:
+                    final_parts.append(current_sub)
+
+            new_sp = " > ".join(final_parts)
+            if new_sp != sp:
+                r["section_path"] = new_sp
+                old_text = r.get("text") or ""
+                if f"SECCIÓN: {sp}" in old_text:
+                    r["text"] = old_text.replace(f"SECCIÓN: {sp}", f"SECCIÓN: {new_sp}", 1)
+                doc_changed += 1
+
+        if doc_changed > 0:
+            clean_id = d_id.replace("'", "''")
+            table.delete(f"doc_id = '{clean_id}'")
+            table.add(doc_rows)
+            repaired_docs += 1
+            repaired_chunks += doc_changed
+            print(f"   🛠️ [Doctrina In-Place] '{d_title}': {doc_changed} fragmentos saneados en su jerarquía de secciones (0 GPU).")
+
+    return {"repaired_docs": repaired_docs, "repaired_chunks": repaired_chunks}
+
+
 def sync_knowledge_base(
     force: bool = False,
     doc_id_filter: Optional[str] = None,
@@ -698,11 +1062,13 @@ def sync_knowledge_base(
                 doc_fecha_pub = detail.get("fecha_publicacion")
 
             # Chunking jerárquico con fronteras de oración y solapamiento
+            is_doc_doctrina = is_doctrinal_document(doc_topic, doc_title, doc_author)
             chunks = hierarchical_chunk_markdown(
                 raw_markdown,
                 max_chars=max_chars,
                 min_chars=min_chars,
-                overlap_chars=overlap_chars
+                overlap_chars=overlap_chars,
+                is_doctrina=is_doc_doctrina
             )
             total_chunks = len(chunks)
             chunk_tokens_list = [count_tokens(ch["content"]) for ch in chunks]
@@ -781,6 +1147,15 @@ def sync_knowledge_base(
         except Exception as doc_err:
             print(f"   ❌ Error procesando documento '{doc_title}': {doc_err}", file=sys.stderr)
 
+    # 4.5 Saneamiento automático in-place (0 GPU) de jerarquías en obras de doctrina ya indexadas
+    try:
+        repair_res = repair_doctrina_sections_inplace(target_table_name)
+        if repair_res.get("repaired_chunks", 0) > 0:
+            print(f"✨ [RAG Sync] Saneamiento doctrinal in-place completado: {repair_res['repaired_docs']} obras ({repair_res['repaired_chunks']} fragmentos actualizados).")
+            total_new_chunks += repair_res["repaired_chunks"]
+    except Exception as rep_err:
+        print(f"⚠️ [RAG Sync] Advertencia en saneamiento doctrinal in-place: {rep_err}", file=sys.stderr)
+
     # 5. Recrear / Actualizar índice FTS para búsqueda de texto completo si hubo cambios
     if total_new_chunks > 0 and table is not None:
         try:
@@ -830,6 +1205,7 @@ def sync_knowledge_base(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Sincronizador Teccam PDF -> LanceDB")
     parser.add_argument("--force", action="store_true", help="Re-indexar todos los documentos desde cero")
+    parser.add_argument("--repair-doctrina", action="store_true", help="Sanear in-place (0 GPU) el árbol de secciones de los libros de doctrina ya indexados")
     parser.add_argument("--doc-id", type=str, default=None, help="Sincronizar un único documento por su ID")
     parser.add_argument("--max-chars", type=int, default=1100, help="Tamaño máximo por fragmento (default: 1100 chars ~ 220 tokens)")
     parser.add_argument("--min-chars", type=int, default=100, help="Tamaño mínimo para fusionar micro-fragmentos (default: 100 chars)")
@@ -837,13 +1213,21 @@ if __name__ == "__main__":
     parser.add_argument("--empresa", type=str, default=None, help="Filtrar por empresa en Teccam PDF")
     parser.add_argument("--table-name", type=str, default=None, help="Nombre de la tabla destino en LanceDB")
     args = parser.parse_args()
-    
-    sync_knowledge_base(
-        force=args.force,
-        doc_id_filter=args.doc_id,
-        max_chars=args.max_chars,
-        min_chars=args.min_chars,
-        overlap_chars=args.overlap_chars,
-        empresa=args.empresa,
-        table_name=args.table_name
-    )
+
+    if args.repair_doctrina:
+        from rag.db import list_knowledge_bases
+        tables = [args.table_name] if args.table_name else [b["table_name"] for b in list_knowledge_bases()]
+        for t_name in tables:
+            print(f"🔍 Saneando jerarquías doctrinales en tabla '{t_name}'...")
+            res = repair_doctrina_sections_inplace(t_name)
+            print(f"✅ Tabla '{t_name}': {res['repaired_docs']} obras reparadas ({res['repaired_chunks']} fragmentos actualizados).")
+    else:
+        sync_knowledge_base(
+            force=args.force,
+            doc_id_filter=args.doc_id,
+            max_chars=args.max_chars,
+            min_chars=args.min_chars,
+            overlap_chars=args.overlap_chars,
+            empresa=args.empresa,
+            table_name=args.table_name
+        )
