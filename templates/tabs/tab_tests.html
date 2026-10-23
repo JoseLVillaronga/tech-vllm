@@ -144,40 +144,96 @@
                         </div>
                     </div>
 
-                    <!-- InfoLEG Normative Extractor (HTML to Hierarchical Markdown) -->
+                    <!-- InfoLEG & SAIJ Legal Extractor (HTML/PDF to Hierarchical Markdown) -->
                     <div class="glass-panel p-6 rounded-2xl flex flex-col gap-5 lg:col-span-2">
                         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800/60 pb-3">
                             <div>
                                 <h3 class="text-md font-bold flex items-center gap-2 text-purple-300">
-                                    <span>🏛️</span> Extractor de Normativa InfoLEG (HTML a Markdown Jerárquico)
+                                    <span>🏛️</span> Extractor Jurídico Oficial: InfoLEG (Normativa) &amp; SAIJ (Jurisprudencia CSJN)
                                 </h3>
                                 <p class="text-xs text-slate-400 mt-0.5">
-                                    Descarga y procesa leyes, decretos y resoluciones oficiales de InfoLEG estructurándolos para RAG (LanceDB) y TECCAM_PDF.
+                                    Descarga y procesa leyes/acordadas de InfoLEG y fallos completos + sumarios oficiales de la CSJN desde SAIJ a Markdown jerárquico para RAG (LanceDB).
                                 </p>
                             </div>
                             <span class="text-[11px] font-mono text-purple-300 bg-purple-950/60 border border-purple-800/50 px-2.5 py-1 rounded-lg self-start sm:self-auto">
-                                Motor InfoLEG v2.1
+                                Motor InfoLEG / SAIJ v3.0
                             </span>
+                        </div>
+
+                        <!-- Catálogo Rápido de Leading Cases CSJN y Acordadas -->
+                        <div class="grid grid-cols-1 md:grid-cols-12 gap-4 bg-slate-900/50 p-3.5 rounded-xl border border-slate-800/70">
+                            <div class="md:col-span-8">
+                                <label for="infoleg-preset-select" class="block text-xs font-semibold text-indigo-300 mb-1.5 flex items-center gap-1.5">
+                                    <span>📚</span> Catálogo Rápido de Jurisprudencia CSJN (Leading Cases) y Acordadas:
+                                </label>
+                                <select id="infoleg-preset-select" onchange="onSelectLegalPreset(this.value)" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-purple-500 cursor-pointer">
+                                    <option value="">-- Seleccionar un Fallo Histórico de la CSJN o Acordada (o ingresar manualmente abajo) --</option>
+                                    <optgroup label="⚖️ Derecho Penal y Procesal Penal (CSJN - SAIJ)">
+                                        <option value="saij|FA86000507|CSJN_1986_Bazterrica_Tenencia_Estupefacientes_Art19_CN">Bazterrica, Gustavo Mario (1986) — Principio de Reserva (Art. 19 CN) y Tenencia Personal [FA86000507]</option>
+                                        <option value="saij|FA09000059|CSJN_2009_Arriola_Tenencia_Consumo_Personal">Arriola, Sebastián y otros (2009) — Inconstitucionalidad Tenencia Consumo Personal [FA09000059]</option>
+                                        <option value="saij|FA05000221|CSJN_2005_Casal_Doble_Conforme_Casacion_Amplia">Casal, Matías Eugenio (2005) — Doble Conforme y Revisión Integral en Casación [FA05000221]</option>
+                                        <option value="saij|FA05000320|CSJN_2005_Llerena_Garantia_Juez_Imparcial">Llerena, Horacio Luis (2005) — Garantía Constitucional del Juez Imparcial [FA05000320]</option>
+                                        <option value="saij|FA05000115|CSJN_2005_Simon_Lesa_Humanidad_Imprescriptibilidad">Simón, Julio Héctor y otros (2005) — Delitos de Lesa Humanidad e Imprescriptibilidad [FA05000115]</option>
+                                        <option value="saij|FA06000367|CSJN_2006_Gramajo_Derecho_Penal_De_Acto_Reclusion_Accesoria">Gramajo, Marcelo Eduardo (2006) — Derecho Penal de Acto vs. Autor (Inconst. Art. 52 CP) [FA06000367]</option>
+                                        <option value="saij|FA08000030|CSJN_2008_Acosta_Probation_Tesis_Amplia">Acosta, Alejandro Esteban (2008) — Suspensión del Juicio a Prueba / Probation (Tesis Amplia) [FA08000030]</option>
+                                        <option value="saij|FA12000021|CSJN_2012_FAL_Aborto_No_Punible_Art86_CP">F., A. L. s/ medida autosatisfactiva (2012) — Alcance del Aborto No Punible (Art. 86 CP) [FA12000021]</option>
+                                    </optgroup>
+                                    <optgroup label="🏛️ Derecho Constitucional y Derechos Humanos (CSJN - SAIJ)">
+                                        <option value="saij|FA57000001|CSJN_1957_Siri_Accion_Amparo_Actos_Estatales">Siri, Ángel (1957) — Creación Pretoriana del Amparo contra Actos Estatales [FA57000001]</option>
+                                        <option value="saij|FA58003244|CSJN_1958_Kot_Accion_Amparo_Particulares">Kot, Samuel S.R.L. (1958) — Amparo contra Actos de Particulares [FA58003244]</option>
+                                        <option value="saij|FA84000564|CSJN_1984_Ponzetti_De_Balbin_Intimidad_Libertad_Prensa">Ponzetti de Balbín c/ Editorial Atlántida (1984) — Derecho a la Intimidad vs. Prensa [FA84000564]</option>
+                                        <option value="saij|FA86000789|CSJN_1986_Sejean_Divorcio_Vincular_Autonomia">Sejean c/ Zaks de Sejean (1986) — Proyecto de Vida y Divorcio Vincular [FA86000789]</option>
+                                        <option value="saij|FA92000322|CSJN_1992_Ekmekdjian_Sofovich_Supremacia_Tratados">Ekmekdjian c/ Sofovich (1992) — Supremacía de los Tratados y Derecho a Réplica [FA92000322]</option>
+                                        <option value="saij|FA93000111|CSJN_1993_Bahamondez_Objecion_Conciencia_Autonomia">Bahamondez, Marcelo (1993) — Objeción de Conciencia y Señorío sobre el Propio Cuerpo [FA93000111]</option>
+                                        <option value="saij|FA09000006|CSJN_2009_Halabi_Acciones_De_Clase_Derechos_Colectivos">Halabi, Ernesto c/ P.E.N. (2009) — Acciones de Clase y Derechos de Incidencia Colectiva [FA09000006]</option>
+                                        <option value="saij|FA12000076|CSJN_2012_Albarracini_Nieves_Directivas_Anticipadas">Albarracini Nieves, Jorge W. (2012) — Directivas Anticipadas y Autonomía del Paciente [FA12000076]</option>
+                                        <option value="saij|FA12000216|CSJN_2012_Rodriguez_Pereyra_Control_Convencionalidad_Oficio">Rodríguez Pereyra c/ Ejército Argentino (2012) — Control de Convencionalidad de Oficio [FA12000216]</option>
+                                        <option value="saij|FA17000003|CSJN_2017_Fontevecchia_Limites_Corte_IDH">Ministerio de Relaciones Exteriores / Caso Fontevecchia (2017) — Límites Corte IDH [FA17000003]</option>
+                                    </optgroup>
+                                    <optgroup label="🛡️ Derecho Civil, Daños, Laboral y Previsional (CSJN - SAIJ)">
+                                        <option value="saij|FA86000420|CSJN_1986_Santa_Coloma_Alterum_Non_Laedere">Santa Coloma c/ E.F.A. (1986) — Principio Alterum Non Laedere y Reparación Integral [FA86000420]</option>
+                                        <option value="saij|FA04000195|CSJN_2004_Vizzoti_Tope_Indemnizatorio_Art245_LCT">Vizzoti c/ AMSA S.A. (2004) — Inconstitucionalidad Tope Indemnizatorio Art. 245 LCT [FA04000195]</option>
+                                        <option value="saij|FA04000197|CSJN_2004_Aquino_Reparacion_Integral_Riesgos_Trabajo">Aquino c/ Cargo Servicios Industriales (2004) — Reparación Integral en Accidentes Laborales [FA04000197]</option>
+                                        <option value="saij|FA07000202|CSJN_2007_Badaro_Movilidad_Jubilatoria_Art14bis">Badaro, Adolfo Valentín c/ ANSeS (2007) — Garantía de Movilidad Jubilatoria [FA07000202]</option>
+                                        <option value="saij|FA07000250|CSJN_2007_Mosca_Deber_Seguridad_Espectaculos">Mosca c/ Provincia de Buenos Aires (2007) — Deber de Seguridad en Espectáculos [FA07000250]</option>
+                                        <option value="saij|FA10000047|CSJN_2010_Alvarez_Cencosud_Despido_Discriminatorio">Álvarez c/ Cencosud S.A. (2010) — Despido Discriminatorio y Reinstalación (Ley 23.592) [FA10000047]</option>
+                                    </optgroup>
+                                    <optgroup label="📜 Acordadas CSJN y Reglamentos Procesales (InfoLEG)">
+                                        <option value="infoleg|126619|Acordada_CSJN_4_2007_Reglamento_Recurso_Extraordinario">Acordada CSJN 4/2007 — Reglamento del Recurso Extraordinario Federal y Queja [InfoLEG 126619]</option>
+                                        <option value="infoleg|215206|Acordada_CSJN_15_2013_Publicacion_Sentencias_Privacidad">Acordada CSJN 15/2013 — Publicación de Sentencias y Protección de Datos Personales [InfoLEG 215206]</option>
+                                        <option value="infoleg|340485|Acordada_CSJN_31_2020_Expediente_Electronico_Firma_Digital">Acordada CSJN 31/2020 — Protocolo de Actuación y Expediente Judicial Electrónico [InfoLEG 340485]</option>
+                                        <option value="infoleg|398515|Acordada_CSJN_12_2024_Subastas_Judiciales_Electronicas">Acordada CSJN 12/2024 — Reglamento de Subastas Judiciales Electrónicas [InfoLEG 398515]</option>
+                                    </optgroup>
+                                </select>
+                            </div>
+                            <div class="md:col-span-4">
+                                <label for="infoleg-source-select" class="block text-xs font-semibold text-slate-300 mb-1.5">Motor / Fuente Documental:</label>
+                                <select id="infoleg-source-select" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-purple-500 cursor-pointer">
+                                    <option value="auto">🔄 Auto-detectar (InfoLEG o SAIJ)</option>
+                                    <option value="saij">⚖️ SAIJ — Jurisprudencia CSJN (Fallo + Sumarios)</option>
+                                    <option value="infoleg">🏛️ InfoLEG — Normativa, Leyes y Acordadas</option>
+                                </select>
+                            </div>
                         </div>
 
                         <!-- Formulario de Entrada -->
                         <div class="grid grid-cols-1 md:grid-cols-12 gap-4">
                             <div class="md:col-span-6">
-                                <label class="block text-xs font-semibold text-slate-300 mb-1.5">URL o ID de Norma en InfoLEG:</label>
-                                <input type="text" id="infoleg-url-input" placeholder="Ej: 409377 o https://servicios.infoleg.gob.ar/infolegInternet/verNorma.do?id=409377" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-purple-500 font-mono" onkeydown="if(event.key === 'Enter') extractInfolegDoc()">
+                                <label class="block text-xs font-semibold text-slate-300 mb-1.5">URL, ID InfoLEG, ID SAIJ (FA...) o Carátula del Fallo:</label>
+                                <input type="text" id="infoleg-url-input" name="legal_doc_query_input" autocomplete="off" spellcheck="false" placeholder="Ej: FA09000059, 'Arriola', 409377 o URL de InfoLEG / SAIJ" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-purple-500 font-mono" onkeydown="if(event.key === 'Enter') extractInfolegDoc()">
                             </div>
                             <div class="md:col-span-6">
                                 <label class="block text-xs font-semibold text-slate-300 mb-1.5">Título del Documento (Opcional):</label>
-                                <input type="text" id="infoleg-title-input" placeholder="Ej: Ley_27742_Bases (si está vacío, se auto-detectará)" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-purple-500" onkeydown="if(event.key === 'Enter') extractInfolegDoc()">
+                                <input type="text" id="infoleg-title-input" name="legal_doc_title_input" autocomplete="off" spellcheck="false" placeholder="Ej: CSJN_2009_Arriola (si está vacío, se auto-detectará)" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-purple-500" onkeydown="if(event.key === 'Enter') extractInfolegDoc()">
                             </div>
                         </div>
 
                         <!-- Opciones y Botón de Acción -->
                         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-1">
                             <div class="flex items-center gap-5 flex-wrap text-xs text-slate-300">
-                                <label class="flex items-center gap-2 cursor-pointer select-none">
+                                <label class="flex items-center gap-2 cursor-pointer select-none" title="En InfoLEG prioriza texact.htm; en SAIJ descarga y convierte el PDF íntegro de la sentencia además de los sumarios">
                                     <input type="checkbox" id="infoleg-prefer-updated" checked class="w-4 h-4 rounded bg-slate-950 border-slate-700 text-purple-600 focus:ring-purple-500/20 cursor-pointer">
-                                    <span>Priorizar texto actualizado (<code class="text-purple-300 font-mono text-[11px]">texact.htm</code>)</span>
+                                    <span>Texto actualizado (<code class="text-purple-300 font-mono text-[11px]">texact.htm</code>) / Sentencia íntegra PDF (<code class="text-purple-300 font-mono text-[11px]">SAIJ</code>)</span>
                                 </label>
                                 <label class="flex items-center gap-2 cursor-pointer select-none">
                                     <input type="checkbox" id="infoleg-save-disk" checked class="w-4 h-4 rounded bg-slate-950 border-slate-700 text-purple-600 focus:ring-purple-500/20 cursor-pointer">

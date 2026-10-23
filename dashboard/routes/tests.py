@@ -161,63 +161,139 @@ def api_test_image():
 
 @tests_bp.route("/api/test/infoleg", methods=["POST"])
 def api_test_infoleg():
-    """Extrae y convierte normativas oficiales de InfoLEG a Markdown jerárquico."""
+    """Extrae y convierte normativas de InfoLEG o jurisprudencia de SAIJ (CSJN) a Markdown jerárquico."""
     data = request.get_json() or {}
     raw_url = data.get("url", "").strip()
     if not raw_url:
-        return jsonify({"success": False, "error": "Debe especificar una URL o un ID numérico de InfoLEG válido."}), 400
+        return jsonify({"success": False, "error": "Debe especificar una URL, ID de InfoLEG, ID de SAIJ (FA...) o carátula a buscar."}), 400
 
     custom_title = data.get("title", "").strip() or None
+    source_mode = data.get("source", "auto").strip().lower()
     prefer_updated = bool(data.get("prefer_updated", True))
     save_to_disk = bool(data.get("save_to_disk", True))
 
+    # Auto-detección de fuente documental (InfoLEG vs SAIJ)
+    is_saij = False
+    if source_mode == "saij":
+        is_saij = True
+    elif source_mode == "infoleg":
+        is_saij = False
+    else:
+        raw_lower = raw_url.lower()
+        if (
+            "saij.gob.ar" in raw_lower
+            or re.search(r"\b(?:fa|nv|su)\d{6,8}\b", raw_lower)
+            or re.search(r"123456789-\d{3}-\d{4}", raw_lower)
+            or (not re.match(r"^\d+$", raw_url) and "infoleg.gob.ar" not in raw_lower and not raw_lower.endswith((".htm", ".html")))
+        ):
+            is_saij = True
+
     try:
-        from scripts.fetch_infoleg import InfoLegFetcher, InfoLegParser, sanitize_filename
+        from scripts.fetch_infoleg import sanitize_filename
 
-        fetcher = InfoLegFetcher()
-        doc_parser = InfoLegParser()
+        if is_saij:
+            from scripts.fetch_saij import SAIJFetcher, SAIJParser
 
-        html, meta, text_url = fetcher.resolve_full_text(raw_url, prefer_updated=prefer_updated)
+            fetcher = SAIJFetcher()
+            saij_parser = SAIJParser()
+            # En modo SAIJ, prefer_updated controla si se incluye el texto íntegro del PDF además de los sumarios
+            fallo_data = fetcher.fetch_full_fallo(raw_url, include_full_text=prefer_updated)
 
-        doc_title = custom_title or meta.get("titulo_oficial") or meta.get("tipo_numero") or "Documento_InfoLEG"
-        markdown_content = doc_parser.generate_markdown(html, meta, custom_title=doc_title)
+            default_title = f"CSJN_{fallo_data.get('id', 'Fallo')}_{fallo_data.get('titulo_oficial', 'Jurisprudencia')[:60]}"
+            doc_title = custom_title or fallo_data.get("titulo_oficial") or default_title
+            markdown_content = saij_parser.generate_markdown(fallo_data, custom_title=doc_title)
 
-        safe_filename = sanitize_filename(doc_title)
-        if not safe_filename.endswith(".md"):
-            safe_filename += ".md"
+            safe_filename = sanitize_filename(custom_title or default_title)
+            if not safe_filename.endswith(".md"):
+                safe_filename += ".md"
 
-        output_path_str = None
-        if save_to_disk:
-            output_dir = REPO_ROOT / "scripts" / "output"
-            output_dir.mkdir(parents=True, exist_ok=True)
-            output_path = output_dir / safe_filename
-            with open(output_path, "w", encoding="utf-8") as f:
-                f.write(markdown_content)
-            output_path_str = str(output_path)
+            output_path_str = None
+            if save_to_disk:
+                output_dir = REPO_ROOT / "scripts" / "output"
+                output_dir.mkdir(parents=True, exist_ok=True)
+                output_path = output_dir / safe_filename
+                with open(output_path, "w", encoding="utf-8") as f:
+                    f.write(markdown_content)
+                output_path_str = str(output_path)
 
-        size_kb = round(len(markdown_content.encode("utf-8")) / 1024, 1)
-        lines_count = len(markdown_content.splitlines())
-        art_count = len(re.findall(r"\*\*ART[IÍ]CULO\s+\d+", markdown_content, re.IGNORECASE))
+            size_kb = round(len(markdown_content.encode("utf-8")) / 1024, 1)
+            lines_count = len(markdown_content.splitlines())
+            sumarios_count = len(fallo_data.get("sumarios", []))
+            cons_count = len(re.findall(r"\*\*CONSIDERANDO\s+\d+", markdown_content, re.IGNORECASE))
 
-        return jsonify({
-            "success": True,
-            "filename": safe_filename,
-            "content": markdown_content,
-            "metadata": {
-                "id": meta.get("id"),
-                "tipo_numero": meta.get("tipo_numero"),
-                "fecha": meta.get("fecha"),
-                "boletin_oficial": meta.get("boletin_oficial"),
-                "tema": meta.get("tema"),
-                "resumen": meta.get("resumen"),
-                "texto_url": text_url,
-                "saved_path": output_path_str
-            },
-            "stats": {
-                "articles": art_count,
-                "lines": lines_count,
-                "size_kb": size_kb
-            }
-        })
+            return jsonify({
+                "success": True,
+                "source": "saij",
+                "filename": safe_filename,
+                "content": markdown_content,
+                "metadata": {
+                    "id": fallo_data.get("id"),
+                    "tipo_numero": f"Fallo {fallo_data.get('id') or 'CSJN'} — {fallo_data.get('tribunal', 'CSJN')}",
+                    "fecha": fallo_data.get("fecha"),
+                    "boletin_oficial": f"Magistrados: {fallo_data.get('magistrados')}" if fallo_data.get("magistrados") else None,
+                    "tema": fallo_data.get("sobre"),
+                    "resumen": fallo_data.get("titulo_oficial"),
+                    "texto_url": fallo_data.get("texto_url"),
+                    "pdf_url": fallo_data.get("pdf_url"),
+                    "saved_path": output_path_str
+                },
+                "stats": {
+                    "articles": sumarios_count,
+                    "considerandos": cons_count,
+                    "pdf_pages": fallo_data.get("pdf_pages", 0),
+                    "lines": lines_count,
+                    "size_kb": size_kb
+                }
+            })
+
+        else:
+            from scripts.fetch_infoleg import InfoLegFetcher, InfoLegParser
+
+            fetcher = InfoLegFetcher()
+            doc_parser = InfoLegParser()
+
+            html, meta, text_url = fetcher.resolve_full_text(raw_url, prefer_updated=prefer_updated)
+
+            doc_title = custom_title or meta.get("titulo_oficial") or meta.get("tipo_numero") or "Documento_InfoLEG"
+            markdown_content = doc_parser.generate_markdown(html, meta, custom_title=doc_title)
+
+            safe_filename = sanitize_filename(doc_title)
+            if not safe_filename.endswith(".md"):
+                safe_filename += ".md"
+
+            output_path_str = None
+            if save_to_disk:
+                output_dir = REPO_ROOT / "scripts" / "output"
+                output_dir.mkdir(parents=True, exist_ok=True)
+                output_path = output_dir / safe_filename
+                with open(output_path, "w", encoding="utf-8") as f:
+                    f.write(markdown_content)
+                output_path_str = str(output_path)
+
+            size_kb = round(len(markdown_content.encode("utf-8")) / 1024, 1)
+            lines_count = len(markdown_content.splitlines())
+            art_count = len(re.findall(r"\*\*ART[IÍ]CULO\s+\d+", markdown_content, re.IGNORECASE))
+
+            return jsonify({
+                "success": True,
+                "source": "infoleg",
+                "filename": safe_filename,
+                "content": markdown_content,
+                "metadata": {
+                    "id": meta.get("id"),
+                    "tipo_numero": meta.get("tipo_numero"),
+                    "fecha": meta.get("fecha"),
+                    "boletin_oficial": meta.get("boletin_oficial"),
+                    "tema": meta.get("tema"),
+                    "resumen": meta.get("resumen"),
+                    "texto_url": text_url,
+                    "saved_path": output_path_str
+                },
+                "stats": {
+                    "articles": art_count,
+                    "lines": lines_count,
+                    "size_kb": size_kb
+                }
+            })
     except Exception as e:
-        return jsonify({"success": False, "error": f"Error extrayendo de InfoLEG: {str(e)}"}), 500
+        return jsonify({"success": False, "error": f"Error extrayendo documento jurídico ({'SAIJ' if is_saij else 'InfoLEG'}): {str(e)}"}), 500

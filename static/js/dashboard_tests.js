@@ -204,13 +204,29 @@
         }
 
         // ==============================================================================
-        // InfoLEG Normative Extractor (HTML to Hierarchical Markdown)
+        // InfoLEG & SAIJ Legal Extractor (HTML/PDF to Hierarchical Markdown)
         // ==============================================================================
         let currentInfolegDoc = null;
+
+        function onSelectLegalPreset(presetValue) {
+            if (!presetValue) return;
+            const parts = presetValue.split('|');
+            if (parts.length < 3) return;
+            const [source, docId, suggestedTitle] = parts;
+
+            const sourceSelect = document.getElementById('infoleg-source-select');
+            const urlInput = document.getElementById('infoleg-url-input');
+            const titleInput = document.getElementById('infoleg-title-input');
+
+            if (sourceSelect) sourceSelect.value = source;
+            if (urlInput) urlInput.value = docId;
+            if (titleInput) titleInput.value = suggestedTitle;
+        }
 
         async function extractInfolegDoc() {
             const urlInput = document.getElementById('infoleg-url-input');
             const titleInput = document.getElementById('infoleg-title-input');
+            const sourceSelect = document.getElementById('infoleg-source-select');
             const preferUpdated = document.getElementById('infoleg-prefer-updated')?.checked ?? true;
             const saveDisk = document.getElementById('infoleg-save-disk')?.checked ?? true;
             const btn = document.getElementById('btn-extract-infoleg');
@@ -219,17 +235,18 @@
 
             const rawUrl = urlInput ? urlInput.value.trim() : "";
             if (!rawUrl) {
-                alert("Por favor, ingresa una URL o el ID numérico de la norma en InfoLEG (ej: 409377).");
+                alert("Por favor, selecciona un fallo del catálogo o ingresa una URL, ID de InfoLEG, ID de SAIJ (ej: FA09000059) o carátula.");
                 if (urlInput) urlInput.focus();
                 return;
             }
 
             const docTitle = titleInput ? titleInput.value.trim() : "";
+            const sourceMode = sourceSelect ? sourceSelect.value : "auto";
 
             // Estado de carga
             if (btn) btn.disabled = true;
             if (iconEl) iconEl.innerText = "⏳";
-            if (textEl) textEl.innerText = "Consultando InfoLEG y convirtiendo a Markdown...";
+            if (textEl) textEl.innerText = "Consultando fuente oficial y estructurando Markdown...";
 
             try {
                 const res = await fetch('/api/test/infoleg', {
@@ -238,6 +255,7 @@
                     body: JSON.stringify({
                         url: rawUrl,
                         title: docTitle,
+                        source: sourceMode,
                         prefer_updated: preferUpdated,
                         save_to_disk: saveDisk
                     })
@@ -245,7 +263,7 @@
 
                 const data = await res.json();
                 if (!res.ok || !data.success) {
-                    throw new Error(data.error || "Fallo en la extracción de la norma.");
+                    throw new Error(data.error || "Fallo en la extracción del documento jurídico.");
                 }
 
                 currentInfolegDoc = data;
@@ -255,31 +273,55 @@
                 if (badgesContainer) {
                     const meta = data.metadata || {};
                     const stats = data.stats || {};
+                    const isSaij = data.source === 'saij';
                     let badgesHtml = '';
 
                     if (meta.tipo_numero) {
                         badgesHtml += `<span class="px-2.5 py-1 rounded-lg text-xs font-bold bg-purple-950/80 text-purple-300 border border-purple-800/60 flex items-center gap-1.5">
-                            <span>🏛️</span> ${meta.tipo_numero}
+                            <span>${isSaij ? '⚖️' : '🏛️'}</span> ${meta.tipo_numero}
                         </span>`;
                     }
                     if (meta.fecha) {
                         badgesHtml += `<span class="px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-900 text-slate-300 border border-slate-800 flex items-center gap-1.5">
-                            <span>📅</span> Sanción: ${meta.fecha}
+                            <span>📅</span> Fecha: ${meta.fecha}
                         </span>`;
                     }
-                    if (meta.boletin_oficial) {
-                        badgesHtml += `<span class="px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-900 text-slate-300 border border-slate-800 flex items-center gap-1.5">
-                            <span>📜</span> ${meta.boletin_oficial}
+                    if (isSaij) {
+                        badgesHtml += `<span class="px-2.5 py-1 rounded-lg text-xs font-bold bg-indigo-950/80 text-indigo-300 border border-indigo-800/60 flex items-center gap-1.5">
+                            <span>📑</span> ${stats.articles || 0} Sumarios Oficiales
+                        </span>`;
+                        if (stats.considerandos) {
+                            badgesHtml += `<span class="px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-950/60 text-amber-300 border border-amber-800/50 flex items-center gap-1.5">
+                                <span>§</span> ${stats.considerandos} Considerandos
+                            </span>`;
+                        }
+                        if (stats.pdf_pages) {
+                            badgesHtml += `<span class="px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-900 text-slate-300 border border-slate-800 flex items-center gap-1.5">
+                                <span>📄</span> ${stats.pdf_pages} págs. PDF
+                            </span>`;
+                        }
+                    } else {
+                        if (meta.boletin_oficial) {
+                            badgesHtml += `<span class="px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-900 text-slate-300 border border-slate-800 flex items-center gap-1.5">
+                                <span>📜</span> ${meta.boletin_oficial}
+                            </span>`;
+                        }
+                        badgesHtml += `<span class="px-2.5 py-1 rounded-lg text-xs font-bold bg-indigo-950/80 text-indigo-300 border border-indigo-800/60 flex items-center gap-1.5">
+                            <span>⚖️</span> ${stats.articles || 0} Artículos
                         </span>`;
                     }
-                    badgesHtml += `<span class="px-2.5 py-1 rounded-lg text-xs font-bold bg-indigo-950/80 text-indigo-300 border border-indigo-800/60 flex items-center gap-1.5">
-                        <span>⚖️</span> ${stats.articles || 0} Artículos
-                    </span>`;
+
                     badgesHtml += `<span class="px-2.5 py-1 rounded-lg text-xs font-mono bg-emerald-950/60 text-emerald-300 border border-emerald-800/50 flex items-center gap-1.5">
                         <span>📊</span> ${stats.size_kb || 0} KB (${stats.lines || 0} líneas)
                     </span>`;
+
+                    if (meta.pdf_url) {
+                        badgesHtml += `<a href="${meta.pdf_url}" target="_blank" rel="noopener noreferrer" class="px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-900/80 text-amber-300 hover:text-amber-200 border border-amber-800/40 hover:border-amber-500/60 transition-all flex items-center gap-1.5" title="Descargar sentencia original en PDF desde SAIJ">
+                            <span>📕</span> PDF Oficial
+                        </a>`;
+                    }
                     if (meta.texto_url) {
-                        badgesHtml += `<a href="${meta.texto_url}" target="_blank" rel="noopener noreferrer" class="px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-900/80 text-cyan-300 hover:text-cyan-200 border border-cyan-800/40 hover:border-cyan-500/60 transition-all flex items-center gap-1.5 ml-auto" title="Abrir fuente original en InfoLEG">
+                        badgesHtml += `<a href="${meta.texto_url}" target="_blank" rel="noopener noreferrer" class="px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-900/80 text-cyan-300 hover:text-cyan-200 border border-cyan-800/40 hover:border-cyan-500/60 transition-all flex items-center gap-1.5 ml-auto" title="Abrir fuente original">
                             <span>🔗</span> Fuente Oficial
                         </a>`;
                     }
@@ -484,12 +526,17 @@
                         html.push(`<div class="flex items-start gap-2 text-xs text-slate-300 ml-4 my-1"><span class="text-purple-400">•</span><div>${item}</div></div>`);
                     }
                 } else if (safe.trim().length > 0) {
-                    // Artículos Normativos destacados en tarjeta visual
+                    // Artículos Normativos o Considerandos Judiciales destacados en tarjeta visual
                     const artMatch = safe.match(/^\*\*(ART[IÍ]CULO\s+[^*]+)\*\*\s*(.*)$/i);
+                    const consMatch = safe.match(/^\*\*(CONSIDERANDO\s+[^*]+)\*\*\s*(.*)$/i);
                     if (artMatch) {
                         const [, artBadge, artBody] = artMatch;
                         const formattedBody = artBody.replace(/\*\*([^*]+)\*\*/g, '<strong class="font-bold text-slate-100">$1</strong>');
                         html.push(`<div class="my-3 p-3.5 rounded-xl bg-slate-900/50 hover:bg-slate-900/80 border border-slate-800/80 transition-colors shadow-sm"><span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-black bg-purple-600/30 text-purple-200 border border-purple-500/40 font-mono mr-2">${artBadge}</span><span class="text-xs text-slate-200 leading-relaxed">${formattedBody}</span></div>`);
+                    } else if (consMatch) {
+                        const [, consBadge, consBody] = consMatch;
+                        const formattedBody = consBody.replace(/\*\*([^*]+)\*\*/g, '<strong class="font-bold text-slate-100">$1</strong>');
+                        html.push(`<div class="my-3 p-3.5 rounded-xl bg-slate-900/50 hover:bg-slate-900/80 border border-amber-900/40 transition-colors shadow-sm"><span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-black bg-amber-600/25 text-amber-200 border border-amber-500/40 font-mono mr-2">${consBadge}</span><span class="text-xs text-slate-200 leading-relaxed">${formattedBody}</span></div>`);
                     } else {
                         // Párrafos regulares con soporte para negrita
                         const formatted = safe.replace(/\*\*([^*]+)\*\*/g, '<strong class="font-bold text-purple-300">$1</strong>');
