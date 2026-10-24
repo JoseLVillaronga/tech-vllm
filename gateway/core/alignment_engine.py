@@ -315,7 +315,10 @@ def format_company_profile_block(profile: Optional[Dict[str, Any]]) -> str:
         "(legislación nacional o internacional general, ciencia, código, historia o cultura) no vinculados "
         "específicamente a la operativa, contratación o servicios internos de esta organización, responde con "
         "estricta neutralidad, objetividad y universalidad técnica, sin forzar menciones a la empresa, su actividad comercial "
-        "ni encuadres corporativos innecesarios."
+        "ni encuadres corporativos innecesarios.\n"
+        "PROHIBICIÓN DE CIERRES PUBLICITARIOS O COMERCIALES: Queda TERMINANTEMENTE PROHIBIDO cerrar respuestas con ofrecimientos "
+        "comerciales o de asesoría profesional en nombre de la empresa (ej: 'TECCAM S.R.L. puede asistirle...', 'consulte a nuestros profesionales'), "
+        "o atribuirle incumbencias ajenas a su objeto, salvo que el usuario pregunte expresamente qué servicios brinda la organización."
     )
 
     return "\n".join(lines)

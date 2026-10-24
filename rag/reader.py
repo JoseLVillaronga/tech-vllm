@@ -147,6 +147,37 @@ def get_document_structure(doc_id: str, filtro: Optional[str] = None, table_name
             "_content_text": " ".join(current_sec_texts)
         })
 
+    def _strip_doc_prefix(sec_str: str) -> str:
+        res = sec_str
+        for pfx in [f"{doc_title} > ", f"{actual_doc_id} > ", "Codigo Penal Argentino > "]:
+            if res.lower().startswith(pfx.lower()):
+                res = res[len(pfx):]
+                break
+        return res
+
+    _art_leaf_re = re.compile(r"^art(?:[ií]culo|\.)?\s*[\dIVXLCDM°º]+", re.IGNORECASE)
+
+    # Pre-calcular totales reales por rama padre (Título / Capítulo contenedor de artículos)
+    # sobre la totalidad del documento antes de aplicar el filtro.
+    parent_branch_totals: Dict[str, Dict[str, int]] = {}
+    for s in sections_list:
+        c_sec = _strip_doc_prefix(s["section"])
+        parts_s = [p.strip() for p in c_sec.split(">") if p.strip()]
+        if len(parts_s) >= 2 and _art_leaf_re.match(parts_s[-1]):
+            parent_path = " > ".join(parts_s[:-1])
+            info = parent_branch_totals.get(parent_path)
+            if info is None:
+                parent_branch_totals[parent_path] = {
+                    "total_tokens": s["estimated_tokens"],
+                    "total_chunks": s["chunks_count"],
+                    "total_articles": 1,
+                    "first_index": s["index"],
+                }
+            else:
+                info["total_tokens"] += s["estimated_tokens"]
+                info["total_chunks"] += s["chunks_count"]
+                info["total_articles"] += 1
+
     # Filtrar secciones por jerarquía/palabra clave con límites seguros
     clean_filtro = filtro.strip() if filtro and filtro.strip() else ""
     if clean_filtro:
@@ -194,6 +225,60 @@ def get_document_structure(doc_id: str, filtro: Optional[str] = None, table_name
     # Limpiar campo temporal _content_text para preservar el contrato de salida y no saturar memoria
     for s in sections_list:
         s.pop("_content_text", None)
+
+    # 3.5. Construir bloque de Ramas / Títulos Agrupados cuando el documento desglosa artículos individuales
+    # pero el Título/Capítulo contenedor tiene un tamaño seguro (<= 15.000 tokens) para leerse en 1 sola llamada.
+    SAFE_BRANCH_TOKEN_CAP = 15000
+    matched_parent_counts: Dict[str, int] = {}
+    for s in sections_list:
+        c_sec = _strip_doc_prefix(s["section"])
+        parts_s = [p.strip() for p in c_sec.split(">") if p.strip()]
+        if len(parts_s) >= 2 and _art_leaf_re.match(parts_s[-1]):
+            p_path = " > ".join(parts_s[:-1])
+            matched_parent_counts[p_path] = matched_parent_counts.get(p_path, 0) + 1
+
+    grouped_branches_block = ""
+    if matched_parent_counts:
+        safe_branches = []
+        oversized_branches = []
+        for p_path, m_cnt in matched_parent_counts.items():
+            b_info = parent_branch_totals.get(p_path)
+            if not b_info:
+                continue
+            # Exigir al menos 2 artículos coincidentes en la rama y al menos 150 tokens
+            if m_cnt >= 2 and b_info["total_tokens"] >= 150:
+                if b_info["total_tokens"] <= SAFE_BRANCH_TOKEN_CAP:
+                    safe_branches.append((p_path, m_cnt, b_info))
+                else:
+                    oversized_branches.append((p_path, m_cnt, b_info))
+
+        # Ordenar por cantidad de artículos coincidentes (descendente) y orden de aparición
+        safe_branches.sort(key=lambda x: (-x[1], x[2]["first_index"]))
+        top_safe_branches = safe_branches[:8]
+
+        if top_safe_branches:
+            b_rows = []
+            for p_path, m_cnt, b_info in top_safe_branches:
+                p_clean_param = p_path.replace('"', '')
+                b_rows.append(
+                    f"| **{p_path}** | {b_info['total_articles']} ({m_cnt} coinc.) | {b_info['total_chunks']} | ~{b_info['total_tokens']:,} | `leer_documento_completo(doc_id=\"{actual_doc_id}\", seccion=\"{p_clean_param}\")` |"
+                )
+            oversized_note = ""
+            if oversized_branches:
+                oversized_names = [f"`{ob[0]}` (~{ob[2]['total_tokens']:,} tokens)" for ob in oversized_branches[:3]]
+                oversized_note = (
+                    f"\n> ⚠️ **Nota de Ventana de Contexto:** Las ramas {', '.join(oversized_names)} superan los {SAFE_BRANCH_TOKEN_CAP:,} tokens; "
+                    f"para esas ramas extensas, lee sub-secciones o artículos puntuales de la tabla detallada inferior.\n"
+                )
+            grouped_branches_block = (
+                "### 📦 Bloques / Títulos Agrupados (Lectura Integral Segura en 1 Llamada ≤ 15.000 tokens)\n"
+                "> 💡 **Directiva de Eficiencia Agéntica:** Cuando realices un análisis estructural, dogmático o general de un régimen normativo y el Título/Capítulo contenedor tenga ≤ 15.000 tokens, **invoca directamente la lectura del bloque agrupado en 1 sola llamada** en lugar de leer artículo por artículo. Reserva la lectura de artículos individuales (tabla inferior) para consultas de un artículo puntual o cuando la rama supere los 15.000 tokens.\n\n"
+                "| Rama / Título / Capítulo Contenedor | Artículos Rama | Chunks | Tokens Totales Rama | Invocación de Bloque Recomendada (1 Llamada) |\n"
+                "| :--- | :---: | :---: | :---: | :--- |\n"
+                + "\n".join(b_rows)
+                + oversized_note
+                + "\n\n### 📄 Detalle de Secciones y Artículos Individuales\n"
+            )
 
     # 4. Formatear la tabla Markdown del GPS Documental con límite seguro de filas
     MAX_GPS_ROWS = 50
@@ -266,6 +351,7 @@ def get_document_structure(doc_id: str, filtro: Optional[str] = None, table_name
         f"**Tema:** {doc_topic}{vig_badge}{pub_badge} | **Autor:** {doc_author} | **Total Obra:** ~{total_doc_tokens:,} tokens ({total_chunks} fragmentos, {total_found_sections} secciones{filtro_notice})\n\n"
         f"{alt_notice}"
         f"A continuación se presenta el árbol estructural de la obra para orientar la lectura y análisis focalizado:\n\n"
+        f"{grouped_branches_block}"
         f"{table_header}" + "\n".join(md_rows) + overflow_notice + "\n\n"
         f"---\n"
         f"💡 **Guía de Navegación para el LLM y Usuario:**\n"
