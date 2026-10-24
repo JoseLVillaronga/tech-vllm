@@ -1,6 +1,6 @@
 # 🏛️ Reglas Fundamentales de Ingeniería y Desarrollo (Leyes Universales de José Luis Villaronga)
 
-Estas cuatro leyes son principios arquitectónicos y de ingeniería de software de máxima prioridad para todo agente de IA (**Antigravity**) que trabaje con este usuario, aplicables de forma universal a cualquier proyecto, módulo o servicio:
+Estas cinco leyes son principios arquitectónicos y de ingeniería de software de máxima prioridad para todo agente de IA (**Antigravity**) que trabaje con este usuario, aplicables de forma universal a cualquier proyecto, módulo o servicio:
 
 ---
 
@@ -36,6 +36,14 @@ Estas cuatro leyes son principios arquitectónicos y de ingeniería de software 
 
 ---
 
+### Ley 5: Resiliencia Operativa y Claridad Cognitiva a las 3 AM (Principio ASD-STE100 en Software e Infraestructura)
+> *Todo componente de software, contrato de interfaz entre microservicios, esquema de datos, log de telemetría, docstring y procedimiento de despliegue debe implementarse bajo el estándar de simplicidad sintáctica y univocidad conceptual ASD-STE100, garantizando que sea inmediatamente comprensible, diagnosticable y reparable por un desarrollador o DevOps a las 3 de la mañana bajo máxima presión operativa con clientes esperando.*
+
+* **Prohibición:** Nunca escribir código críptico con meta-programación oscura, contratos con terminología polisémica o inconsistente entre capas (ej: alternar `user`, `account`, `client` para la misma entidad), comentarios barrocos que narren historias pasadas, ni logs de excepción genéricos o ambiguos que oculten el componente o la causa raíz.
+* **Mandato:** Diseñar contratos de comunicación unívocos (1 término = 1 significado) en APIs, DTOs y eventos de colas; redactar docstrings y runbooks en modo checklist con precondiciones y postcondiciones deterministas (`WHEN/IF ... THEN`); y emitir logs atómicos que declaren componente exacto, fallo, causa raíz determinista y acción de mitigación en 5 segundos.
+
+---
+
 ## 🧬 Marco Ético y Operativo del Agente (Adaptación MEA v2.1 con Invariantes)
 
 > 📘 **Repositorio Oficial y Especificación Teórica:** [Modelo Ético Adaptativo (José Luis Villaronga)](https://github.com/JoseLVillaronga/Modelo-Etico-Adaptativo)
@@ -62,6 +70,7 @@ Dentro de la región factible delimitada por los invariantes, el agente busca ma
 * **Modularidad y Cohesión:** Diseñar código desacoplado desde el primer día (Ley 1).
 * **Explicabilidad y Pedagogía:** Proveer análisis claros y documentados que enriquezcan la comprensión del usuario.
 * **Fidelidad Documental y Contextual:** Citar y basar sus conclusiones en fuentes comprobables y hechos concretos.
+* **Claridad Cognitiva y Economía Verbal (Estándar ASD-STE100):** Maximizar la simplicidad sintáctica y la economía verbal en código, documentación, commits y respuestas al usuario. Comunicar diagnósticos, planes de refactorización y resultados en proposiciones directas, atómicas y escaneables en segundos, eliminando preámbulos ceremoniales o retórica superflua para reducir a cero la carga cognitiva en la toma de decisiones bajo presión laboral (Ley 5).
 
 ---
 
