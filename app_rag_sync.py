@@ -862,6 +862,187 @@ def repair_doctrina_sections_inplace(table_name: Optional[str] = None) -> Dict[s
     return {"repaired_docs": repaired_docs, "repaired_chunks": repaired_chunks}
 
 
+def repair_jurisprudencia_sections_inplace(table_name: str = TABLE_NAME) -> Dict[str, Any]:
+    """
+    Sanea in-place (sin re-calcular embeddings ni usar GPU) la jerarquía de secciones
+    y marcas de transporte de foja ('-//-') de los fallos de Jurisprudencia CSJN en LanceDB:
+      1. Repara palabras cortadas por transporte de foja ('VO-//- -//-TO' -> 'VOTO', etc.).
+      2. Incorpora la carátula oficial ('Autos: "..."') en el encabezado de la sentencia para evitar
+         que el LLM invente nombres al expandir siglas reservadas (ej. 'F., A. L.').
+      3. Separa correctamente cada Voto particular, Disidencia, Dictamen de Procuración y Dictamen
+         de Defensoría General, evitando que queden etiquetados bajo 'PARTE RESOLUTIVA'.
+    """
+    table = get_table(table_name)
+    if table is None or table.count_rows() == 0:
+        return {"repaired_docs": 0, "repaired_chunks": 0}
+
+    rows = table.search().where("doc_topic = 'Derecho Argentino Jurisprudencia'").limit(200000).to_list()
+    if not rows:
+        return {"repaired_docs": 0, "repaired_chunks": 0}
+
+    by_doc: Dict[str, List[Dict[str, Any]]] = {}
+    for r in rows:
+        by_doc.setdefault(r["doc_id"], []).append(r)
+
+    voto_re = re.compile(
+        r"\b((?:VOTO|DISIDENCIA)\s+DE(?:L| LOS| LA)?\s+SEÑOR[A-ZÁÉÍÓÚÜÑ\s.,\-]+?)(?=\s+(?:Considerando|\d{1,2}\s*[°ºª]?\)|Que\b|En\s+las\s+presentes)|$)",
+        re.IGNORECASE
+    )
+    cons_marker_re = re.compile(r"(?:\*\*CONSIDERANDO\s+\d+|(?<!\w)\d{1,2}\s*[°ºª]\)\s+(?:Que\b|[A-ZÁÉÍÓÚÑ]))")
+    por_ello_re = re.compile(r"(?:^|\s)Por\s+ello\b", re.IGNORECASE)
+
+    repaired_docs = 0
+    repaired_chunks = 0
+
+    for d_id, doc_rows in by_doc.items():
+        doc_rows.sort(key=lambda x: x.get("chunk_index", 0))
+        d_title = doc_rows[0].get("doc_title", d_id)
+        doc_changed = 0
+
+        # Extraer carátula oficial del primer chunk si existe
+        caratula_oficial = ""
+        first_cnt = doc_rows[0].get("content") or ""
+        m_car = re.search(
+            r"Carátula Oficial:\*?\*?\s*(.+?)(?=\s*>\s*\*\*|\s*\*?\*?Fecha de Sentencia:|\s*\*?\*?ID SAIJ:|\n|$)",
+            first_cnt
+        )
+        if m_car:
+            caratula_oficial = m_car.group(1).strip(" *>")
+
+        # Paso 1: Limpiar marcas '-//-' y 'U SO OFIC IAL' en content y text
+        for r in doc_rows:
+            cnt = r.get("content") or ""
+            new_cnt = re.sub(r"([a-záéíóúüñA-ZÁÉÍÓÚÜÑ])-//-\s*(?:-//-\s*)?([a-záéíóúüñA-ZÁÉÍÓÚÜÑ])", r"\1\2", cnt)
+            new_cnt = re.sub(r"-//-\s*(?:-//-\s*)?", " ", new_cnt)
+            new_cnt = re.sub(r"\bU\s*SO\s+OFIC\s*IAL\b", "", new_cnt)
+            new_cnt = re.sub(r"[ \t]{2,}", " ", new_cnt).strip()
+            if new_cnt != cnt:
+                old_txt = r.get("text") or ""
+                r["content"] = new_cnt
+                if cnt in old_txt:
+                    r["text"] = old_txt.replace(cnt, new_cnt, 1)
+                doc_changed += 1
+
+        # Paso 2: Identificar qué chunks tienen considerandos numerados y cuáles cambian de bloque (h3)
+        n_rows = len(doc_rows)
+        chunk_has_cons = [bool(cons_marker_re.search(r.get("content") or "")) for r in doc_rows]
+
+        def has_future_cons_in_same_vote(start_idx: int) -> bool:
+            for k in range(start_idx, n_rows):
+                c_k = doc_rows[k].get("content") or ""
+                if (
+                    voto_re.search(c_k)
+                    or re.search(r"Defensor[ií]a\s+Oficial\s+ante\s+la\s+Corte|EXCMA\.\s+CORTE\s+SUPREMA|Recurso\s+extraordinario\s+interpuesto\s+por", c_k, re.IGNORECASE)
+                ):
+                    return False
+                if chunk_has_cons[k]:
+                    return True
+            return False
+
+        # Paso 3: Recorrer chunks de la Sección II y reconstruir su section_path canónico
+        root_prefix = ""
+        current_h3 = ""
+        current_h4 = ""
+        in_dictamen_def = False
+
+        for idx, r in enumerate(doc_rows):
+            sp = r.get("section_path") or ""
+            cnt = r.get("content") or ""
+
+            if "II. TEXTO ÍNTEGRO DE LA SENTENCIA" not in sp:
+                continue
+
+            parts = [p.strip() for p in sp.split(">") if p.strip()]
+            if not root_prefix and len(parts) >= 2:
+                root_prefix = f"{parts[0]} > {parts[1]}"
+            elif not root_prefix:
+                root_prefix = "II. TEXTO ÍNTEGRO DE LA SENTENCIA"
+
+            # Si ya había un paréntesis '(Autos: ...)' previo en parts[2], limpiarlo antes de reconstruir
+            base_part2 = re.sub(r'\s*\(Autos:\s*".*$', "", parts[2]).strip() if len(parts) >= 3 else ""
+
+            # Detectar transiciones de nivel 3 (Dictamen, Sentencia, Votos, Pie de expediente)
+            if re.search(r"(?:^|\s)Suprema\s+Corte\s*:", cnt, re.IGNORECASE) and not current_h3:
+                current_h3 = "DICTAMEN DE LA PROCURACIÓN GENERAL DE LA NACIÓN"
+                current_h4 = ""
+                in_dictamen_def = False
+
+            if re.search(r"Vistos\s+los\s+autos\s*:", cnt, re.IGNORECASE):
+                autos_sfx = f' (Autos: "{caratula_oficial}")' if caratula_oficial else ""
+                current_h3 = f"SENTENCIA DE LA CORTE SUPREMA DE JUSTICIA DE LA NACIÓN{autos_sfx}"
+                current_h4 = "CONSIDERANDOS"
+                in_dictamen_def = False
+
+            m_voto = voto_re.search(cnt)
+            if m_voto:
+                voto_title = " ".join(m_voto.group(1).strip().lstrip("- ").rstrip(":.").split()).upper()
+                # Si el chunk se cortó en la inicial del nombre (ej. 'CARLOS S.' o 'CARMEN M.') por el punto de abreviatura,
+                # completar el apellido desde el inicio del siguiente chunk
+                if re.search(r"\b[A-Z]$", voto_title) and idx + 1 < n_rows:
+                    next_cnt = (doc_rows[idx + 1].get("content") or "").strip()
+                    m_surname = re.match(r"^([A-ZÁÉÍÓÚÜÑ]{2,25}(?:\s+DE\s+[A-ZÁÉÍÓÚÜÑ]{2,25})?)\b", next_cnt)
+                    if m_surname:
+                        voto_title = f"{voto_title}. {m_surname.group(1).upper()}"
+                current_h3 = voto_title
+                current_h4 = "CONSIDERANDOS"
+                in_dictamen_def = False
+
+            if re.search(r"Recurso\s+extraordinario\s+interpuesto\s+por\b", cnt, re.IGNORECASE):
+                current_h3 = "DATOS DEL EXPEDIENTE Y LETRADOS INTERVINIENTES"
+                current_h4 = ""
+                in_dictamen_def = False
+
+            if re.search(r"Defensor[ií]a\s+Oficial\s+ante\s+la\s+Corte|EXCMA\.\s+CORTE\s+SUPREMA\s+DE\s+JUSTICIA", cnt, re.IGNORECASE):
+                current_h3 = "DICTAMEN DE LA DEFENSORÍA GENERAL DE LA NACIÓN"
+                current_h4 = ""
+                in_dictamen_def = True
+
+            # Si aún no había current_h3 pero ya estamos en SENTENCIA según el section_path original
+            if not current_h3 and base_part2:
+                autos_sfx = f' (Autos: "{caratula_oficial}")' if caratula_oficial and "SENTENCIA DE LA CORTE SUPREMA" in base_part2 else ""
+                current_h3 = f"{base_part2}{autos_sfx}"
+                current_h4 = "CONSIDERANDOS"
+
+            # Determinar nivel 4 (CONSIDERANDOS vs PARTE RESOLUTIVA)
+            if not in_dictamen_def and current_h3 and (
+                current_h3.startswith("SENTENCIA DE LA CORTE")
+                or current_h3.startswith("VOTO ")
+                or current_h3.startswith("DISIDENCIA ")
+            ):
+                if chunk_has_cons[idx]:
+                    current_h4 = "CONSIDERANDOS"
+                if (
+                    por_ello_re.search(cnt)
+                    and any(kw in cnt.lower() for kw in ["se resuelve", "se declara", "se confirma", "se revoca", "se hace lugar", "hágase saber", "archívese", "notifíquese", "corresponde:", "corresponde declarar"])
+                    and not has_future_cons_in_same_vote(idx + 1)
+                ):
+                    current_h4 = "PARTE RESOLUTIVA"
+
+            new_parts = [root_prefix]
+            if current_h3:
+                new_parts.append(current_h3)
+            if current_h4:
+                new_parts.append(current_h4)
+            new_sp = " > ".join(new_parts)
+
+            if new_sp != sp:
+                old_txt = r.get("text") or ""
+                r["section_path"] = new_sp
+                if f"SECCIÓN: {sp}" in old_txt:
+                    r["text"] = old_txt.replace(f"SECCIÓN: {sp}", f"SECCIÓN: {new_sp}", 1)
+                doc_changed += 1
+
+        if doc_changed > 0:
+            clean_id = d_id.replace("'", "''")
+            table.delete(f"doc_id = '{clean_id}'")
+            table.add(doc_rows)
+            repaired_docs += 1
+            repaired_chunks += doc_changed
+            print(f"   ⚖️ [Jurisprudencia In-Place] '{d_title}': {doc_changed} fragmentos saneados (0 GPU).")
+
+    return {"repaired_docs": repaired_docs, "repaired_chunks": repaired_chunks}
+
+
 def sync_knowledge_base(
     force: bool = False,
     doc_id_filter: Optional[str] = None,
@@ -1206,6 +1387,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Sincronizador Teccam PDF -> LanceDB")
     parser.add_argument("--force", action="store_true", help="Re-indexar todos los documentos desde cero")
     parser.add_argument("--repair-doctrina", action="store_true", help="Sanear in-place (0 GPU) el árbol de secciones de los libros de doctrina ya indexados")
+    parser.add_argument("--repair-jurisprudencia", action="store_true", help="Sanear in-place (0 GPU) el árbol de secciones y votos de los fallos de jurisprudencia ya indexados")
     parser.add_argument("--doc-id", type=str, default=None, help="Sincronizar un único documento por su ID")
     parser.add_argument("--max-chars", type=int, default=1100, help="Tamaño máximo por fragmento (default: 1100 chars ~ 220 tokens)")
     parser.add_argument("--min-chars", type=int, default=100, help="Tamaño mínimo para fusionar micro-fragmentos (default: 100 chars)")
@@ -1221,6 +1403,13 @@ if __name__ == "__main__":
             print(f"🔍 Saneando jerarquías doctrinales en tabla '{t_name}'...")
             res = repair_doctrina_sections_inplace(t_name)
             print(f"✅ Tabla '{t_name}': {res['repaired_docs']} obras reparadas ({res['repaired_chunks']} fragmentos actualizados).")
+    elif args.repair_jurisprudencia:
+        from rag.db import list_knowledge_bases
+        tables = [args.table_name] if args.table_name else [b["table_name"] for b in list_knowledge_bases()]
+        for t_name in tables:
+            print(f"🔍 Saneando jerarquías de jurisprudencia en tabla '{t_name}'...")
+            res = repair_jurisprudencia_sections_inplace(t_name)
+            print(f"✅ Tabla '{t_name}': {res['repaired_docs']} fallos reparados ({res['repaired_chunks']} fragmentos actualizados).")
     else:
         sync_knowledge_base(
             force=args.force,

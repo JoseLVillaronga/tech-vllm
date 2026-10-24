@@ -288,8 +288,8 @@ class SAIJFetcher:
                     # Si es membrete repetido en páginas 2+
                     if page_idx > 0 and idx_ln < 8 and ln in running_headers:
                         continue
-                    # Si la línea es solo el número de página (ej: '−2−' o '- 2 -')
-                    if re.match(r"^[-–—−]\s*\d{1,4}\s*[-–—−]?$", ln):
+                    # Si la línea es solo el número de página (ej: '−2−' o '- 2 -') o marca de transporte '-//-'
+                    if re.match(r"^[-–—−]\s*\d{1,4}\s*[-–—−]?$", ln) or ln == "-//-":
                         continue
                     # Si el número de página está pegado al inicio de la línea (ej: '−2− n° 81/06...')
                     ln = re.sub(r"^[-–—−]\s*\d{1,4}\s*[-–—−]\s*", "", ln)
@@ -417,7 +417,7 @@ class SAIJParser:
         return cleaned.strip()
 
     @staticmethod
-    def clean_pdf_sentence_text(raw_text: str) -> list[str]:
+    def clean_pdf_sentence_text(raw_text: str, caratula_oficial: str = "") -> list[str]:
         """
         Sanea el texto extraído de los PDFs de la CSJN:
           - Repara cortes de palabra con guión blando (\ufffd o '-' al final de línea).
@@ -429,7 +429,15 @@ class SAIJParser:
 
         txt = raw_text.replace("\r\n", "\n").replace("\r", "\n")
 
-        # 1. Reparar palabras cortadas por guión blando o caracteres de control PDF (\ufffd, \ufffe, \uffff, \xad, '-')
+        # 1. Reparar marcas de transporte de foja judicial ('-//-') entre páginas
+        # Si une una palabra cortada en mayúsculas o minúsculas (ej: 'VO-//-\n-//-TO' -> 'VOTO')
+        txt = re.sub(r"([a-záéíóúüñA-ZÁÉÍÓÚÜÑ])-//-\s*(?:-//-\s*)?([a-záéíóúüñA-ZÁÉÍÓÚÜÑ])", r"\1\2", txt)
+        # Si hay transporte de foja con espacio entre palabras (ej: 'a -//-\n-//-abstenerse' -> 'a abstenerse')
+        txt = re.sub(r"-//-\s*(?:-//-\s*)?", " ", txt)
+        # Separar 'ES COPIA' cuando precede inmediatamente al título de un Voto o Disidencia
+        txt = re.sub(r"\b(ES\s+COPIA)\s+(?=(?:VOTO|DISIDENCIA|Recurso\s+extraordinario)\b)", r"\1\n\n", txt, flags=re.IGNORECASE)
+
+        # Reparar palabras cortadas por guión blando o caracteres de control PDF (\ufffd, \ufffe, \uffff, \xad, '-')
         txt = re.sub(
             r"([a-záéíóúüñA-ZÁÉÍÓÚÜÑ])[\ufffd\ufffe\uffff\xad\-‐‑]\s*\n\s*([a-záéíóúüñ])",
             r"\1\2",
@@ -447,9 +455,10 @@ class SAIJParser:
         cleaned_lines = []
         for line in raw_lines:
             s = line.strip()
-            # Omitir líneas de numeración de página aislada ("- 12 -", "−12−", "12")
+            # Omitir líneas de numeración de página aislada ("- 12 -", "−12−", "12") o sello "U SO OFIC IAL"
             if re.match(r"^[-–—−]?\s*\d{1,4}\s*[-–—−]?$", s):
                 continue
+            s = re.sub(r"\bU\s*SO\s+OFIC\s*IAL\b", "", s).strip()
             cleaned_lines.append(s)
 
         # 2. Reconstruir párrafos lógicos
@@ -469,15 +478,15 @@ class SAIJParser:
                 flush_buf()
                 continue
 
-            # Detectar inicio de nuevo Considerando ("1°) Que...", "10) Que...")
-            if re.match(r"^\d{1,3}\s*[°ºª]?\)\s+Que\b", s):
+            # Detectar inicio de nuevo Considerando ("1°) Que...", "1º) En las presentes...")
+            if re.match(r"^\d{1,2}\s*[°ºª]\)\s+[A-ZÁÉÍÓÚÑ]", s) or re.match(r"^\d{1,3}\s*[°ºª]?\)\s+Que\b", s):
                 flush_buf()
                 current_buf.append(s)
                 continue
 
             # Detectar encabezados estructurales del fallo
             if re.match(
-                r"^(?:Vistos\s+los\s+autos|Considerando\s*:?|Por\s+ello\b|RESUELVE\s*:?|VOTO\s+DE|DISIDENCIA\s+DE| Suprema\s+Corte\s*:?)",
+                r"^(?:Vistos\s+los\s+autos|Considerando\s*:?|Por\s+ello\b|RESUELVE\s*:?|VOTO\s+DE|DISIDENCIA\s+DE|Suprema\s+Corte\s*:?|Defensor[ií]a\s+Oficial\s+ante\s+la\s+Corte|EXCMA\.\s+CORTE\s+SUPREMA|Recurso\s+extraordinario\s+interpuesto\s+por)",
                 s,
                 re.IGNORECASE
             ):
@@ -494,45 +503,103 @@ class SAIJParser:
 
         flush_buf()
 
+        # Helper para verificar si quedan Considerandos numerados dentro del voto actual
+        def has_more_considerandos_in_vote(start_idx: int) -> bool:
+            for future_p in paragraphs[start_idx:]:
+                if re.match(
+                    r"^(?:-\s*)?(?:VOTO|DISIDENCIA)\s+DE(?:L| LOS| LA)?\s+SEÑOR|^Defensor[ií]a\s+Oficial\s+ante\s+la\s+Corte|^EXCMA\.\s+CORTE\s+SUPREMA|^Recurso\s+extraordinario\s+interpuesto\s+por",
+                    future_p,
+                    re.IGNORECASE
+                ):
+                    return False
+                if re.match(r"^\d{1,2}\s*[°ºª]\)\s+[A-ZÁÉÍÓÚÑ]", future_p) or re.match(r"^\d{1,3}\s*[°ºª]?\)\s*Que\b", future_p):
+                    return True
+            return False
+
         # 3. Formatear jerárquicamente los párrafos de la sentencia
         structured = []
-        for p in paragraphs:
+        in_considerandos = False
+        in_dictamen_defensoria = False
+        autos_suffix = f' (Autos: "{caratula_oficial}")' if caratula_oficial else ""
+
+        for idx_p, p in enumerate(paragraphs):
             # Encabezados de Dictamen / Procuración
             if re.match(r"^Suprema\s+Corte\s*:$", p, re.IGNORECASE):
                 structured.append("### DICTAMEN DE LA PROCURACIÓN GENERAL DE LA NACIÓN")
                 structured.append(f"**{p}**")
+                in_considerandos = False
+                continue
+
+            # Dictamen de la Defensoría General de la Nación ante la CSJN
+            if re.match(r"^(?:Defensor[ií]a\s+Oficial\s+ante\s+la\s+Corte|EXCMA\.\s+CORTE\s+SUPREMA\s+DE\s+JUSTICIA)", p, re.IGNORECASE):
+                if not in_dictamen_defensoria:
+                    structured.append("### DICTAMEN DE LA DEFENSORÍA GENERAL DE LA NACIÓN")
+                    in_dictamen_defensoria = True
+                structured.append(f"**{p}**")
+                in_considerandos = False
+                continue
+
+            # Pie de Secretaría (Datos del Recurso Extraordinario y Tribunal de Origen)
+            if re.match(r"^Recurso\s+extraordinario\s+interpuesto\s+por\b", p, re.IGNORECASE):
+                structured.append("### DATOS DEL EXPEDIENTE Y LETRADOS INTERVINIENTES")
+                structured.append(p)
+                in_considerandos = False
                 continue
 
             # Inicio de Sentencia CSJN ("Vistos los autos: ...")
             if re.match(r"^Vistos\s+los\s+autos\s*:", p, re.IGNORECASE):
-                structured.append("### SENTENCIA DE LA CORTE SUPREMA DE JUSTICIA DE LA NACIÓN")
-                structured.append(f"**{p}**")
+                structured.append(f"### SENTENCIA DE LA CORTE SUPREMA DE JUSTICIA DE LA NACIÓN{autos_suffix}")
+                in_dictamen_defensoria = False
+                # Si "Considerando:" quedó unido al final del párrafo de Vistos los autos, separarlo
+                m_vistos_cons = re.match(r"^(Vistos\s+los\s+autos\s*:.*?)\s+Considerando\s*:?$", p, re.IGNORECASE)
+                if m_vistos_cons:
+                    structured.append(f"**{m_vistos_cons.group(1).strip()}**")
+                    structured.append("#### CONSIDERANDOS")
+                    in_considerandos = True
+                else:
+                    structured.append(f"**{p}**")
+                    in_considerandos = False
                 continue
 
             # Votos particulares o Disidencias
             if re.match(r"^(?:-\s*)?(?:VOTO|DISIDENCIA)\s+DE(?:L| LOS| LA)?\s+SEÑOR", p, re.IGNORECASE):
                 clean_voto = p.lstrip("- ").rstrip(":")
                 structured.append(f"### {clean_voto.upper()}")
+                in_considerandos = False
                 continue
 
             # Bloque "Considerando:"
             if re.match(r"^Considerando\s*:?$", p, re.IGNORECASE):
-                structured.append("#### CONSIDERANDO")
+                structured.append("#### CONSIDERANDOS")
+                in_considerandos = True
                 continue
 
-            # Considerandos numerados ("1°) Que ...", "15) Que ...")
-            m_cons = re.match(r"^(\d{1,3})\s*[°ºª]?\)\s*(Que\b.*)$", p)
+            # Considerandos numerados ("1°) Que ...", "15) Que ...", "1º) En las presentes...")
+            m_cons = re.match(r"^(\d{1,3})\s*[°ºª]?\)\s*(Que\b.*)$", p) or (
+                not in_dictamen_defensoria and re.match(r"^(\d{1,2})\s*[°ºª]\)\s*([A-ZÁÉÍÓÚÑ].*)$", p)
+            )
             if m_cons:
+                if not in_considerandos:
+                    structured.append("#### CONSIDERANDOS")
+                    in_considerandos = True
                 num_c, body_c = m_cons.groups()
                 structured.append(f"**CONSIDERANDO {num_c}°.-** {body_c}")
                 continue
 
             # Parte Resolutiva ("Por ello, ... se declara / se resuelve ...")
-            if re.match(r"^Por\s+ello\b", p) and any(
-                kw in p.lower() for kw in ["se resuelve", "se declara", "se confirma", "se revoca", "se hace lugar", "hágase saber", "archívese"]
+            # Solo se marca como PARTE RESOLUTIVA si ya no quedan considerandos numerados en el voto actual
+            if (
+                not in_dictamen_defensoria
+                and re.match(r"^Por\s+ello\b", p)
+                and (
+                    p.rstrip().endswith(":")
+                    or any(kw in p.lower() for kw in ["se resuelve", "se declara", "se confirma", "se revoca", "se hace lugar", "hágase saber", "archívese", "notifíquese", "corresponde declarar"])
+                )
+                and not has_more_considerandos_in_vote(idx_p + 1)
             ):
                 structured.append("#### PARTE RESOLUTIVA")
                 structured.append(f"**{p}**")
+                in_considerandos = False
                 continue
 
             structured.append(p)
@@ -589,7 +656,10 @@ class SAIJParser:
         if full_text:
             md.append("## II. TEXTO ÍNTEGRO DE LA SENTENCIA")
             md.append("")
-            structured_paras = self.clean_pdf_sentence_text(full_text)
+            structured_paras = self.clean_pdf_sentence_text(
+                full_text,
+                caratula_oficial=fallo_data.get("titulo_oficial", "")
+            )
             for p in structured_paras:
                 md.append(p)
                 md.append("")
