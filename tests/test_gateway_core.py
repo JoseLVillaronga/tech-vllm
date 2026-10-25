@@ -740,6 +740,65 @@ class TestGatewayCore(unittest.TestCase):
         # Debe haber inyectado el grounding perentorio en el user_msg
         self.assertIn("[DIRECTIVA DE CONTROL Y GROUNDING OBLIGATORIO (MEA)]", user_msg)
 
+    def test_prefix_caching_system_prompt_order(self):
+        import asyncio
+        from gateway.core.alignment_engine import enrich_chat_payload
+
+        data = {
+            "model": "CorpAI-Gen",
+            "messages": [
+                {"role": "user", "content": "hola"}
+            ]
+        }
+        res = asyncio.run(enrich_chat_payload(data, actual_model="gemma", is_cloud_request=False, alignment_mode="full"))
+        sys_msg = res["messages"][0]["content"]
+
+        # El bloque estático de invariantes DEBE anteceder a la marca temporal para permitir prefix caching en llama.cpp
+        idx_invariants = sys_msg.find("[DIRECTIVAS FUNDAMENTALES Y DEBER DE VERACIDAD")
+        idx_temporal = sys_msg.find("Fecha y hora actual:")
+
+        self.assertGreaterEqual(idx_invariants, 0, "Invariantes deben estar presentes")
+        self.assertGreaterEqual(idx_temporal, 0, "Marca temporal debe estar presente")
+        self.assertLess(idx_invariants, idx_temporal, "Invariantes estáticos deben ir antes de la fecha/hora dinámica")
+
+    def test_tail_anti_decay_injection_large_context(self):
+        import asyncio
+        from gateway.core.alignment_engine import enrich_chat_payload
+
+        # Simulamos un contexto extenso (> 20.000 tokens = ~60.000 chars)
+        huge_doc = "Texto de documento legal extenso con normas y articulado. " * 1200
+        data_tool = {
+            "model": "CorpAI-Gen",
+            "messages": [
+                {"role": "user", "content": "analiza este caso de desalojo"},
+                {"role": "assistant", "content": None, "tool_calls": [{"id": "call_1", "type": "function", "function": {"name": "leer_documento_completo", "arguments": "{}"}}]},
+                {"role": "tool", "tool_call_id": "call_1", "content": huge_doc}
+            ],
+            "tools": [{"type": "function", "function": {"name": "leer_documento_completo"}}]
+        }
+
+        res_tool = asyncio.run(enrich_chat_payload(data_tool, actual_model="gemma", is_cloud_request=False, alignment_mode="full"))
+        tool_content = res_tool["messages"][-1]["content"]
+
+        self.assertIn("[RECORDATORIO PERENTORIO DE RIGOR Y GROUNDING (MEA - CONTEXTO EXTENSO)]", tool_content)
+        self.assertIn("El contexto supera los 20.000 tokens", tool_content)
+
+        # Caso usuario: contexto extenso con mensaje final de usuario
+        data_user = {
+            "model": "CorpAI-Gen",
+            "messages": [
+                {"role": "user", "content": "consulta preliminar"},
+                {"role": "assistant", "content": huge_doc},
+                {"role": "user", "content": "decime qué dice el artículo 15"}
+            ],
+            "tools": [{"type": "function", "function": {"name": "buscar_en_base_de_conocimiento"}}]
+        }
+
+        res_user = asyncio.run(enrich_chat_payload(data_user, actual_model="gemma", is_cloud_request=False, alignment_mode="full"))
+        last_user = res_user["messages"][-1]["content"]
+
+        self.assertIn("[RECORDATORIO PERENTORIO DE RIGOR Y GROUNDING (MEA - CONTEXTO EXTENSO)]", last_user)
+
     def test_database_singleton(self):
         from gateway.core.database import get_mongo_client, get_db
         client1 = get_mongo_client()

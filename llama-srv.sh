@@ -195,6 +195,43 @@ echo "👥 Slots Paralelos:  ${PARALLEL}"
 echo "💾 Ruta Slots KV:    ${SLOT_SAVE_PATH}"
 echo "============================================================"
 
+# 5.6 Warmup Asíncrono de KV-Cache y Kernels CUDA (Cero delay de inferencia para el usuario)
+(
+    READY=0
+    for i in {1..60}; do
+        sleep 1
+        if curl -s -f "http://127.0.0.1:${PORT}/health" >/dev/null 2>&1; then
+            READY=1
+            break
+        fi
+    done
+
+    if [ "${READY}" -eq 1 ]; then
+        echo "🔥 [llama-srv] Backend activo en puerto ${PORT}. Ejecutando warmup asíncrono de KV-Cache..."
+        AUTH_HEADER=()
+        if [ -n "${AUTH_KEY}" ]; then
+            AUTH_HEADER=(-H "Authorization: Bearer ${AUTH_KEY}")
+        fi
+
+        WARMUP_PAYLOAD='{
+            "messages": [
+                {"role": "system", "content": "🏛️ [DIRECTIVAS FUNDAMENTALES Y DEBER DE VERACIDAD (INVARIANTES NO NEGOCIABLES)]\n1. PROHIBICIÓN ABSOLUTA DE ENLACES SIMULADOS O FICTICIOS.\n2. FIDELIDAD DOCUMENTAL Y EXHAUSTIVIDAD.\n3. RIGOR TÉCNICO Y HONESTIDAD.\nSistema de Inferencia vLLM Suite inicializado. Invariantes MEA operativos."},
+                {"role": "user", "content": "warmup"}
+            ],
+            "max_tokens": 1,
+            "temperature": 0.0
+        }'
+
+        curl -s -X POST "http://127.0.0.1:${PORT}/v1/chat/completions" \
+             "${AUTH_HEADER[@]}" \
+             -H "Content-Type: application/json" \
+             -d "${WARMUP_PAYLOAD}" >/dev/null 2>&1
+        echo "✅ [llama-srv] Warmup completado con éxito: Kernels CUDA y KV-cache precalentados."
+    else
+        echo "⚠️ [llama-srv] Timeout esperando disponibilidad para warmup en puerto ${PORT}."
+    fi
+) &
+
 # Reemplazar la shell por el proceso llama-server para gestión nativa en systemd
 exec "${LLAMA_BIN}" \
   --model "${MODEL_PATH}" \
@@ -214,6 +251,4 @@ exec "${LLAMA_BIN}" \
   --threads "${THREADS}" \
   --load-mode "${LOAD_MODE}" \
   --port "${PORT}" \
-  --api-key "${AUTH_KEY}" \
-#  --spec-type draft-mtp \
-#  --spec-draft-n-max 3
+  --api-key "${AUTH_KEY}"

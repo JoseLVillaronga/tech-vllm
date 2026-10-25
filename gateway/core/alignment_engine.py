@@ -6,9 +6,11 @@ import asyncio
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 from gateway.core.database import get_db
-from gateway.core.context_pruner import prune_chat_history, get_max_user_turns
+from gateway.core.context_pruner import prune_chat_history, get_max_user_turns, estimate_tokens
 from gateway.core.tool_governor import apply_tool_budget_governor, is_broad_or_deep_query
 
+
+ANTI_DECAY_THRESHOLD_TOKENS = int(os.getenv("GATEWAY_ANTI_DECAY_THRESHOLD_TOKENS", "20000"))
 
 DEFAULT_INVARIANTS_PROMPT = """🏛️ [DIRECTIVAS FUNDAMENTALES Y DEBER DE VERACIDAD (INVARIANTES NO NEGOCIABLES)]
 1. PROHIBICIÓN ABSOLUTA DE ENLACES SIMULADOS O FICTICIOS:
@@ -383,6 +385,7 @@ async def enrich_chat_payload(
         print(f"⚠️ Error en Gobernador de Tools: {gov_err}", file=sys.stderr, flush=True)
 
     messages: List[Dict[str, Any]] = data["messages"]
+    total_est_tokens = estimate_tokens(messages)
     tools: List[Dict[str, Any]] = data.get("tools", [])
     tool_names = []
     for t in tools:
@@ -401,10 +404,15 @@ async def enrich_chat_payload(
         for m in messages
     )
 
-    # 1. Construir bloques del sistema (Fecha/Hora siempre presente si inject_temporal=True)
+    # 1. Construir bloques del sistema:
+    # Optimización de KV Cache Prefix Caching: los bloques estáticos (invariantes y perfil corporativo)
+    # van al inicio para maximizar el reuso de tokens cacheados en llama.cpp. El bloque temporal (dinámico)
+    # se ubica al final del encabezado para no invalidar el prefijo.
     system_parts = []
-    if settings.get("inject_temporal", True):
-        system_parts.append(get_current_time_str())
+    if mode == "full":
+        invariants_block = get_invariants_system_prompt(settings, has_pdf_tool=has_pdf_tool, has_doc_tool=has_doc_tool, has_vision_attachment=has_vision_attachment)
+        if invariants_block:
+            system_parts.append(invariants_block)
 
     # Inyección de Perfil Corporativo (si está configurado y habilitado en la API Key)
     if company_profile:
@@ -412,11 +420,9 @@ async def enrich_chat_payload(
         if corp_block:
             system_parts.append(corp_block)
 
-    # Bloque de invariantes éticos, protocolos y guías (sólo en modo 'full')
-    if mode == "full":
-        invariants_block = get_invariants_system_prompt(settings, has_pdf_tool=has_pdf_tool, has_doc_tool=has_doc_tool, has_vision_attachment=has_vision_attachment)
-        if invariants_block:
-            system_parts.append(invariants_block)
+    # Bloque temporal al final del encabezado del sistema (dinámico por segundo)
+    if settings.get("inject_temporal", True):
+        system_parts.append(get_current_time_str())
 
     full_system_header = "\n\n".join(system_parts).strip()
 
@@ -425,16 +431,16 @@ async def enrich_chat_payload(
         if system_msg:
             orig_content = system_msg.get("content", "")
             needed_parts = []
-            if settings.get("inject_temporal", True) and "Fecha y hora actual:" not in orig_content:
-                needed_parts.append(get_current_time_str())
-            if company_profile:
-                corp_block = format_company_profile_block(company_profile)
-                if corp_block and "[PERFIL E IDENTIDAD CORPORATIVA" not in orig_content:
-                    needed_parts.append(corp_block)
             if mode == "full":
                 invariants_block = get_invariants_system_prompt(settings, has_pdf_tool=has_pdf_tool, has_doc_tool=has_doc_tool, has_vision_attachment=has_vision_attachment)
                 if invariants_block and "[DIRECTIVAS FUNDAMENTALES" not in orig_content:
                     needed_parts.append(invariants_block)
+            if company_profile:
+                corp_block = format_company_profile_block(company_profile)
+                if corp_block and "[PERFIL E IDENTIDAD CORPORATIVA" not in orig_content:
+                    needed_parts.append(corp_block)
+            if settings.get("inject_temporal", True) and "Fecha y hora actual:" not in orig_content:
+                needed_parts.append(get_current_time_str())
 
             if needed_parts:
                 header_to_add = "\n\n".join(needed_parts).strip()
@@ -599,6 +605,11 @@ async def enrich_chat_payload(
                         f"2. Está ESTRICTAMENTE PROHIBIDO desviar tu respuesta o tus próximas herramientas hacia temas de turnos anteriores / It is strictly prohibited to drift.\n"
                         f"3. Maintain strict, persistent focus on completing: \"{clean_query}\"."
                     )
+                    if mode == "full" and total_est_tokens >= ANTI_DECAY_THRESHOLD_TOKENS:
+                        focus_reminder += (
+                            "\n4. [MANDATORY GROUNDING REMINDER - EXTENSIVE CONTEXT (>20k tokens)]:\n"
+                            "Context exceeds 20,000 tokens. If the exact literal text, law or data is NOT explicitly present in the tool results, state its absence with technical honesty. Do NOT hallucinate or synthesize from parametric memory."
+                        )
                 else:
                     focus_reminder = (
                         f"\n\n📌 {footer_tag}:\n"
@@ -608,7 +619,29 @@ async def enrich_chat_payload(
                         f"2. Está ESTRICTAMENTE PROHIBIDO desviar tu respuesta o tus próximas herramientas hacia temas de turnos anteriores.\n"
                         f"3. Mantén el foco perentorio en resolver: \"{clean_query}\"."
                     )
+                    if mode == "full" and total_est_tokens >= ANTI_DECAY_THRESHOLD_TOKENS:
+                        focus_reminder += (
+                            "\n4. [RECORDATORIO PERENTORIO DE RIGOR Y GROUNDING (MEA - CONTEXTO EXTENSO)]:\n"
+                            "El contexto supera los 20.000 tokens. Si la norma, artículo literal o dato técnico NO figura expresamente en las herramientas ejecutadas, declara con honestidad técnica que no se encuentra en el cuerpo documental. Queda TERMINANTEMENTE PROHIBIDO inventar o completar normativas de memoria paramétrica."
+                        )
                 last_tool_msg["content"] = f"{t_content}{focus_reminder}"
+
+    # 2.2 Refuerzo de Grounding Anti-Decay al Cierre de Contextos Extensos (> 20.000 tokens)
+    # Mitiga el decaimiento de atención (instruction decay) en conversaciones largas hacia el final del prompt cuando el último mensaje no es una herramienta.
+    if mode == "full" and total_est_tokens >= ANTI_DECAY_THRESHOLD_TOKENS and last_user_msg and (not messages or messages[-1].get("role") != "tool"):
+        user_anti_decay = (
+            "\n\n⚠️ [RECORDATORIO PERENTORIO DE RIGOR Y GROUNDING (MEA - CONTEXTO EXTENSO)]:\n"
+            "El contexto de esta conversación supera los 20.000 tokens. Conforme a las Directivas Fundamentales:\n"
+            "1. Si la información o el texto literal requerido no surge de forma expresa en los documentos consultados o herramientas ejecutadas, declara con honestidad técnica su ausencia.\n"
+            "2. Queda TERMINANTEMENTE PROHIBIDO inventar, deducir o completar artículos, clasificaciones o normativas de memoria paramétrica."
+        )
+        content_val = last_user_msg.get("content")
+        if isinstance(content_val, str):
+            if "[RECORDATORIO PERENTORIO DE RIGOR Y GROUNDING" not in content_val:
+                last_user_msg["content"] = f"{content_val}{user_anti_decay}"
+        elif isinstance(content_val, list):
+            if not any("[RECORDATORIO PERENTORIO DE RIGOR Y GROUNDING" in str(p.get("text", "")) for p in content_val if isinstance(p, dict)):
+                content_val.append({"type": "text", "text": user_anti_decay})
 
     # 3. Inyección de Búsqueda Web (si es modelo web - sólo en 'full')
     if mode == "full" and not is_cloud_request and actual_model == "gemma-4-web" and user_query:
