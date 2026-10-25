@@ -9,6 +9,7 @@ from dashboard.core import (
     get_cpu_temperature,
     get_service_status,
     control_service,
+    get_embeddings_service_unit,
     parse_env_to_dict,
     save_env_from_dict,
     admin_required
@@ -23,9 +24,10 @@ def api_status():
     
     services_info = {}
     for key, service_name in SERVICES.items():
+        actual_svc = get_embeddings_service_unit() if key == "embeddings" else service_name
         services_info[key] = {
-            "name": service_name,
-            "status": get_service_status(service_name),
+            "name": actual_svc,
+            "status": get_service_status(actual_svc),
             "port": SERVICE_PORTS.get(key, "")
         }
         
@@ -57,7 +59,7 @@ def api_control_service(service_key, action):
     if action not in ["start", "stop", "restart"]:
         return jsonify({"success": False, "error": "Acción inválida"}), 400
         
-    service_name = SERVICES[service_key]
+    service_name = get_embeddings_service_unit() if service_key == "embeddings" else SERVICES[service_key]
     success = control_service(service_name, action)
     
     return jsonify({

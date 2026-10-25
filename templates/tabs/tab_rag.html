@@ -10,7 +10,7 @@
                             Base de Conocimiento RAG & Base Vectorial LanceDB
                         </h2>
                         <p class="text-xs text-slate-400 mt-1">
-                            Sincronizador diferencial conectado a Teccam PDF (<span class="font-mono text-purple-300">http://192.168.1.33:5022</span>) con chunking jerárquico y vectores 1024D (Qwen3).
+                            Sincronizador diferencial conectado a Teccam PDF (<span class="font-mono text-purple-300">http://192.168.1.33:5022</span>) con chunking jerárquico y vectores 1024D (EmbeddingRWKV).
                         </p>
                     </div>
                     {% if current_user and current_user.role == 'admin' %}
@@ -95,7 +95,7 @@
                     <div class="bg-slate-900/60 border border-slate-800/80 p-5 rounded-2xl flex flex-col justify-between">
                         <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Vectores en LanceDB</div>
                         <div class="text-3xl font-extrabold text-purple-300 font-mono" id="rag-stat-chunks">-</div>
-                        <div class="text-xs text-slate-400 mt-2">Dimensión 1024D (Qwen3)</div>
+                        <div class="text-xs text-slate-400 mt-2">Dimensión 1024D (EmbeddingRWKV)</div>
                     </div>
                     <div class="bg-slate-900/60 border border-slate-800/80 p-5 rounded-2xl flex flex-col justify-between">
                         <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Temas / Dominios</div>

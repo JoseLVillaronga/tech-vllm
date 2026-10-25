@@ -3,6 +3,19 @@ import sys
 import psutil
 import subprocess
 
+def get_embeddings_service_unit() -> str:
+    """Resuelve dinámicamente la unidad systemd para el servicio de embeddings (preferencia por rwkv-embeddings)."""
+    try:
+        res = subprocess.run(["systemctl", "is-active", "rwkv-embeddings"], stdout=subprocess.PIPE, text=True, timeout=1)
+        if res.stdout.strip() in ["active", "activating"]:
+            return "rwkv-embeddings"
+    except Exception:
+        pass
+    if os.path.exists("/etc/systemd/system/rwkv-embeddings.service"):
+        return "rwkv-embeddings"
+    return "vllm-embeddings"
+
+
 # Mapeo de nombres de servicios systemd
 SERVICES = {
     "gemma": "vllm",
@@ -12,7 +25,7 @@ SERVICES = {
     "tts": "vllm-tts",
     "fallback_tts": "vllm-fallback-tts",
     "diarization": "vllm-diarization",
-    "embeddings": "vllm-embeddings",
+    "embeddings": get_embeddings_service_unit(),
     "image_cuda": "vllm-image",
     "image": "vllm-sd",
     "vision": "vllm-vision",
@@ -118,6 +131,8 @@ def get_service_status(service_name):
     """
     Obtiene el estado de ejecución de un servicio systemd.
     """
+    if service_name in ["embeddings", "vllm-embeddings"]:
+        service_name = get_embeddings_service_unit()
     try:
         res = subprocess.run(
             ["systemctl", "is-active", service_name],
@@ -148,6 +163,8 @@ def control_service(service_name, action):
     """
     if action not in ["start", "stop", "restart"]:
         return False
+    if service_name in ["embeddings", "vllm-embeddings"]:
+        service_name = get_embeddings_service_unit()
     try:
         res = subprocess.run(
             ["sudo", "systemctl", action, service_name],

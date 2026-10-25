@@ -10,7 +10,8 @@ from .system_metrics import (
     get_gpu_info,
     get_cpu_temperature,
     get_service_status,
-    control_service
+    control_service,
+    get_embeddings_service_unit
 )
 from .env_manager import (
     REPO_ROOT,
@@ -54,6 +55,7 @@ __all__ = [
     "get_cpu_temperature",
     "get_service_status",
     "control_service",
+    "get_embeddings_service_unit",
     "REPO_ROOT",
     "ENV_PATH",
     "read_env_file",
