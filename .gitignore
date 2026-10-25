@@ -31,6 +31,14 @@ torch_compile_cache/
 # Bases de datos y almacenamiento vectorial local
 data/
 *.lance/
+lab_linear_embeddings/lancedb_lab/
+
+# Modelos, pesos y artefactos binarios pesados
+*.pth
+*.pt
+*.bin
+*.gguf
+lab_linear_embeddings/models/
 
 # Salidas de modelos e imágenes generadas
 outputs/
