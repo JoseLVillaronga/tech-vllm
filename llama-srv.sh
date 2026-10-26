@@ -137,15 +137,32 @@ fi
 KV_CACHE_DESC="K=${CACHE_K:-f16} / V=${CACHE_V:-f16}"
 
 # 5.4 Control de Razonamiento (Thinking) y Preservación de Trazas
-REASONING_ARGS=(--reasoning "${REASONING}")
-if [ "${REASONING}" = "off" ] || [ "${REASONING}" = "false" ] || [ "${REASONING}" = "0" ]; then
-    REASONING_ARGS+=(--no-reasoning-preserve)
-    REASONING_DESC="${REASONING} (trazas desactivadas: --no-reasoning-preserve)"
-elif [ "${REASONING}" = "on" ] || [ "${REASONING}" = "true" ] || [ "${REASONING}" = "1" ]; then
-    REASONING_ARGS+=(--reasoning-preserve)
-    REASONING_DESC="${REASONING} (trazas preservadas: --reasoning-preserve)"
+REASONING_ARGS=()
+if "${LLAMA_BIN}" --help 2>&1 | grep -q -- "--reasoning "; then
+    REASONING_ARGS=(--reasoning "${REASONING}")
+    if [ "${REASONING}" = "off" ] || [ "${REASONING}" = "false" ] || [ "${REASONING}" = "0" ]; then
+        REASONING_ARGS+=(--no-reasoning-preserve)
+        REASONING_DESC="${REASONING} (trazas desactivadas: --no-reasoning-preserve)"
+    elif [ "${REASONING}" = "on" ] || [ "${REASONING}" = "true" ] || [ "${REASONING}" = "1" ]; then
+        REASONING_ARGS+=(--reasoning-preserve)
+        REASONING_DESC="${REASONING} (trazas preservadas: --reasoning-preserve)"
+    else
+        REASONING_DESC="${REASONING}"
+    fi
 else
-    REASONING_DESC="${REASONING}"
+    REASONING_DESC="No soportado en binario (omitido)"
+fi
+
+# 5.4.1 Modo de Bloqueo de Memoria (mlock)
+LOAD_MODE_ARGS=()
+if "${LLAMA_BIN}" --help 2>&1 | grep -q -- "--load-mode"; then
+    LOAD_MODE_ARGS=(--load-mode "${LOAD_MODE}")
+    LOAD_MODE_DESC="--load-mode ${LOAD_MODE}"
+elif [ "${LOAD_MODE}" = "mlock" ] && "${LLAMA_BIN}" --help 2>&1 | grep -q -- "--mlock"; then
+    LOAD_MODE_ARGS=(--mlock)
+    LOAD_MODE_DESC="--mlock"
+else
+    LOAD_MODE_DESC="Por defecto del sistema"
 fi
 
 # 5.5 Chat Template Jinja Opcional (Tool Calling Nativo)
@@ -189,7 +206,7 @@ echo "⚡ Batch Lógico:     ${BATCH_SIZE}"
 echo "🚀 Micro-Batch (uB): ${UBATCH_SIZE}"
 echo "🎮 GPU Layers:       ${GPU_LAYERS}"
 echo "💭 Razonamiento:     ${REASONING_DESC}"
-echo "🔒 Modo de Carga:    --load-mode ${LOAD_MODE}"
+echo "🔒 Modo de Carga:    ${LOAD_MODE_DESC}"
 echo "🧵 Hilos CPU:        ${THREADS}"
 echo "👥 Slots Paralelos:  ${PARALLEL}"
 echo "💾 Ruta Slots KV:    ${SLOT_SAVE_PATH}"
@@ -249,6 +266,6 @@ exec "${LLAMA_BIN}" \
   "${REASONING_ARGS[@]}" \
   --flash-attn on \
   --threads "${THREADS}" \
-  --load-mode "${LOAD_MODE}" \
+  "${LOAD_MODE_ARGS[@]}" \
   --port "${PORT}" \
   --api-key "${AUTH_KEY}"
