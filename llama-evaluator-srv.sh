@@ -54,18 +54,34 @@ if [ ! -f "${MODEL_PATH}" ]; then
     exit 1
 fi
 
-# 5. Parámetros de Inferencia para twil-lm3 (SmolLM3 3.1B Logic/Reasoning)
+# 5. Detección Dinámica de Arquitectura y Parámetros
 PORT="${EVALUATOR_BACKEND_PORT:-${EVALUATOR_PORT:-18300}}"
-ALIAS="${EVALUATOR_ALIAS:-twil-lm3-q4_k_m}"
-CTX_SIZE="${EVALUATOR_CTX_SIZE:-8192}"
+AUTH_KEY="${API_KEY:-}"
+
+LOWER_MODEL="$(echo "${MODEL_PATH}" | tr '[:upper:]' '[:lower:]')"
+if [[ "${LOWER_MODEL}" == *"rwkv"* || "${LOWER_MODEL}" == *"finch"* ]]; then
+    IS_RWKV=true
+    DEFAULT_ALIAS="v6-Finch-7B-HF-Q5_K_M"
+    DEFAULT_CTX=32768
+    DEFAULT_LAYERS=99
+    ARCH_INFO="RWKV-6 Finch (Modo Booleano CRAG de Latencia Cero, 1M Contexto O(1))"
+else
+    IS_RWKV=false
+    DEFAULT_ALIAS="twil-lm3-q4_k_m"
+    DEFAULT_CTX=8192
+    DEFAULT_LAYERS=99
+    ARCH_INFO="twil-lm3 (SmolLM3 3.1B Fine-Tune Lógica Deductiva JSON)"
+fi
+
+ALIAS="${EVALUATOR_ALIAS:-${DEFAULT_ALIAS}}"
+CTX_SIZE="${EVALUATOR_CTX_SIZE:-${DEFAULT_CTX}}"
 BATCH_SIZE="${EVALUATOR_BATCH_SIZE:-2048}"
 UBATCH_SIZE="${EVALUATOR_UBATCH_SIZE:-512}"
-GPU_LAYERS="${EVALUATOR_GPU_LAYERS:-99}"
+GPU_LAYERS="${EVALUATOR_GPU_LAYERS:-${DEFAULT_LAYERS}}"
 THREADS="${EVALUATOR_THREADS:-8}"
 PARALLEL="${EVALUATOR_PARALLEL:-1}"
 CACHE_TYPE_K="${EVALUATOR_CACHE_TYPE_K:-q4_0}"
 CACHE_TYPE_V="${EVALUATOR_CACHE_TYPE_V:-q4_0}"
-AUTH_KEY="${API_KEY:-}"
 
 echo "============================================================"
 echo "⚖️ Iniciando Microservicio Evaluador de Suficiencia RAG (CRAG)"
@@ -73,6 +89,7 @@ echo "============================================================"
 echo "👤 Usuario Ejecutor: $(whoami) (Directorio Base: ${USER_HOME})"
 echo "📍 Binario:          ${LLAMA_BIN}"
 echo "📦 Modelo:           ${MODEL_PATH}"
+echo "🧠 Arquitectura:     ${ARCH_INFO}"
 echo "🏷️ Alias:            ${ALIAS}"
 echo "🔌 Puerto Backend:   ${PORT}"
 echo "🧠 Contexto Máximo:  ${CTX_SIZE} tokens"
@@ -84,6 +101,37 @@ echo "👥 Slots Paralelos:  ${PARALLEL}"
 echo "🗜️ KV Cache K:       ${CACHE_TYPE_K}"
 echo "🗜️ KV Cache V:       ${CACHE_TYPE_V}"
 echo "============================================================"
+
+# Warmup asíncrono en segundo plano: precalienta kernels CUDA al iniciar
+(
+  max_wait=60
+  waited=0
+  until curl -s -f "http://127.0.0.1:${PORT}/health" >/dev/null 2>&1 || [ $waited -ge $max_wait ]; do
+    sleep 1
+    waited=$((waited + 1))
+  done
+
+  if [ $waited -lt $max_wait ]; then
+    AUTH_HEADER=()
+    if [ -n "${AUTH_KEY}" ]; then
+      AUTH_HEADER=(-H "Authorization: Bearer ${AUTH_KEY}")
+    fi
+    if [ "${IS_RWKV}" = true ]; then
+      curl -s -X POST "http://127.0.0.1:${PORT}/completion" \
+        -H "Content-Type: application/json" \
+        "${AUTH_HEADER[@]}" \
+        -d '{"prompt": "User: Precalentamiento de kernels CUDA.\n\nAssistant:", "n_predict": 1, "temperature": 0.0}' \
+        >/dev/null 2>&1 || true
+    else
+      curl -s -X POST "http://127.0.0.1:${PORT}/v1/chat/completions" \
+        -H "Content-Type: application/json" \
+        "${AUTH_HEADER[@]}" \
+        -d '{"model": "'"${ALIAS}"'", "messages": [{"role": "user", "content": "ping"}], "max_tokens": 1}' \
+        >/dev/null 2>&1 || true
+    fi
+    echo "🔥 [Evaluator Warmup] Kernels CUDA precalentados exitosamente en :${PORT}"
+  fi
+) &
 
 # Ejecutar llama-server reemplazando el proceso actual
 exec "${LLAMA_BIN}" \

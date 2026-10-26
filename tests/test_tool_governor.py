@@ -139,7 +139,7 @@ class TestToolGovernor(unittest.TestCase):
             },
         ]
         for i in range(7):
-            messages.append({"role": "assistant", "tool_calls": [{"id": f"c_{i}", "function": {"name": "buscar"}}]})
+            messages.append({"role": "assistant", "tool_calls": [{"id": f"c_{i}", "function": {"name": "buscar", "arguments": f'{{"q": "consulta_{i}"}}'}}]})
             messages.append({"role": "tool", "tool_call_id": f"c_{i}", "content": "No se encontraron fragmentos relevantes."})
 
         data = {
@@ -172,7 +172,7 @@ class TestToolGovernor(unittest.TestCase):
             },
         ]
         for i in range(7):
-            messages.append({"role": "assistant", "tool_calls": [{"id": f"c_{i}", "function": {"name": "buscar"}}]})
+            messages.append({"role": "assistant", "tool_calls": [{"id": f"c_{i}", "function": {"name": "buscar", "arguments": f'{{"q": "consulta_{i}"}}'}}]})
             messages.append({"role": "tool", "tool_call_id": f"c_{i}", "content": chunk})
 
         data = {
@@ -196,8 +196,8 @@ class TestToolGovernor(unittest.TestCase):
         self.assertIn("[FASE DE INVESTIGACIÓN CONCLUIDA - SÍNTESIS FINAL OBLIGATORIA (MEA)]", user_msg)
 
     def test_healthy_zone_above_10k_tokens(self):
-        # Acumulando > 10.000 tokens (ej: 29 chars * 1100 = 31.900 caracteres / 2.8 = ~11.392 tokens)
-        big_chunk = "Texto de ley oficial extenso " * 1100
+        # Acumulando > 10.000 tokens de lectura sustantiva verificada
+        big_chunk = "Modo de Recuperación: Documento Completo Oficial.\n" + ("Texto de ley oficial extenso dispositivo. " * 1500)
         data = {
             "model": "Qwen3.6-35B-A3B-Q4_K_M",
             "tools": [{"type": "function", "function": {"name": "leer"}}],
@@ -216,6 +216,29 @@ class TestToolGovernor(unittest.TestCase):
 
         last_tool = modified_data["messages"][-1]
         self.assertIn("✅ [GOBERNADOR RAG - EVIDENCIA ROBUSTA]", last_tool["content"])
+
+    def test_anti_loop_inter_round_duplicate_circuit_breaker(self):
+        # El asistente hace una búsqueda en la ronda 1 y vuelve a hacer exactamente la misma en la ronda 2
+        data = {
+            "model": "Qwen3.6-35B-A3B-Q4_K_M",
+            "tools": [{"type": "function", "function": {"name": "buscar"}}],
+            "messages": [
+                {"role": "user", "content": "¿Cuál es la norma aplicable?\n\n[DIRECTIVA DE CONTROL Y GROUNDING OBLIGATORIO (MEA)]:\nTu primer token emitido DEBE ser la llamada a la herramienta formal (<tool_call>)."},
+                {"role": "assistant", "tool_calls": [{"id": "c_1", "function": {"name": "buscar", "arguments": '{"consulta": "ley laboral", "dominios": "Derecho"}'}}]},
+                {"role": "tool", "tool_call_id": "c_1", "content": "Fragmento inicial"},
+                # Ronda 2: repite exactamente la misma búsqueda
+                {"role": "assistant", "tool_calls": [{"id": "c_2", "function": {"name": "buscar", "arguments": '{"consulta": "ley laboral", "dominios": "Derecho"}'}}]}
+            ]
+        }
+
+        modified_data, report = apply_tool_budget_governor(data)
+
+        self.assertEqual(report["action"], "anti_loop_breaker")
+        self.assertTrue(report["tools_disabled"])
+        self.assertNotIn("tools", modified_data)
+        user_msg = modified_data["messages"][0]["content"]
+        self.assertIn("[FASE DE INVESTIGACIÓN CONCLUIDA - DETECCIÓN DE BUCLE (MEA)]", user_msg)
+        self.assertIn("Has emitido una consulta idéntica a una ya realizada", user_msg)
 
     def test_parse_raw_tool_calls_json_array(self):
         valid_tools = {"buscar_en_base_de_conocimiento", "leer_documento_completo"}

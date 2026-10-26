@@ -15,7 +15,7 @@ import json
 import urllib.request
 import urllib.error
 from typing import List, Dict, Any, Union, Optional
-from .config import EVALUATOR_BACKEND_PORT, MASTER_KEY
+from .config import EVALUATOR_BACKEND_PORT, EVALUATOR_MODEL, EVALUATOR_ALIAS, MASTER_KEY
 
 
 def _extract_clean_json(text: str) -> Optional[Dict[str, Any]]:
@@ -40,6 +40,153 @@ def _extract_clean_json(text: str) -> Optional[Dict[str, Any]]:
             return data
     except Exception:
         pass
+    return None
+
+
+def _is_rwkv_evaluator() -> bool:
+    """Determina si el evaluador configurado en .env pertenece a la familia RWKV/Finch."""
+    model_str = (os.getenv("EVALUATOR_MODEL", "") or "").lower()
+    alias_str = (os.getenv("EVALUATOR_ALIAS", "") or "").lower()
+    return any(k in model_str or k in alias_str for k in ["rwkv", "finch"])
+
+
+def _evaluate_with_twil_json(
+    query_str: str,
+    context_text: str,
+    backend_port: int,
+    timeout: float
+) -> Optional[Dict[str, Any]]:
+    """Evaluación deductiva estructurada en JSON utilizando twil-lm3 (ChatML / v1/chat/completions)."""
+    url = f"http://127.0.0.1:{backend_port}/v1/chat/completions"
+
+    system_prompt = (
+        "Eres un evaluador de suficiencia lógica y factual (CRAG). Tu tarea es determinar con rigor deductivo "
+        "si el contexto documental provisto contiene suficiente información para responder a la consulta del usuario "
+        "de manera concluyente y verídica, sin necesidad de inferir o adivinar datos ausentes.\n"
+        "REGLA CRÍTICA: Si el contexto solo contiene un índice/catálogo de títulos de leyes, o si los fragmentos "
+        "solo coinciden en palabras aisladas (ej. 'ordenamiento jurídico' o 'hecho jurídico') pero NO responden "
+        "específicamente a lo preguntado (ej. doctrina, autores, jurisprudencia o la figura consultada), "
+        "debes responder \"suficiente\": false.\n\n"
+        "Responde ÚNICAMENTE un objeto JSON válido con este esquema exacto:\n"
+        "{\n"
+        '  "suficiente": true o false,\n'
+        '  "motivo": "Explicación concisa en una frase",\n'
+        '  "faltantes": ["aspecto específico ausente si no es suficiente"]\n'
+        "}"
+    )
+
+    if len(context_text) > 5000:
+        truncated_context = context_text[:1500] + "\n\n[...]\n\n" + context_text[-3500:]
+    else:
+        truncated_context = context_text
+    user_prompt = f"CONSULTA DEL USUARIO:\n{query_str}\n\nCONTEXTO DOCUMENTAL RECUPERADO:\n{truncated_context}"
+
+    payload = {
+        "model": os.getenv("EVALUATOR_ALIAS", "twil-lm3-q4_k_m"),
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
+        ],
+        "temperature": 0.0,
+        "max_tokens": 350,
+        "response_format": {"type": "json_object"}
+    }
+
+    req_data = json.dumps(payload).encode("utf-8")
+    headers = {"Content-Type": "application/json"}
+    if MASTER_KEY:
+        headers["Authorization"] = f"Bearer {MASTER_KEY}"
+
+    req = urllib.request.Request(url, data=req_data, headers=headers, method="POST")
+
+    with urllib.request.urlopen(req, timeout=timeout) as response:
+        if response.status == 200:
+            resp_bytes = response.read()
+            resp_json = json.loads(resp_bytes.decode("utf-8"))
+            choices = resp_json.get("choices", [])
+            if choices:
+                raw_msg = choices[0].get("message", {})
+                raw_content = raw_msg.get("content", "")
+                parsed = _extract_clean_json(raw_content)
+                # Rescate desde reasoning_content si llama-server aisló el bloque de pensamiento
+                if not parsed or "suficiente" not in parsed:
+                    reasoning_txt = raw_msg.get("reasoning_content", "")
+                    parsed = _extract_clean_json(reasoning_txt)
+
+                if parsed and "suficiente" in parsed:
+                    is_suf = bool(parsed.get("suficiente"))
+                    reason = str(parsed.get("motivo", "")).strip() or ("Datos suficientes" if is_suf else "Datos insuficientes")
+                    missing = parsed.get("faltantes")
+                    if not isinstance(missing, list):
+                        missing = []
+                    print(f"⚖️ [RAG Evaluator] twil-lm3 (:{backend_port}) dictamen: suficiente={is_suf} | Motivo: {reason}", file=sys.stderr, flush=True)
+                    return {
+                        "suficiente": is_suf,
+                        "motivo": reason,
+                        "faltantes": missing,
+                        "evaluador": "twil-lm3"
+                    }
+    return None
+
+
+def _evaluate_with_rwkv_linear(
+    query_str: str,
+    context_text: str,
+    backend_port: int,
+    timeout: float
+) -> Optional[Dict[str, Any]]:
+    """Evaluación deductiva lineal ultrarrápida con RWKV-6 Finch (endpoint /completion)."""
+    url = f"http://127.0.0.1:{backend_port}/completion"
+
+    # En RWKV-6 la ventana nativa es de 1M tokens con memoria plana O(1); truncamos a 30.000 caracteres como cota segura
+    if len(context_text) > 30000:
+        truncated_context = context_text[:5000] + "\n\n[...]\n\n" + context_text[-25000:]
+    else:
+        truncated_context = context_text
+
+    rwkv_prompt = (
+        f"User: Evalúa si el siguiente texto contiene la información exacta y suficiente para responder la pregunta del usuario.\n"
+        f"Si la información responde la pregunta, responde estrictamente \"SI\".\n"
+        f"Si la información no responde la pregunta o falta información, responde estrictamente \"NO\".\n\n"
+        f"Pregunta: {query_str}\n"
+        f"Texto: {truncated_context}\n\n"
+        f"Respuesta (SI o NO):\n\n"
+        f"Assistant:"
+    )
+
+    payload = {
+        "prompt": rwkv_prompt,
+        "n_predict": 4,
+        "temperature": 0.0,
+        "stop": ["\n", "User:"]
+    }
+
+    req_data = json.dumps(payload).encode("utf-8")
+    headers = {"Content-Type": "application/json"}
+    if MASTER_KEY:
+        headers["Authorization"] = f"Bearer {MASTER_KEY}"
+
+    req = urllib.request.Request(url, data=req_data, headers=headers, method="POST")
+
+    with urllib.request.urlopen(req, timeout=timeout) as response:
+        if response.status == 200:
+            resp_bytes = response.read()
+            resp_json = json.loads(resp_bytes.decode("utf-8"))
+            raw_content = resp_json.get("content", "").strip().upper()
+            is_suf = "SI" in raw_content
+            reason = (
+                "Evidencia documental suficiente y concluyente verificada en base de conocimiento."
+                if is_suf
+                else "Información documental insuficiente o incompleta para responder con certeza."
+            )
+            missing = [] if is_suf else ["información específica o articulado dispositivo"]
+            print(f"⚖️ [RAG Evaluator] RWKV-6 (:{backend_port}) dictamen booleano: suficiente={is_suf} ('{raw_content}') | Motivo: {reason}", file=sys.stderr, flush=True)
+            return {
+                "suficiente": is_suf,
+                "motivo": reason,
+                "faltantes": missing,
+                "evaluador": "rwkv-finch"
+            }
     return None
 
 
@@ -175,80 +322,17 @@ def evaluate_context_sufficiency(
             "evaluador": "fast_pass"
         }
 
-    # 2. Evaluación con twil-lm3 (SmolLM3 3.1B Logic / Reasoning) en puerto 18300
+    # 2. Evaluación con Backend SLM en puerto 18300 (Condicional según modelo en .env)
     backend_port = EVALUATOR_BACKEND_PORT or int(os.getenv("EVALUATOR_BACKEND_PORT", "18300"))
-    url = f"http://127.0.0.1:{backend_port}/v1/chat/completions"
-
-    system_prompt = (
-        "Eres un evaluador de suficiencia lógica y factual (CRAG). Tu tarea es determinar con rigor deductivo "
-        "si el contexto documental provisto contiene suficiente información para responder a la consulta del usuario "
-        "de manera concluyente y verídica, sin necesidad de inferir o adivinar datos ausentes.\n"
-        "REGLA CRÍTICA: Si el contexto solo contiene un índice/catálogo de títulos de leyes, o si los fragmentos "
-        "solo coinciden en palabras aisladas (ej. 'ordenamiento jurídico' o 'hecho jurídico') pero NO responden "
-        "específicamente a lo preguntado (ej. doctrina, autores, jurisprudencia o la figura consultada), "
-        "debes responder \"suficiente\": false.\n\n"
-        "Responde ÚNICAMENTE un objeto JSON válido con este esquema exacto:\n"
-        "{\n"
-        '  "suficiente": true o false,\n'
-        '  "motivo": "Explicación concisa en una frase",\n'
-        '  "faltantes": ["aspecto específico ausente si no es suficiente"]\n'
-        "}"
-    )
-
-    if len(context_text) > 5000:
-        truncated_context = context_text[:1500] + "\n\n[...]\n\n" + context_text[-3500:]
-    else:
-        truncated_context = context_text
-    user_prompt = f"CONSULTA DEL USUARIO:\n{query_str}\n\nCONTEXTO DOCUMENTAL RECUPERADO:\n{truncated_context}"
-
-    payload = {
-        "model": os.getenv("EVALUATOR_ALIAS", "twil-lm3-q4_k_m"),
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt}
-        ],
-        "temperature": 0.0,
-        "max_tokens": 350,
-        "response_format": {"type": "json_object"}
-    }
-
-    req_data = json.dumps(payload).encode("utf-8")
-    headers = {
-        "Content-Type": "application/json"
-    }
-    if MASTER_KEY:
-        headers["Authorization"] = f"Bearer {MASTER_KEY}"
-
-    req = urllib.request.Request(url, data=req_data, headers=headers, method="POST")
-
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as response:
-            if response.status == 200:
-                resp_bytes = response.read()
-                resp_json = json.loads(resp_bytes.decode("utf-8"))
-                choices = resp_json.get("choices", [])
-                if choices:
-                    raw_msg = choices[0].get("message", {})
-                    raw_content = raw_msg.get("content", "")
-                    parsed = _extract_clean_json(raw_content)
-                    # Rescate desde reasoning_content si llama-server aisló el bloque de pensamiento
-                    if not parsed or "suficiente" not in parsed:
-                        reasoning_txt = raw_msg.get("reasoning_content", "")
-                        parsed = _extract_clean_json(reasoning_txt)
+        if _is_rwkv_evaluator():
+            rwkv_timeout = max(timeout, 6.5) if len(context_text) > 15000 else timeout
+            eval_res = _evaluate_with_rwkv_linear(query_str, context_text, backend_port, rwkv_timeout)
+        else:
+            eval_res = _evaluate_with_twil_json(query_str, context_text, backend_port, timeout)
 
-                    if parsed and "suficiente" in parsed:
-                        is_suf = bool(parsed.get("suficiente"))
-                        reason = str(parsed.get("motivo", "")).strip() or ("Datos suficientes" if is_suf else "Datos insuficientes")
-                        missing = parsed.get("faltantes")
-                        if not isinstance(missing, list):
-                            missing = []
-                        print(f"⚖️ [RAG Evaluator] twil-lm3 (:18300) dictamen: suficiente={is_suf} | Motivo: {reason}", file=sys.stderr, flush=True)
-                        return {
-                            "suficiente": is_suf,
-                            "motivo": reason,
-                            "faltantes": missing,
-                            "evaluador": "twil-lm3"
-                        }
+        if eval_res:
+            return eval_res
     except Exception as exc:
         # Fallback silencioso y resiliente ante indisponibilidad del servicio local
         print(f"ℹ️ [RAG Evaluator] Fallback heurístico activado (puerto {backend_port} no disponible o timeout: {exc})", file=sys.stderr, flush=True)

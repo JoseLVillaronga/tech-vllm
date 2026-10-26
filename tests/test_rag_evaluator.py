@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import patch, MagicMock
 import io
-from rag.evaluator import evaluate_context_sufficiency, _extract_clean_json
+from rag.evaluator import evaluate_context_sufficiency, _extract_clean_json, _is_rwkv_evaluator
 
 
 class TestRagEvaluator(unittest.TestCase):
@@ -70,10 +70,11 @@ class TestRagEvaluator(unittest.TestCase):
         mock_resp.__enter__.return_value = mock_resp
         mock_urlopen.return_value = mock_resp
 
-        res = evaluate_context_sufficiency(
-            query="Concepto de contrato de trabajo",
-            context=[{"similarity": 0.65, "content": "Habrá contrato de trabajo siempre que una persona física se obligue..."}]
-        )
+        with patch.dict("os.environ", {"EVALUATOR_MODEL": "$LLAMA_DIR/models/twil-lm3-q4_k_m.gguf", "EVALUATOR_ALIAS": "twil-lm3-q4_k_m"}):
+            res = evaluate_context_sufficiency(
+                query="Concepto de contrato de trabajo",
+                context=[{"similarity": 0.65, "content": "Habrá contrato de trabajo siempre que una persona física se obligue..."}]
+            )
 
         self.assertTrue(res["suficiente"])
         self.assertEqual(res["evaluador"], "twil-lm3")
@@ -87,10 +88,11 @@ class TestRagEvaluator(unittest.TestCase):
         mock_resp.__enter__.return_value = mock_resp
         mock_urlopen.return_value = mock_resp
 
-        res = evaluate_context_sufficiency(
-            query="¿Cómo ratificó Argentina el tratado de no proliferación?",
-            context=[{"similarity": 0.58, "content": "Tratado de no proliferación nuclear firmado en 1968"}]
-        )
+        with patch.dict("os.environ", {"EVALUATOR_MODEL": "$LLAMA_DIR/models/twil-lm3-q4_k_m.gguf", "EVALUATOR_ALIAS": "twil-lm3-q4_k_m"}):
+            res = evaluate_context_sufficiency(
+                query="¿Cómo ratificó Argentina el tratado de no proliferación?",
+                context=[{"similarity": 0.58, "content": "Tratado de no proliferación nuclear firmado en 1968"}]
+            )
 
         self.assertFalse(res["suficiente"])
         self.assertEqual(res["evaluador"], "twil-lm3")
@@ -105,6 +107,58 @@ class TestRagEvaluator(unittest.TestCase):
         )
         self.assertFalse(res["suficiente"])
         self.assertEqual(res["evaluador"], "fallback_heuristico")
+
+
+    def test_is_rwkv_evaluator_detection(self):
+        # twil-lm3
+        with patch.dict("os.environ", {"EVALUATOR_MODEL": "$LLAMA_DIR/models/twil-lm3-q4_k_m.gguf", "EVALUATOR_ALIAS": "twil-lm3-q4_k_m"}):
+            self.assertFalse(_is_rwkv_evaluator())
+
+        # Finch 7B
+        with patch.dict("os.environ", {"EVALUATOR_MODEL": "$LLAMA_DIR/models/v6-Finch-7B-HF-Q5_K_M.gguf", "EVALUATOR_ALIAS": "v6-Finch-7B"}):
+            self.assertTrue(_is_rwkv_evaluator())
+
+        # RWKV-6 genérico
+        with patch.dict("os.environ", {"EVALUATOR_MODEL": "/models/RWKV-v6-World-7B.gguf", "EVALUATOR_ALIAS": ""}):
+            self.assertTrue(_is_rwkv_evaluator())
+
+    @patch("urllib.request.urlopen")
+    def test_rwkv_evaluation_mock_sufficient(self, mock_urlopen):
+        mock_resp = MagicMock()
+        mock_resp.status = 200
+        mock_resp.read.return_value = b'{"content": " SI\\n\\n"}'
+        mock_resp.__enter__.return_value = mock_resp
+        mock_urlopen.return_value = mock_resp
+
+        with patch.dict("os.environ", {"EVALUATOR_MODEL": "$LLAMA_DIR/models/v6-Finch-7B-HF-Q5_K_M.gguf"}):
+            res = evaluate_context_sufficiency(
+                query="Concepto de contrato de trabajo",
+                context=[{"similarity": 0.65, "content": "Habrá contrato de trabajo siempre que una persona física se obligue..."}]
+            )
+
+        self.assertTrue(res["suficiente"])
+        self.assertEqual(res["evaluador"], "rwkv-finch")
+        self.assertEqual(res["faltantes"], [])
+        self.assertIn("suficiente y concluyente", res["motivo"])
+
+    @patch("urllib.request.urlopen")
+    def test_rwkv_evaluation_mock_insufficient(self, mock_urlopen):
+        mock_resp = MagicMock()
+        mock_resp.status = 200
+        mock_resp.read.return_value = b'{"content": " NO\\n\\n"}'
+        mock_resp.__enter__.return_value = mock_resp
+        mock_urlopen.return_value = mock_resp
+
+        with patch.dict("os.environ", {"EVALUATOR_MODEL": "$LLAMA_DIR/models/v6-Finch-7B-HF-Q5_K_M.gguf"}):
+            res = evaluate_context_sufficiency(
+                query="¿Cómo ratificó Argentina el tratado de no proliferación?",
+                context=[{"similarity": 0.58, "content": "Tratado de no proliferación nuclear firmado en 1968"}]
+            )
+
+        self.assertFalse(res["suficiente"])
+        self.assertEqual(res["evaluador"], "rwkv-finch")
+        self.assertIn("insuficiente o incompleta", res["motivo"])
+        self.assertIn("información específica o articulado dispositivo", res["faltantes"])
 
 
 if __name__ == "__main__":

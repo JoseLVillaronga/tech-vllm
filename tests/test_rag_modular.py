@@ -187,7 +187,7 @@ class TestRagSearchFormatting(unittest.TestCase):
         formatted = format_rag_context_for_llm(mock_results)
         self.assertIn("💡 [Acción Disponible (Obra Extensa ~150,000 tokens)]:", formatted)
         self.assertIn("obtener_estructura_documento(doc_id=\"ccycn\")", formatted)
-        self.assertIn("leer_documento_completo(doc_id=\"ccycn\", seccion=\"Titulo Preliminar\")", formatted)
+        self.assertIn('leer_documento_completo(doc_id="ccycn", seccion="Libro Primero > Titulo Preliminar")', formatted)
 
 
 class TestRagSettings(unittest.TestCase):

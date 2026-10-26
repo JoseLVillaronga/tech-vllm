@@ -189,6 +189,48 @@ def apply_tool_budget_governor(data: Dict[str, Any]) -> Tuple[Dict[str, Any], Di
                 data["messages"] = messages
                 print(f"🧹 [Tool Governor] Pruning de {dups} llamada/s y resultado/s duplicados en el turno activo antes de enviar al modelo.", flush=True)
 
+        # Detección de bucles idénticos inter-rondas: si el modelo repite exactamente consultas previas
+        prior_call_signatures = set()
+        for idx, m in enumerate(messages):
+            if idx >= last_user_idx and m.get("role") == "assistant" and idx < last_assistant_with_tools_idx:
+                for ptc in m.get("tool_calls", []):
+                    if isinstance(ptc, dict):
+                        pfn = ptc.get("function", {}).get("name") or ptc.get("name") or ""
+                        pargs = ptc.get("function", {}).get("arguments") or ptc.get("arguments") or ""
+                        prior_call_signatures.add(normalize_tool_call_signature(pfn, pargs))
+
+        if prior_call_signatures and isinstance(raw_tcs, list) and raw_tcs:
+            repeated_count = sum(
+                1 for tc in raw_tcs
+                if isinstance(tc, dict) and normalize_tool_call_signature(
+                    tc.get("function", {}).get("name") or tc.get("name") or "",
+                    tc.get("function", {}).get("arguments") or tc.get("arguments") or ""
+                ) in prior_call_signatures
+            )
+            if repeated_count == len(raw_tcs):
+                print(f"🛑 [Tool Governor] Bucle inter-rondas detectado: {repeated_count} llamada/s idéntica/s a consultas previas. Deshabilitando herramientas.", flush=True)
+                data.pop("tools", None)
+                for m in reversed(messages):
+                    if m.get("role") == "user":
+                        c = m.get("content")
+                        if isinstance(c, str):
+                            base_txt = re.split(r"\n\n\[DIRECTIVA DE CONTROL Y GROUNDING OBLIGATORIO", c)[0].strip()
+                            m["content"] = (
+                                f"{base_txt}\n\n[FASE DE INVESTIGACIÓN CONCLUIDA - DETECCIÓN DE BUCLE (MEA)]:\n"
+                                "Has emitido una consulta idéntica a una ya realizada en este turno. "
+                                "Queda cerrado el cupo de herramientas. Redacta de inmediato tu conclusión definitiva o abstención formal en texto natural."
+                            )
+                        break
+                return data, {
+                    "status": "applied",
+                    "action": "anti_loop_breaker",
+                    "tool_call_count": len(raw_tcs),
+                    "accumulated_tool_tokens": 0,
+                    "is_sufficient": False,
+                    "eval_reason": "Bucle repetitivo de consultas idénticas",
+                    "tools_disabled": True
+                }
+
     stats = inspect_active_turn_tools(messages)
     tool_count = stats["tool_call_count"]
     tool_tokens = stats["accumulated_tool_tokens"]
