@@ -245,8 +245,118 @@
                         input.value = val;
                     }
                 }
+
+                // Inicializar Fallback Cloud de motor local (Circuit Breaker)
+                const fbEnabled = String(config.LOCAL_FALLBACK_ENABLED || 'false').toLowerCase() === 'true';
+                const fbProvId = config.LOCAL_FALLBACK_PROVIDER_ID || '';
+                const fbModel = config.LOCAL_FALLBACK_MODEL || '';
+                await initLocalFallbackUI(fbProvId, fbModel);
+                toggleLocalFallbackUI(fbEnabled);
             } catch (err) {
                 console.error("Error al cargar config:", err);
+            }
+        }
+
+        // Gestión de Alta Disponibilidad & Fallback Nube del Motor Local
+        let activeCloudProvidersForFallback = [];
+
+        async function initLocalFallbackUI(savedProviderId = "", savedModel = "") {
+            const provSelect = document.getElementById('local-fallback-provider-select');
+            if (!provSelect) return;
+
+            try {
+                const res = await fetch('/api/cloud-providers');
+                const data = await res.json();
+                activeCloudProvidersForFallback = (Array.isArray(data) ? data : []).filter(p => p.is_active);
+
+                if (activeCloudProvidersForFallback.length === 0) {
+                    provSelect.innerHTML = '<option value="">No hay proveedores en la nube activos</option>';
+                    return;
+                }
+
+                provSelect.innerHTML = '<option value="">-- Seleccionar Proveedor --</option>' + activeCloudProvidersForFallback.map(p => {
+                    const isSel = (p.id === savedProviderId) ? 'selected' : '';
+                    return `<option value="${p.id}" ${isSel}>${escapeHtml(p.name)} (${escapeHtml(p.base_url)})</option>`;
+                }).join('');
+
+                const currentProv = savedProviderId || provSelect.value;
+                if (currentProv) {
+                    await populateLocalFallbackModels(currentProv, savedModel);
+                }
+            } catch (err) {
+                console.error("Error inicializando proveedores para fallback:", err);
+            }
+        }
+
+        async function populateLocalFallbackModels(providerId, targetModelId = "") {
+            const modelSelect = document.getElementById('local-fallback-model-select');
+            if (!modelSelect) return;
+
+            if (!providerId) {
+                modelSelect.innerHTML = '<option value="">Selecciona un proveedor primero</option>';
+                return;
+            }
+
+            modelSelect.innerHTML = '<option value="">Cargando modelos del proveedor...</option>';
+            try {
+                const res = await fetch(`/api/cloud-providers/${providerId}/models`);
+                const data = await res.json();
+                const models = data.models || [];
+
+                let optionsHtml = '<option value="">-- Seleccionar Modelo --</option>';
+                const found = models.some(m => m.id === targetModelId || m.prefixed_id === targetModelId);
+
+                optionsHtml += models.map(m => {
+                    const isSel = (m.id === targetModelId || m.prefixed_id === targetModelId) ? 'selected' : '';
+                    return `<option value="${m.id}" ${isSel}>${escapeHtml(m.name || m.id)}</option>`;
+                }).join('');
+
+                if (targetModelId && !found) {
+                    optionsHtml = `<option value="${targetModelId}" selected>✨ ${escapeHtml(targetModelId)} (Personalizado)</option>` + optionsHtml;
+                }
+
+                modelSelect.innerHTML = optionsHtml;
+                modelSelect.onchange = () => updateLocalFallbackBadge();
+            } catch (err) {
+                modelSelect.innerHTML = `<option value="">Error cargando modelos: ${escapeHtml(err.message)}</option>`;
+            }
+        }
+
+        async function onLocalFallbackProviderChange() {
+            const provSelect = document.getElementById('local-fallback-provider-select');
+            if (!provSelect) return;
+            const provId = provSelect.value;
+            await populateLocalFallbackModels(provId, "");
+            updateLocalFallbackBadge();
+        }
+
+        function toggleLocalFallbackUI(val) {
+            const isEnabled = String(val).toLowerCase() === 'true';
+            updateLocalFallbackBadge(isEnabled);
+        }
+
+        function updateLocalFallbackBadge(isEnabled = null) {
+            const badge = document.getElementById('local-fallback-status-badge');
+            const enabledSelect = document.getElementById('local-fallback-enabled-select');
+            const provSelect = document.getElementById('local-fallback-provider-select');
+            const modelSelect = document.getElementById('local-fallback-model-select');
+
+            if (!badge || !enabledSelect) return;
+
+            const enabled = (isEnabled !== null) ? isEnabled : (enabledSelect.value === 'true');
+            if (!enabled) {
+                badge.innerText = 'Desactivado';
+                badge.className = 'font-mono text-[11px] text-slate-400 bg-slate-950 border border-slate-800 px-2 py-0.5 rounded-md';
+            } else {
+                const pName = provSelect && provSelect.selectedOptions[0] ? provSelect.selectedOptions[0].text.split(' (')[0] : 'Cloud';
+                const mName = modelSelect ? modelSelect.value : '';
+                if (mName) {
+                    badge.innerText = `Activo (${pName} ➔ ${mName})`;
+                    badge.className = 'font-mono text-[11px] text-emerald-400 bg-emerald-950/60 border border-emerald-500/40 px-2 py-0.5 rounded-md';
+                } else {
+                    badge.innerText = 'Activo (Pendiente de modelo)';
+                    badge.className = 'font-mono text-[11px] text-amber-400 bg-amber-950/60 border border-amber-500/40 px-2 py-0.5 rounded-md';
+                }
             }
         }
 

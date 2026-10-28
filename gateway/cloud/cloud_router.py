@@ -8,6 +8,7 @@ from fastapi import Response, HTTPException, status
 from config import API_KEY as MASTER_KEY, env
 from gateway.core.database import get_db
 from gateway.cloud.cloud_sync import cached_cloud_models, cached_cloud_models_by_raw, cached_cloud_models_lock, slugify_provider_name
+from gateway.cloud.local_fallback import is_local_fallback_enabled, is_local_engine_healthy, mark_local_engine_down
 
 
 # Alias unificado hacia config.env
@@ -27,148 +28,168 @@ async def handle_models_list(token: str, key_doc: dict, current_target_port: int
         combined_models = []
         # 1. Modelos locales expuestos con prefijo 'local/'
         if is_master or ("gemma" in allowed_services):
-            try:
-                async with httpx.AsyncClient(timeout=3.0) as temp_cli:
-                    headers_local = {"Authorization": f"Bearer {MASTER_KEY}"}
-                    resp_local = await temp_cli.get(f"http://127.0.0.1:{current_target_port}/v1/models", headers=headers_local)
-                    if resp_local.status_code == 200:
-                        local_json = resp_local.json()
-                        local_data = local_json.get("data", [])
-                        ollama_models = local_json.get("models", [])
-                        for lm in local_data:
-                            raw_id = lm.get("id", "")
-                            aliases = lm.get("aliases", [])
-                            if isinstance(aliases, str):
-                                aliases = [aliases]
-                            elif not isinstance(aliases, list):
-                                aliases = []
+            local_found = False
+            # Solo intentamos socket local si el disyuntor indica que está sano o si el fallback no está activado
+            if is_local_engine_healthy() or not is_local_fallback_enabled():
+                try:
+                    async with httpx.AsyncClient(timeout=1.5) as temp_cli:
+                        headers_local = {"Authorization": f"Bearer {MASTER_KEY}"}
+                        resp_local = await temp_cli.get(f"http://127.0.0.1:{current_target_port}/v1/models", headers=headers_local)
+                        if resp_local.status_code == 200:
+                            local_json = resp_local.json()
+                            local_data = local_json.get("data", [])
+                            ollama_models = local_json.get("models", [])
+                            for lm in local_data:
+                                raw_id = lm.get("id", "")
+                                aliases = lm.get("aliases", [])
+                                if isinstance(aliases, str):
+                                    aliases = [aliases]
+                                elif not isinstance(aliases, list):
+                                    aliases = []
 
-                            # 1. Determinar ID limpio (slug compatible con regex estricto de Open-WebUI)
-                            clean_id = raw_id
-                            if not clean_id or any(c in clean_id for c in ["|", "&", " ", "\t"]):
-                                env_id = get_env_setting("LLAMA_MODEL_ID") or get_env_setting("VLLM_MODEL_ID")
-                                if env_id:
-                                    clean_id = env_id.strip()
-                                elif "|" in raw_id:
-                                    clean_id = raw_id.split("|")[0].strip()
+                                # 1. Determinar ID limpio (slug compatible con regex estricto de Open-WebUI)
+                                clean_id = raw_id
+                                if not clean_id or any(c in clean_id for c in ["|", "&", " ", "\t"]):
+                                    env_id = get_env_setting("LLAMA_MODEL_ID") or get_env_setting("VLLM_MODEL_ID")
+                                    if env_id:
+                                        clean_id = env_id.strip()
+                                    elif "|" in raw_id:
+                                        clean_id = raw_id.split("|")[0].strip()
 
-                            # 2. Determinar nombre descriptivo de visualización (DisplayName)
-                            display_name = ""
-                            for a in aliases:
-                                if a and a != clean_id:
-                                    display_name = a
-                                    break
-                            if not display_name and aliases:
-                                display_name = aliases[0]
-                            if not display_name and ollama_models and isinstance(ollama_models, list):
-                                display_name = ollama_models[0].get("name", "")
-                            if not display_name:
-                                display_name = get_env_setting("LLAMA_ALIAS") or get_env_setting("VLLM_ALIAS") or clean_id
+                                # 2. Determinar nombre descriptivo de visualización (DisplayName)
+                                display_name = ""
+                                for a in aliases:
+                                    if a and a != clean_id:
+                                        display_name = a
+                                        break
+                                if not display_name and aliases:
+                                    display_name = aliases[0]
+                                if not display_name and ollama_models and isinstance(ollama_models, list):
+                                    display_name = ollama_models[0].get("name", "")
+                                if not display_name:
+                                    display_name = get_env_setting("LLAMA_ALIAS") or get_env_setting("VLLM_ALIAS") or clean_id
 
-                            # Prefijar con local/ para consistencia visual con el resto de proveedores (ollama/, deepseek/, etc.)
-                            if not display_name.startswith("local/"):
-                                display_name = f"local/{display_name}"
+                                # Prefijar con local/ para consistencia visual con el resto de proveedores (ollama/, deepseek/, etc.)
+                                if not display_name.startswith("local/"):
+                                    display_name = f"local/{display_name}"
 
-                            prefixed_id = f"local/{clean_id}" if not clean_id.startswith("local/") else clean_id
-                            all_aliases = list(dict.fromkeys([display_name, prefixed_id, clean_id] + aliases))
+                                prefixed_id = f"local/{clean_id}" if not clean_id.startswith("local/") else clean_id
+                                all_aliases = list(dict.fromkeys([display_name, prefixed_id, clean_id] + aliases))
 
-                            is_multimodal = (
-                                "multimodal" in lm.get("capabilities", [])
-                                or any("multimodal" in om.get("capabilities", []) for om in ollama_models if isinstance(om, dict))
-                            )
-                            model_entry = {
-                                "id": prefixed_id,
-                                "name": display_name,
-                                "aliases": all_aliases,
-                                "object": "model",
-                                "created": lm.get("created", int(time.time())),
-                                "owned_by": "local"
-                            }
-                            if is_multimodal:
-                                model_entry["capabilities"] = ["completion", "multimodal"]
-                                model_entry["info"] = {
-                                    "meta": {
-                                        "capabilities": {
-                                            "vision": True,
-                                            "multimodal": True
+                                is_multimodal = (
+                                    "multimodal" in lm.get("capabilities", [])
+                                    or any("multimodal" in om.get("capabilities", []) for om in ollama_models if isinstance(om, dict))
+                                )
+                                model_entry = {
+                                    "id": prefixed_id,
+                                    "name": display_name,
+                                    "aliases": all_aliases,
+                                    "object": "model",
+                                    "created": lm.get("created", int(time.time())),
+                                    "owned_by": "local"
+                                }
+                                if is_multimodal:
+                                    model_entry["capabilities"] = ["completion", "multimodal"]
+                                    model_entry["info"] = {
+                                        "meta": {
+                                            "capabilities": {
+                                                "vision": True,
+                                                "multimodal": True
+                                            }
                                         }
                                     }
-                                }
-                            combined_models.append(model_entry)
+                                combined_models.append(model_entry)
+                                local_found = True
+                except Exception as le:
+                    print(f"⚠️ Gateway: Motor local en :{current_target_port} no disponible para /v1/models ({le})", file=sys.stderr, flush=True)
+                    if is_local_fallback_enabled():
+                        mark_local_engine_down()
 
-                        # Si la búsqueda web está configurada, exponer también el modelo virtual local/gemma-4-web
-                        ollama_api_key = get_env_setting("OLLAMA_API_KEY", "").strip()
-                        ollama_search_on = get_env_setting("OLLAMA_SEARCH_ENABLED", "true").strip().lower() in ["true", "1", "yes"]
-                        if ollama_search_on and ollama_api_key:
-                            combined_models.append({
-                                "id": "local/gemma-4-web",
-                                "name": "local/gemma-4-web (Búsqueda Web)",
-                                "object": "model",
-                                "created": int(time.time()),
-                                "owned_by": "local-web-search"
-                            })
+            # Si el motor local no está disponible pero el Fallback está activo, exponer el modelo virtual idéntico
+            if not local_found and is_local_fallback_enabled():
+                clean_id = get_env_setting("LLAMA_MODEL_ID") or get_env_setting("VLLM_MODEL_ID") or "CorpAI-Gen"
+                display_name = get_env_setting("LLAMA_ALIAS") or get_env_setting("VLLM_ALIAS") or "CorpAI-Gen | Legal & Compliance"
+                if not display_name.startswith("local/"):
+                    display_name = f"local/{display_name}"
+                prefixed_id = f"local/{clean_id}" if not clean_id.startswith("local/") else clean_id
+                all_aliases = list(dict.fromkeys([display_name, prefixed_id, clean_id]))
+                combined_models.append({
+                    "id": prefixed_id,
+                    "name": display_name,
+                    "aliases": all_aliases,
+                    "object": "model",
+                    "created": int(time.time()),
+                    "owned_by": "local-fallback-cloud",
+                    "capabilities": ["completion"]
+                })
 
-                        # Exponer modelo virtual local/gemma-4-rag (Base de Conocimiento LanceDB)
-                        combined_models.append({
-                            "id": "local/gemma-4-rag",
-                            "name": "local/gemma-4-rag (LanceDB RAG)",
-                            "object": "model",
-                            "created": int(time.time()),
-                            "owned_by": "local-rag-lancedb"
-                        })
+            # Exponer siempre los modelos virtuales desacoplados
+            ollama_api_key = get_env_setting("OLLAMA_API_KEY", "").strip()
+            ollama_search_on = get_env_setting("OLLAMA_SEARCH_ENABLED", "true").strip().lower() in ["true", "1", "yes"]
+            if ollama_search_on and ollama_api_key:
+                combined_models.append({
+                    "id": "local/gemma-4-web",
+                    "name": "local/gemma-4-web (Búsqueda Web)",
+                    "object": "model",
+                    "created": int(time.time()),
+                    "owned_by": "local-web-search"
+                })
 
-                        # Exponer modelo virtual cloud-rag (Base de Conocimiento LanceDB + Proveedor en la Nube)
-                        combined_models.append({
-                            "id": "cloud-rag",
-                            "name": "cloud-rag (LanceDB + Cloud LLM)",
-                            "object": "model",
-                            "created": int(time.time()),
-                            "owned_by": "cloud-rag-lancedb"
-                        })
-                        combined_models.append({
-                            "id": "local/cloud-rag",
-                            "name": "local/cloud-rag (LanceDB + Cloud LLM)",
-                            "object": "model",
-                            "created": int(time.time()),
-                            "owned_by": "cloud-rag-lancedb"
-                        })
+            combined_models.append({
+                "id": "local/gemma-4-rag",
+                "name": "local/gemma-4-rag (LanceDB RAG)",
+                "object": "model",
+                "created": int(time.time()),
+                "owned_by": "local-rag-lancedb"
+            })
 
-                        # Si tiene permiso de embeddings, exponer también el modelo de embeddings
-                        if is_master or ("embeddings" in allowed_services):
-                            combined_models.append({
-                                "id": "Qwen/Qwen3-Embedding-0.6B",
-                                "name": "Qwen/Qwen3-Embedding-0.6B",
-                                "object": "model",
-                                "created": int(time.time()),
-                                "owned_by": "local-embeddings"
-                            })
-                            combined_models.append({
-                                "id": "text-embedding-3-small",
-                                "name": "text-embedding-3-small",
-                                "object": "model",
-                                "created": int(time.time()),
-                                "owned_by": "openai-alias"
-                            })
+            combined_models.append({
+                "id": "cloud-rag",
+                "name": "cloud-rag (LanceDB + Cloud LLM)",
+                "object": "model",
+                "created": int(time.time()),
+                "owned_by": "cloud-rag-lancedb"
+            })
+            combined_models.append({
+                "id": "local/cloud-rag",
+                "name": "local/cloud-rag (LanceDB + Cloud LLM)",
+                "object": "model",
+                "created": int(time.time()),
+                "owned_by": "cloud-rag-lancedb"
+            })
 
-                        # Si tiene permiso de imagen, exponer también el modelo de generación de imágenes
-                        if is_master or ("image" in allowed_services):
-                            img_model = get_env_setting("IMAGE_MODEL", "stabilityai/sdxl-turbo")
-                            combined_models.append({
-                                "id": img_model,
-                                "name": img_model,
-                                "object": "model",
-                                "created": int(time.time()),
-                                "owned_by": "local-diffusion"
-                            })
-                            combined_models.append({
-                                "id": "local/image-generator",
-                                "name": "local/image-generator",
-                                "object": "model",
-                                "created": int(time.time()),
-                                "owned_by": "local-diffusion"
-                            })
-            except Exception as le:
-                print(f"⚠️ Gateway: Error obteniendo modelos locales: {le}", file=sys.stderr, flush=True)
+            if is_master or ("embeddings" in allowed_services):
+                combined_models.append({
+                    "id": "Qwen/Qwen3-Embedding-0.6B",
+                    "name": "Qwen/Qwen3-Embedding-0.6B",
+                    "object": "model",
+                    "created": int(time.time()),
+                    "owned_by": "local-embeddings"
+                })
+                combined_models.append({
+                    "id": "text-embedding-3-small",
+                    "name": "text-embedding-3-small",
+                    "object": "model",
+                    "created": int(time.time()),
+                    "owned_by": "openai-alias"
+                })
+
+            if is_master or ("image" in allowed_services):
+                img_model = get_env_setting("IMAGE_MODEL", "stabilityai/sdxl-turbo")
+                combined_models.append({
+                    "id": img_model,
+                    "name": img_model,
+                    "object": "model",
+                    "created": int(time.time()),
+                    "owned_by": "local-diffusion"
+                })
+                combined_models.append({
+                    "id": "local/image-generator",
+                    "name": "local/image-generator",
+                    "object": "model",
+                    "created": int(time.time()),
+                    "owned_by": "local-diffusion"
+                })
 
         # 2. Modelos de proveedores en la nube expuestos
         if is_master:

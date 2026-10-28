@@ -15,6 +15,56 @@
                     </div>
                     
                     <form id="config-form" class="space-y-6">
+                        <!-- Alta Disponibilidad: Fallback Nube del Motor Local (Circuit Breaker) -->
+                        <div class="p-5 rounded-2xl border border-indigo-500/30 bg-slate-900/60 shadow-xl backdrop-blur-sm relative overflow-hidden">
+                            <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 mb-4 border-b border-slate-800">
+                                <div class="flex items-start sm:items-center gap-3">
+                                    <div class="p-2.5 rounded-xl bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 shrink-0">
+                                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 00-9.78 2.096A4.001 4.001 0 003 15z" />
+                                        </svg>
+                                    </div>
+                                    <div>
+                                        <div class="flex items-center gap-2 flex-wrap">
+                                            <h3 class="text-sm font-bold text-white tracking-wide">Alta Disponibilidad & Fallback Nube (Circuit Breaker)</h3>
+                                            <span id="local-fallback-status-badge" class="font-mono text-[11px] text-slate-400 bg-slate-950 border border-slate-800 px-2 py-0.5 rounded-md">Desactivado</span>
+                                        </div>
+                                        <p class="text-xs text-slate-400 mt-0.5">Si los motores locales (vLLM y llama.cpp en :18100) se apagan, conmuta de forma transparente al modelo cloud suplantando a <span class="font-mono text-indigo-300">local/CorpAI-Gen</span> sin cambiar su ID ni romper Open WebUI.</p>
+                                    </div>
+                                </div>
+                                <div class="flex items-center gap-2.5 self-end md:self-auto shrink-0 bg-slate-950/80 p-1.5 px-3 rounded-xl border border-slate-800">
+                                    <label class="text-xs font-bold text-slate-300">Fallback Activo:</label>
+                                    <select name="LOCAL_FALLBACK_ENABLED" id="local-fallback-enabled-select" onchange="toggleLocalFallbackUI(this.value)" class="bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 font-mono font-bold cursor-pointer">
+                                        <option value="false">false (Desactivado)</option>
+                                        <option value="true">true (Activado)</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div id="local-fallback-config-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                                <div>
+                                    <label class="block text-xs font-semibold text-slate-300 mb-1">Proveedor Cloud de Respaldo</label>
+                                    <select name="LOCAL_FALLBACK_PROVIDER_ID" id="local-fallback-provider-select" onchange="onLocalFallbackProviderChange()" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 font-mono cursor-pointer">
+                                        <option value="">Cargando proveedores cloud...</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-semibold text-slate-300 mb-1">Modelo Cloud Sustituto</label>
+                                    <select name="LOCAL_FALLBACK_MODEL" id="local-fallback-model-select" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 font-mono cursor-pointer">
+                                        <option value="">Selecciona un proveedor...</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-semibold text-slate-300 mb-1" title="Frecuencia en segundos del monitor en segundo plano para verificar si el motor local volvió a encenderse">Sondeo de Recuperación (Segundos)</label>
+                                    <input type="number" name="LOCAL_FALLBACK_CHECK_INTERVAL" id="local-fallback-check-interval" min="5" placeholder="60" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 font-mono">
+                                </div>
+                                <div>
+                                    <label class="block text-xs font-semibold text-slate-300 mb-1" title="Timeout máximo de conexión TCP local en segundos antes de activar conmutación si la GPU se congeló">Connect Timeout (Segundos)</label>
+                                    <input type="number" step="0.1" min="0.1" name="LOCAL_FALLBACK_CONNECT_TIMEOUT" id="local-fallback-connect-timeout" placeholder="1.0" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 font-mono">
+                                </div>
+                            </div>
+                        </div>
+
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <!-- Left: Hugging Face & Keys -->
                             <div class="space-y-4">

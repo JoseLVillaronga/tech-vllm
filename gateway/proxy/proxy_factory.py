@@ -27,6 +27,7 @@ from gateway.tools.vision import handle_vision_analysis, bridge_multimodal_messa
 from gateway.tools.image_gen import handle_image_generation_request
 from gateway.tools.rag_endpoints import handle_rag_search, handle_rag_document, handle_rag_structure, handle_rag_library_index
 from gateway.cloud.cloud_router import handle_models_list, resolve_cloud_model
+from gateway.cloud.local_fallback import is_local_fallback_enabled, is_local_engine_healthy, mark_local_engine_down, get_local_fallback_target
 from gateway.core.alignment_engine import enrich_chat_payload
 from gateway.core.slot_flusher import flush_llama_slots
 from gateway.core.tool_governor import parse_raw_tool_calls, deduplicate_tool_calls
@@ -260,6 +261,9 @@ def create_proxy_app(
         is_cloud_request = False
         cloud_provider = None
         valid_tool_names = set()
+        is_local_fallback_active = False
+        original_client_model = ""
+        active_fb_model = ""
 
         if current_service in ["gemma", "gemma_raw"] and body:
             try:
@@ -273,6 +277,19 @@ def create_proxy_app(
                     data["model"] = actual_model
 
                 model_name = actual_model or service_name
+                original_client_model = req_model or model_name
+
+                # Circuit Breaker: Si el motor local fue marcado como caído en memoria, conmutar directamente a la nube
+                if not is_cloud_request and is_local_fallback_enabled() and not is_local_engine_healthy():
+                    fb_prov, fb_mod = get_local_fallback_target()
+                    if fb_prov:
+                        is_cloud_request = True
+                        cloud_provider = fb_prov
+                        actual_model = fb_mod
+                        data["model"] = fb_mod
+                        is_local_fallback_active = True
+                        active_fb_model = fb_mod
+                        print(f"🔄 [Circuit Breaker Directo] Motor local no disponible en memoria. Despachando a Cloud Fallback ({fb_prov['provider_name']} / {fb_mod}).", flush=True)
 
                 # Extraer catálogo de herramientas válidas enviadas por el cliente
                 if isinstance(data, dict) and "tools" in data and isinstance(data["tools"], list):
@@ -358,21 +375,79 @@ def create_proxy_app(
 
         try:
             try:
+                if not is_cloud_request and current_service in ["gemma", "gemma_raw"]:
+                    try:
+                        conn_to = float(os.getenv("LOCAL_FALLBACK_CONNECT_TIMEOUT", "1.0"))
+                    except (ValueError, TypeError):
+                        conn_to = 1.0
+                    req_timeout = httpx.Timeout(300.0, connect=conn_to)
+                else:
+                    req_timeout = httpx.Timeout(300.0, connect=10.0)
+
                 req = client.build_request(
                     method=request.method,
                     url=target_url,
                     headers=headers,
                     content=body,
-                    params=request.query_params
+                    params=request.query_params,
+                    timeout=req_timeout
                 )
                 resp = await client.send(req, stream=True)
 
-                if resp.status_code in (502, 503) and fallback_port and not is_cloud_request:
+                if resp.status_code in (502, 503) and not is_cloud_request:
                     await resp.aclose()
                     resp = None
                     raise httpx.ConnectError(f"Backend principal retornó HTTP {resp.status_code if resp else 502}")
             except (httpx.ConnectError, httpx.ConnectTimeout, httpx.TimeoutException, httpx.ReadTimeout, httpx.NetworkError) as primary_err:
-                if fallback_port and not is_cloud_request:
+                # Conmutación de emergencia a Fallback Cloud (Circuit Breaker Reactivo)
+                if current_service in ["gemma", "gemma_raw"] and not is_cloud_request and is_local_fallback_enabled():
+                    mark_local_engine_down()
+                    fb_provider, fb_model = get_local_fallback_target()
+                    if fb_provider:
+                        print(f"⚠️ [Circuit Breaker Reactivo] Error conectando con motor local ({primary_err}). Conmutando a Cloud Fallback ({fb_provider['provider_name']} / {fb_model})...", flush=True)
+                        is_local_fallback_active = True
+                        active_fb_model = fb_model
+                        fb_base_url = fb_provider['base_url'].rstrip("/")
+                        if fb_base_url.endswith("/v1") and path.startswith("v1/"):
+                            fb_target_url = f"{fb_base_url[:-3]}/{path}"
+                        else:
+                            fb_target_url = f"{fb_base_url}/{path}"
+                        fb_parsed_url = urlparse(fb_provider['base_url'])
+                        fb_headers = dict(headers)
+                        fb_headers["host"] = fb_parsed_url.netloc
+                        fb_headers["authorization"] = f"Bearer {fb_provider['api_key']}"
+
+                        try:
+                            fb_data = json.loads(body)
+                            fb_data["model"] = fb_model
+                            fb_body = json.dumps(fb_data).encode("utf-8")
+                        except Exception:
+                            fb_body = body
+
+                        req_fb = client.build_request(
+                            method=request.method,
+                            url=fb_target_url,
+                            headers=fb_headers,
+                            content=fb_body,
+                            params=request.query_params,
+                            timeout=httpx.Timeout(300.0, connect=10.0)
+                        )
+                        resp = await client.send(req_fb, stream=True)
+                    elif fallback_port:
+                        fallback_url = f"http://127.0.0.1:{fallback_port}/{path}"
+                        fallback_headers = dict(headers)
+                        fallback_headers["host"] = f"127.0.0.1:{fallback_port}"
+                        req_fb = client.build_request(
+                            method=request.method,
+                            url=fallback_url,
+                            headers=fallback_headers,
+                            content=body,
+                            params=request.query_params
+                        )
+                        resp = await client.send(req_fb, stream=True)
+                    else:
+                        raise primary_err
+                elif fallback_port and not is_cloud_request:
                     fallback_url = f"http://127.0.0.1:{fallback_port}/{path}"
                     fallback_headers = dict(headers)
                     fallback_headers["host"] = f"127.0.0.1:{fallback_port}"
@@ -408,8 +483,14 @@ def create_proxy_app(
                 native_streamed_tool_calls = {}
                 has_native_tool_calls = False
 
+                fb_model_bytes = active_fb_model.encode("utf-8") if active_fb_model else b""
+                client_model_bytes = original_client_model.encode("utf-8") if original_client_model else b""
+
                 try:
                     async for chunk in resp.aiter_bytes():
+                        if is_local_fallback_active and fb_model_bytes and (fb_model_bytes in chunk):
+                            chunk = chunk.replace(fb_model_bytes, client_model_bytes)
+
                         total_bytes_yielded += len(chunk)
                         if not is_streaming:
                             non_stream_body += chunk
