@@ -3,6 +3,18 @@
 Todos los cambios notables en este proyecto serán documentados en este archivo.
 El formato está basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/).
 
+## [2.14.0] - 2026-10-28
+
+### Added
+- **Circuit Breaker con Fallback a la Nube para Inferencia Local (`gateway/cloud/local_fallback.py`, `gateway/proxy/proxy_factory.py`):**
+  - Subsistema desacoplado de Alta Disponibilidad (HA) que conmuta peticiones a proveedores cloud (OpenRouter, DeepSeek, Groq, etc.) ante caídas, reinicios o desbordamientos de memoria en los motores locales (`vLLM` y `llama.cpp` en `:18100`).
+  - **Decisión de ruta en memoria ($0\text{ ms}$ overhead):** La evaluación en cada petición del usuario consulta directamente el flag booleano `_local_engine_healthy` sin bloqueos de socket ni latencia agregada.
+  - **Detección reactiva inmediata (Fast Failover):** Captura rechazos TCP del kernel de Linux en $1\text{ ms}$ y aplica un `connect_timeout` configurable (1.0s) para procesos locales congelados o en OOM.
+  - **Transparencia absoluta de modelo:** Sustitución bidireccional que preserva el identificador `local/CorpAI-Gen` y su alias descriptivo en `/v1/models` y en cada fragmento de streaming (`text/event-stream`), garantizando que clientes como Open WebUI jamás detecten rotura de modelo ni desconexión.
+  - **Monitor asíncrono de auto-recuperación (`local_fallback_monitor_loop`):** Bucle en segundo plano desacoplado que sondea periódicamente `http://127.0.0.1:18100/health` y reactiva el tráfico local en cuanto el motor vuelve a estar operativo.
+  - **Control gráfico en Dashboard (`templates/tabs/tab_config.html`, `static/js/dashboard_core.js`):** Panel superior en la pestaña «Variables (.env)» con interruptor ON/OFF, selector dinámico de proveedores y modelos cloud, intervalo de sondeo y timeout de conexión.
+  - **Documentación técnica de arquitectura (`docs/ARQUITECTURA_CIRCUIT_BREAKER_LOCAL_FALLBACK.md`):** Especificación completa bajo el estándar de resiliencia operativa ASD-STE100 (Ley 5).
+
 ## [2.13.0] - 2026-09-10
 
 ### Fixed
