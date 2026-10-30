@@ -22,19 +22,12 @@ if [ "${TARGET_USER}" = "root" ]; then
 fi
 USER_HOME=$(eval echo "~${TARGET_USER}")
 
-# 3. Resolver directorio de llama.cpp evitando rutas /root
+# 3. Resolver directorio base de llama.cpp evitando rutas /root
 if [ -z "${LLAMA_DIR}" ]; then
     RESOLVED_LLAMA_DIR="${USER_HOME}/llama.cpp"
 else
     RESOLVED_LLAMA_DIR="${LLAMA_DIR/\$HOME/$USER_HOME}"
     RESOLVED_LLAMA_DIR="${RESOLVED_LLAMA_DIR/#\/root/$USER_HOME}"
-fi
-LLAMA_BIN="${RESOLVED_LLAMA_DIR}/build/bin/llama-server"
-
-# Validar existencia del binario llama-server
-if [ ! -f "${LLAMA_BIN}" ]; then
-    echo "❌ Error: No se encontró llama-server en ${LLAMA_BIN}" >&2
-    exit 1
 fi
 
 # 4. Resolver ruta del modelo GGUF
@@ -53,6 +46,30 @@ fi
 
 if [ ! -f "${MODEL_PATH}" ]; then
     echo "❌ Error: No se encontró el archivo del modelo en ${MODEL_PATH}" >&2
+    exit 1
+fi
+
+# Detección inteligente de Arquitectura / Familia del Modelo
+MODEL_LOWER="$(basename "${MODEL_PATH}" | tr '[:upper:]' '[:lower:]')"
+IS_FLINT=false
+if [[ "${MODEL_LOWER}" == *flint* ]]; then
+    IS_FLINT=true
+fi
+
+# Selección dinámica del binario llama-server (Conmutación automática para modelos Flint)
+LLAMA_BIN="${RESOLVED_LLAMA_DIR}/build/bin/llama-server"
+if [ "${IS_FLINT}" = "true" ]; then
+    # Flint requiere soporte PR #30928 (upstream llama.cpp o runtime compilado compatible)
+    if [ -f "${USER_HOME}/llama.cpp/build/bin/llama-server" ]; then
+        LLAMA_BIN="${USER_HOME}/llama.cpp/build/bin/llama-server"
+    elif [ -f "${USER_HOME}/.lmstudio/extensions/backends/llama.cpp-linux-x86_64-nvidia-cuda12-avx2-2.67.0/llama-server" ]; then
+        LLAMA_BIN="${USER_HOME}/.lmstudio/extensions/backends/llama.cpp-linux-x86_64-nvidia-cuda12-avx2-2.67.0/llama-server"
+    fi
+fi
+
+# Validar existencia del binario llama-server
+if [ ! -f "${LLAMA_BIN}" ]; then
+    echo "❌ Error: No se encontró llama-server en ${LLAMA_BIN}" >&2
     exit 1
 fi
 
@@ -79,6 +96,9 @@ mkdir -p "${SLOT_SAVE_PATH}"
 
 # 5.1 Parámetro Opcional Multimodal Projector (Visión Condicional en GPU)
 RAW_MMPROJ="${LLAMA_MMPROJ:-${LLAMA_MMPROJ_PATH:-}}"
+if [ "${IS_FLINT}" = "true" ]; then
+    RAW_MMPROJ=""
+fi
 MMPROJ_ARGS=()
 if [ -n "${RAW_MMPROJ}" ]; then
     # Reemplazar variables $LLAMA_DIR o $HOME si venían como texto literal en .env
@@ -100,12 +120,17 @@ if [ -n "${RAW_MMPROJ}" ]; then
         echo "⚠️ Advertencia: Archivo mmproj no encontrado en ${MMPROJ_PATH}. Continuando en modo Solo Texto." >&2
         MMPROJ_DESC="Desactivado (Archivo no encontrado)"
     fi
+elif [ "${IS_FLINT}" = "true" ]; then
+    MMPROJ_DESC="Desactivado (Flint opera en modo Solo Texto)"
 else
     MMPROJ_DESC="Desactivado (Solo Texto)"
 fi
 
 # 5.2 Parámetros Condicionales por Arquitectura (MoE vs Denso)
 IS_MOE="${LLAMA_IS_MOE:-false}"
+if [ "${IS_FLINT}" = "true" ]; then
+    IS_MOE="true"
+fi
 MOE_ARGS=()
 if [ "${IS_MOE}" = "true" ]; then
     ARCH_TYPE="MoE (Mixture of Experts)"
@@ -268,4 +293,5 @@ exec "${LLAMA_BIN}" \
   --threads "${THREADS}" \
   "${LOAD_MODE_ARGS[@]}" \
   --port "${PORT}" \
-  --api-key "${AUTH_KEY}"
+  --api-key "${AUTH_KEY}" \
+  -fit off
