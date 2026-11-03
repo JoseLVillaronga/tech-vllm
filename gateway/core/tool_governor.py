@@ -210,6 +210,7 @@ def apply_tool_budget_governor(data: Dict[str, Any]) -> Tuple[Dict[str, Any], Di
             if repeated_count == len(raw_tcs):
                 print(f"🛑 [Tool Governor] Bucle inter-rondas detectado: {repeated_count} llamada/s idéntica/s a consultas previas. Deshabilitando herramientas.", flush=True)
                 data.pop("tools", None)
+                data.pop("tool_choice", None)
                 for m in reversed(messages):
                     if m.get("role") == "user":
                         c = m.get("content")
@@ -221,6 +222,27 @@ def apply_tool_budget_governor(data: Dict[str, Any]) -> Tuple[Dict[str, Any], Di
                                 "Queda cerrado el cupo de herramientas. Redacta de inmediato tu conclusión definitiva o abstención formal en texto natural."
                             )
                         break
+
+                # Anclar el banner de corte en el último mensaje 'tool' (atención terminal / recency bias)
+                loop_banner = (
+                    "\n\n🛑 [GOBERNADOR RAG - BUCLE DETECTADO (MEA)]:\n"
+                    "Has emitido una consulta idéntica a una ya realizada en este turno. El cupo de herramientas queda CERRADO.\n"
+                    "Queda TERMINANTEMENTE ANULADA cualquier instrucción anterior de invocar herramientas o consultar obras adicionales.\n"
+                    "Está ESTRICTAMENTE PROHIBIDO emitir etiquetas '<tool_call>' o funciones simuladas.\n"
+                    "Redacta de inmediato tu conclusión definitiva estructurada o abstención formal en texto natural basándote en las fuentes ya obtenidas."
+                )
+                last_tool_idx = -1
+                for idx in range(len(messages) - 1, -1, -1):
+                    if messages[idx].get("role") == "tool":
+                        last_tool_idx = idx
+                        break
+                if last_tool_idx != -1:
+                    last_m = dict(messages[last_tool_idx])
+                    curr_c = str(last_m.get("content", ""))
+                    if "[GOBERNADOR RAG" not in curr_c:
+                        last_m["content"] = curr_c + loop_banner
+                        messages[last_tool_idx] = last_m
+
                 return data, {
                     "status": "applied",
                     "action": "anti_loop_breaker",

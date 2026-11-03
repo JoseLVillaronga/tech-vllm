@@ -240,6 +240,11 @@ class TestToolGovernor(unittest.TestCase):
         self.assertIn("[FASE DE INVESTIGACIÓN CONCLUIDA - DETECCIÓN DE BUCLE (MEA)]", user_msg)
         self.assertIn("Has emitido una consulta idéntica a una ya realizada", user_msg)
 
+        # Verificar que el último mensaje 'tool' reciba el banner perentorio
+        tool_msg = modified_data["messages"][2]["content"]
+        self.assertIn("[GOBERNADOR RAG - BUCLE DETECTADO (MEA)]", tool_msg)
+        self.assertIn("Queda TERMINANTEMENTE ANULADA cualquier instrucción anterior", tool_msg)
+
     def test_parse_raw_tool_calls_json_array(self):
         valid_tools = {"buscar_en_base_de_conocimiento", "leer_documento_completo"}
         raw_json = '[{"name": "buscar_en_base_de_conocimiento", "arguments": {"consulta": "Tratados internacionales"}}]'
