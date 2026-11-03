@@ -360,7 +360,9 @@ class TestGatewayCore(unittest.TestCase):
         self.assertIn("[DIRECTIVA DE CONTROL Y GROUNDING OBLIGATORIO (MEA)]", last_puntual_msg)
         self.assertNotIn("mapa ontológico de obras y normas oficiales disponibles", last_puntual_msg)
 
-        # 9. Conversación con más de 6 turnos de usuario -> Debe podar a los últimos 6 turnos conservando el system prompt y anclando el último turno
+        # 9. Conversación con más de N turnos de usuario -> Debe podar conservando el system prompt y anclando el último turno
+        from gateway.core.context_pruner import get_max_user_turns
+        max_turns = get_max_user_turns()
         long_chat_msgs = [{"role": "system", "content": "You are a helpful assistant."}]
         for i in range(1, 23):  # 22 turnos
             long_chat_msgs.append({"role": "user", "content": f"Turno {i}"})
@@ -369,8 +371,8 @@ class TestGatewayCore(unittest.TestCase):
         data_long = {"messages": long_chat_msgs, "tools": []}
         res_pruned = asyncio.run(enrich_chat_payload(data_long, actual_model="gemma", is_cloud_request=False))
         user_msgs_in_res = [m for m in res_pruned["messages"] if m.get("role") == "user"]
-        self.assertEqual(len(user_msgs_in_res), 6)
-        self.assertEqual(user_msgs_in_res[0]["content"], "Turno 17")
+        self.assertEqual(len(user_msgs_in_res), max_turns)
+        self.assertEqual(user_msgs_in_res[0]["content"], f"Turno {22 - max_turns + 1}")
         self.assertIn("Turno 22", user_msgs_in_res[-1]["content"])
         self.assertTrue(user_msgs_in_res[-1]["content"].startswith("[CONSULTA ACTUAL DEL USUARIO]:"))
         self.assertEqual(res_pruned["messages"][0]["role"], "system")
@@ -798,6 +800,39 @@ class TestGatewayCore(unittest.TestCase):
         last_user = res_user["messages"][-1]["content"]
 
         self.assertIn("[RECORDATORIO PERENTORIO DE RIGOR Y GROUNDING (MEA - CONTEXTO EXTENSO)]", last_user)
+
+    def test_utility_query_not_polluted_by_prior_grounding(self):
+        import asyncio
+        from gateway.core.alignment_engine import enrich_chat_payload
+
+        # Turno 1 con herramienta de utilidad (ej: buscar_item) o RAG
+        # Turno 2 pidiendo el clima con palabra "detallado"
+        payload_weather = {
+            "model": "CorpAI-Gen",
+            "messages": [
+                {"role": "user", "content": "Busca el equipo de serie A1212740993"},
+                {
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": [{"id": "c1", "type": "function", "function": {"name": "buscar_item", "arguments": "{}"}}]
+                },
+                {"role": "tool", "name": "buscar_item", "content": "Equipo encontrado"},
+                {"role": "assistant", "content": "El equipo fue localizado."},
+                {"role": "user", "content": "Mostrame el pronostico detallado de mañana"}
+            ],
+            "tools": [
+                {"type": "function", "function": {"name": "buscar_item"}},
+                {"type": "function", "function": {"name": "get_weather_forecast"}},
+                {"type": "function", "function": {"name": "buscar_en_base_de_conocimiento"}}
+            ]
+        }
+
+        res = asyncio.run(enrich_chat_payload(payload_weather, actual_model="CorpAI-Gen", is_cloud_request=False, alignment_mode="full"))
+        last_msg = res["messages"][-1]["content"]
+
+        # Debe preservar la consulta sin inyectar la directiva de seguimiento normativo MEA
+        self.assertNotIn("[DIRECTIVA DE CONTROL Y GROUNDING OBLIGATORIO (SEGUIMIENTO - MEA)]", last_msg)
+        self.assertEqual(last_msg, "[CONSULTA ACTUAL DEL USUARIO]:\nMostrame el pronostico detallado de mañana")
 
     def test_database_singleton(self):
         from gateway.core.database import get_mongo_client, get_db

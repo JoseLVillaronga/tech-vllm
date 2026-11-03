@@ -116,6 +116,18 @@ FOLLOWUP_TRIGGERS_PATTERN = re.compile(
     re.IGNORECASE
 )
 
+UTILITY_TRIGGERS_PATTERN = re.compile(
+    r"\b("
+    r"pron[oó]stico|clima|tiempo\s+(de\s+mañana|hoy|actual)|temperatura|lluvia|meteorol[oó]gic[ao]|"
+    r"hora|fecha|qu[eé]\s+hora|qu[eé]\s+d[ií]a|"
+    r"calcul[ao]|calculadora|cu[aá]nto\s+es|"
+    r"traduc[eir]|traducci[oó]n|"
+    r"imagen|dibuj[ao]|gener[ao]\s+imagen|"
+    r"serie|n[uú]mero\s+de\s+serie|equipo\s+de\s+serie"
+    r")\b",
+    re.IGNORECASE
+)
+
 DEFAULT_ALIGNMENT_SETTINGS: Dict[str, Any] = {
     "enabled": True,
     "inject_temporal": True,
@@ -494,10 +506,13 @@ async def enrich_chat_payload(
     )
     if mode == "full" and has_rag_tools and user_query and last_user_msg:
         is_direct_grounding = bool(GROUNDING_TRIGGERS_PATTERN.search(user_query))
+        is_utility_query = bool(UTILITY_TRIGGERS_PATTERN.search(user_query))
         
         is_followup_candidate = (
-            bool(FOLLOWUP_TRIGGERS_PATTERN.search(user_query)) or 
-            len(user_query.strip().split()) <= 15
+            not is_utility_query and (
+                bool(FOLLOWUP_TRIGGERS_PATTERN.search(user_query)) or 
+                len(user_query.strip().split()) <= 15
+            )
         )
         has_prior_grounding = False
         if not is_direct_grounding and is_followup_candidate:
@@ -506,11 +521,19 @@ async def enrich_chat_payload(
                     continue
                 m_role = m.get("role")
                 if m_role == "tool":
-                    has_prior_grounding = True
-                    break
-                if m_role == "assistant":
-                    if m.get("tool_calls"):
+                    t_name = str(m.get("name", "")).lower()
+                    if any(sig in t_name for sig in rag_tool_signatures):
                         has_prior_grounding = True
+                        break
+                elif m_role == "assistant":
+                    t_calls = m.get("tool_calls") or []
+                    for tc in t_calls:
+                        fn = tc.get("function", {}) if isinstance(tc, dict) else {}
+                        fn_name = str(fn.get("name", "")).lower()
+                        if any(sig in fn_name for sig in rag_tool_signatures):
+                            has_prior_grounding = True
+                            break
+                    if has_prior_grounding:
                         break
                     m_content = str(m.get("content", ""))
                     if any(kw in m_content for kw in ["doc_id:", "base_de_conocimiento", "obtener_estructura_documento", "leer_documento_completo", "obtener_indice_biblioteca"]):

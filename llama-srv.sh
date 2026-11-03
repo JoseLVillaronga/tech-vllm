@@ -178,6 +178,11 @@ else
     REASONING_DESC="No soportado en binario (omitido)"
 fi
 
+if "${LLAMA_BIN}" --help 2>&1 | grep -q -- "--reasoning-format"; then
+    REASONING_ARGS+=(--reasoning-format "deepseek")
+    REASONING_DESC="${REASONING_DESC} [formato: deepseek]"
+fi
+
 # 5.4.1 Modo de Bloqueo de Memoria (mlock)
 LOAD_MODE_ARGS=()
 if "${LLAMA_BIN}" --help 2>&1 | grep -q -- "--load-mode"; then
