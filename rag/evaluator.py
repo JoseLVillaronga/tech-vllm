@@ -22,6 +22,7 @@ from .config import (
     EVALUATOR_TWIL_MAX_CHARS,
     EVALUATOR_RWKV_MAX_CHARS,
     EVALUATOR_TIMEOUT,
+    EVALUATOR_MAX_TOKENS,
     MASTER_KEY,
 )
 
@@ -96,6 +97,11 @@ def _evaluate_with_twil_json(
         truncated_context = context_text
     user_prompt = f"CONSULTA DEL USUARIO:\n{query_str}\n\nCONTEXTO DOCUMENTAL RECUPERADO:\n{truncated_context}"
 
+    try:
+        twil_max_tokens = int(os.getenv("EVALUATOR_MAX_TOKENS", str(EVALUATOR_MAX_TOKENS)))
+    except Exception:
+        twil_max_tokens = 500
+
     payload = {
         "model": os.getenv("EVALUATOR_ALIAS", "twil-lm3-q4_k_m"),
         "messages": [
@@ -103,7 +109,7 @@ def _evaluate_with_twil_json(
             {"role": "user", "content": user_prompt}
         ],
         "temperature": 0.0,
-        "max_tokens": 350,
+        "max_tokens": twil_max_tokens,
         "response_format": {"type": "json_object"}
     }
 

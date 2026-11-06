@@ -245,6 +245,29 @@ class TestRagEvaluator(unittest.TestCase):
         kwargs = mock_urlopen.call_args[1]
         self.assertEqual(kwargs.get("timeout"), 5.0)
 
+    @patch("urllib.request.urlopen")
+    def test_evaluator_custom_max_tokens_payload(self, mock_urlopen):
+        mock_resp = MagicMock()
+        mock_resp.status = 200
+        mock_resp.read.return_value = b'{"choices": [{"message": {"content": "{\\"suficiente\\": true, \\"motivo\\": \\"OK\\"}"}}]}'
+        mock_resp.__enter__.return_value = mock_resp
+        mock_urlopen.return_value = mock_resp
+
+        with patch.dict("os.environ", {
+            "EVALUATOR_MODEL": "$LLAMA_DIR/models/twil-lm3-q4_k_m.gguf",
+            "EVALUATOR_ALIAS": "twil-lm3-q4_k_m",
+            "EVALUATOR_MAX_TOKENS": "500"
+        }):
+            res = evaluate_context_sufficiency(
+                query="Consulta",
+                context=[{"similarity": 0.60, "content": "Texto de prueba"}]
+            )
+
+        self.assertTrue(res["suficiente"])
+        call_args = mock_urlopen.call_args[0]
+        req_body = json.loads(call_args[0].data.decode("utf-8"))
+        self.assertEqual(req_body.get("max_tokens"), 500)
+
 
 if __name__ == "__main__":
     unittest.main()
