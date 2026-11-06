@@ -15,7 +15,14 @@ import json
 import urllib.request
 import urllib.error
 from typing import List, Dict, Any, Union, Optional
-from .config import EVALUATOR_BACKEND_PORT, EVALUATOR_MODEL, EVALUATOR_ALIAS, MASTER_KEY
+from .config import (
+    EVALUATOR_BACKEND_PORT,
+    EVALUATOR_MODEL,
+    EVALUATOR_ALIAS,
+    EVALUATOR_TWIL_MAX_CHARS,
+    EVALUATOR_RWKV_MAX_CHARS,
+    MASTER_KEY,
+)
 
 
 def _extract_clean_json(text: str) -> Optional[Dict[str, Any]]:
@@ -75,8 +82,15 @@ def _evaluate_with_twil_json(
         "}"
     )
 
-    if len(context_text) > 5000:
-        truncated_context = context_text[:1500] + "\n\n[...]\n\n" + context_text[-3500:]
+    try:
+        twil_max_chars = int(os.getenv("EVALUATOR_TWIL_MAX_CHARS", str(EVALUATOR_TWIL_MAX_CHARS)))
+    except Exception:
+        twil_max_chars = 5000
+
+    if len(context_text) > twil_max_chars:
+        head_len = int(twil_max_chars * 0.30)
+        tail_len = max(0, twil_max_chars - head_len)
+        truncated_context = context_text[:head_len] + "\n\n[...]\n\n" + context_text[-tail_len:]
     else:
         truncated_context = context_text
     user_prompt = f"CONSULTA DEL USUARIO:\n{query_str}\n\nCONTEXTO DOCUMENTAL RECUPERADO:\n{truncated_context}"
@@ -138,9 +152,16 @@ def _evaluate_with_rwkv_linear(
     """Evaluación deductiva lineal ultrarrápida con RWKV-6 Finch (endpoint /completion)."""
     url = f"http://127.0.0.1:{backend_port}/completion"
 
-    # En RWKV-6 la ventana nativa es de 1M tokens con memoria plana O(1); truncamos a 30.000 caracteres como cota segura
-    if len(context_text) > 30000:
-        truncated_context = context_text[:5000] + "\n\n[...]\n\n" + context_text[-25000:]
+    # En RWKV-6 la ventana nativa es de 1M tokens con memoria plana O(1); truncamos según EVALUATOR_RWKV_MAX_CHARS como cota segura
+    try:
+        rwkv_max_chars = int(os.getenv("EVALUATOR_RWKV_MAX_CHARS", str(EVALUATOR_RWKV_MAX_CHARS)))
+    except Exception:
+        rwkv_max_chars = 30000
+
+    if len(context_text) > rwkv_max_chars:
+        head_len = int(rwkv_max_chars / 6)
+        tail_len = max(0, rwkv_max_chars - head_len)
+        truncated_context = context_text[:head_len] + "\n\n[...]\n\n" + context_text[-tail_len:]
     else:
         truncated_context = context_text
 

@@ -1,6 +1,7 @@
 import unittest
 from unittest.mock import patch, MagicMock
 import io
+import json
 from rag.evaluator import evaluate_context_sufficiency, _extract_clean_json, _is_rwkv_evaluator
 
 
@@ -159,6 +160,67 @@ class TestRagEvaluator(unittest.TestCase):
         self.assertEqual(res["evaluador"], "rwkv-finch")
         self.assertIn("insuficiente o incompleta", res["motivo"])
         self.assertIn("información específica o articulado dispositivo", res["faltantes"])
+
+    @patch("urllib.request.urlopen")
+    def test_twil_custom_max_chars_ingestion_complete_when_below_threshold(self, mock_urlopen):
+        mock_resp = MagicMock()
+        mock_resp.status = 200
+        mock_resp.read.return_value = b'{"choices": [{"message": {"content": "{\\"suficiente\\": true, \\"motivo\\": \\"Completo\\"}"}}]}'
+        mock_resp.__enter__.return_value = mock_resp
+        mock_urlopen.return_value = mock_resp
+
+        # 14.500 caracteres de contexto con umbral de 15.000
+        long_content = "X" * 14500
+        with patch.dict("os.environ", {
+            "EVALUATOR_MODEL": "$LLAMA_DIR/models/twil-lm3-q4_k_m.gguf",
+            "EVALUATOR_ALIAS": "twil-lm3-q4_k_m",
+            "EVALUATOR_TWIL_MAX_CHARS": "15000"
+        }):
+            res = evaluate_context_sufficiency(
+                query="Consulta doctrinaria",
+                context=long_content
+            )
+
+        self.assertTrue(res["suficiente"])
+        # Verificar que el payload enviado a urlopen contenga el texto completo sin elipsis '[...]'
+        call_args = mock_urlopen.call_args[0]
+        req_body = json.loads(call_args[0].data.decode("utf-8"))
+        user_msg = req_body["messages"][1]["content"]
+        self.assertNotIn("[...]", user_msg)
+        self.assertIn(long_content, user_msg)
+
+    @patch("urllib.request.urlopen")
+    def test_twil_custom_max_chars_ingestion_truncated_when_above_threshold(self, mock_urlopen):
+        mock_resp = MagicMock()
+        mock_resp.status = 200
+        mock_resp.read.return_value = b'{"choices": [{"message": {"content": "{\\"suficiente\\": true, \\"motivo\\": \\"Truncado\\"}"}}]}'
+        mock_resp.__enter__.return_value = mock_resp
+        mock_urlopen.return_value = mock_resp
+
+        # 20.000 caracteres de contexto con umbral de 15.000
+        prefix = "A" * 4500
+        middle = "B" * 5000
+        suffix = "C" * 10500
+        long_content = prefix + middle + suffix  # 20.000 chars
+
+        with patch.dict("os.environ", {
+            "EVALUATOR_MODEL": "$LLAMA_DIR/models/twil-lm3-q4_k_m.gguf",
+            "EVALUATOR_ALIAS": "twil-lm3-q4_k_m",
+            "EVALUATOR_TWIL_MAX_CHARS": "15000"
+        }):
+            res = evaluate_context_sufficiency(
+                query="Consulta doctrinaria",
+                context=long_content
+            )
+
+        self.assertTrue(res["suficiente"])
+        call_args = mock_urlopen.call_args[0]
+        req_body = json.loads(call_args[0].data.decode("utf-8"))
+        user_msg = req_body["messages"][1]["content"]
+        self.assertIn("[...]", user_msg)
+        self.assertIn(prefix, user_msg)
+        self.assertIn(suffix, user_msg)
+        self.assertNotIn(middle, user_msg)
 
 
 if __name__ == "__main__":
