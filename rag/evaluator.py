@@ -23,6 +23,7 @@ from .config import (
     EVALUATOR_RWKV_MAX_CHARS,
     EVALUATOR_TIMEOUT,
     EVALUATOR_MAX_TOKENS,
+    EVALUATOR_REASONING_EFFORT,
     MASTER_KEY,
 )
 
@@ -102,6 +103,8 @@ def _evaluate_with_twil_json(
     except Exception:
         twil_max_tokens = 500
 
+    reasoning_effort = os.getenv("EVALUATOR_REASONING_EFFORT", str(EVALUATOR_REASONING_EFFORT)).strip()
+
     payload = {
         "model": os.getenv("EVALUATOR_ALIAS", "twil-lm3-q4_k_m"),
         "messages": [
@@ -112,6 +115,8 @@ def _evaluate_with_twil_json(
         "max_tokens": twil_max_tokens,
         "response_format": {"type": "json_object"}
     }
+    if reasoning_effort and reasoning_effort.lower() not in ("auto", "default", "keep"):
+        payload["reasoning_effort"] = reasoning_effort
 
     req_data = json.dumps(payload).encode("utf-8")
     headers = {"Content-Type": "application/json"}
