@@ -827,3 +827,96 @@ Se planifica configurar tres perfiles derivados en Open-WebUI, todos apuntando a
    Registrar en el log de auditoría los parámetros efectivos (`temp`, `min_p`) con los que se ejecutó cada turno asistido para trazabilidad forense.
 
 
+
+
+---
+
+## 14. Arquitectura Router-Synthesizer Desacoplada: Orquestación RAG por SLM Evaluador para Modelos Lineales/No-Tool-Calling (RWKV-7 13.3B) [PROPUESTA]
+
+> 💡 **Estado:** Propuesta de arquitectura futura (Sesión 2026-11-06).  
+> **Objetivo:** Permitir la ejecución de modelos de atención lineal / RNN de última generación como `rwkv7-g1f-13.3b-Q5_K_M.gguf` en el motor principal (`vllm-llama.service`), delegando el ciclo agéntico de llamadas a herramientas (Tool Calling) en el microservicio evaluador (`twil-lm3` en `:18300`) y desacoplando completamente el historial de Open-WebUI.
+
+### 14.1. Fundamentación y Diagnóstico del Problema
+
+1. **Ventajas Operativas de RWKV-7 (13.3B):**
+   * **Atención lineal $O(1)$ en KVCache:** No satura memoria VRAM con ventanas extensas, permitiendo contextos colosales con una huella de memoria fija.
+   * **Velocidad constante:** Generación y prompt processing a tasas estables superiores a ~80–100 tok/s.
+   * **Calidad de redacción:** Extraordinaria riqueza léxica y capacidad de síntesis para piezas doctrinales y jurídicas.
+2. **Limitación Congénita:**
+   * Las arquitecturas recurrentes puras (RWKV) carecen de alineación nativa para *Tool Calling* en formato OpenAI/ChatML estructurado.
+   * Si se envían esquemas JSON de herramientas al motor principal con RWKV-7, el modelo tiende a alucinar llamadas, emitir sintaxis malformada o congelar la conversación.
+3. **Causa Raíz Arquitectónica:**
+   * Intentar forzar a un modelo sin fine-tuning de herramientas a actuar como orquestador agéntico viola la Ley 1 (Separación de Responsabilidades).
+   * La selección de herramientas y extracción de parámetros es una tarea de lógica formal estructurada; la síntesis de respuesta es una tarea de generación de lenguaje natural.
+
+---
+
+### 14.2. Especificación Arquitectónica (Patrón Router-Synthesizer)
+
+Se establece un flujo condicional en el Gateway (`vllm-gateway.service`) activado mediante variable de entorno:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as Usuario / Open-WebUI
+    participant GW as vLLM Gateway (:8000)
+    participant EV as SLM Evaluador / Router (:18300 - twil-lm3)
+    participant KB as Base RAG (LanceDB / Teccam PDF)
+    participant LLM as Motor Principal (:18100 - RWKV-7 13.3B)
+
+    U->>GW: POST /v1/chat/completions (Prompt usuario + Tools habilitadas)
+    Note over GW: Detecta GATEWAY_DISPATCHER_MODE=pre_rag
+    GW->>EV: Envia consulta para planificacion de herramientas
+    loop Bucle Agentico Interno (Max 2-3 rondas)
+        EV->>GW: Emite tool_call (buscar_en_base_de_conocimiento / leer_documento)
+        GW->>KB: Ejecuta consulta documental
+        KB-->>GW: Retorna fragmentos / texto normativo
+        GW-->>EV: Realimenta evidencia documental
+        EV->>EV: Determina si evidencia es suficiente
+    end
+    EV-->>GW: Retorna Evidencia Consolidada Verificada
+    Note over GW: Ensambla Prompt Enriquecido sin tools:<br/>User: {query}<br/>&lt;contexto_verificado&gt;{evidencia}&lt;/contexto_verificado&gt;
+    GW->>LLM: Inferencia pura en texto plano (cero tools)
+    LLM-->>GW: Streaming de respuesta final en lenguaje natural
+    GW-->>U: Retorna respuesta final limpia (sin metadatos ni tool_calls)
+    Note over U: Open-WebUI preserva historial limpio (User ➔ Assistant)
+```
+
+---
+
+### 14.3. Componentes del Diseño
+
+1. **Orquestador / Despachador de Herramientas (`:18300`):**
+   * El microservicio evaluador (`twil-lm3` SmolLM3 3.1B o SLM especializado) asume el rol activo de seleccionar herramientas, generar argumentos JSON válidos y evaluar suficiencia documental en un bucle local acotado (máximo 2–3 saltos).
+2. **Inyección en Vuelo de Evidencia (`Gateway`):**
+   * El Gateway captura la evidencia documental resultante y la encapsula dentro de etiquetas delimitadoras deterministas:
+     ```markdown
+     [CONSULTA DEL USUARIO]
+     {pregunta}
+
+     <contexto_verificado>
+     {evidencia_documental_consolidada}
+     </contexto_verificado>
+     ```
+   * Se elimina el array de `tools` de la petición antes de contactar a `:18100`.
+3. **Generación Pura y Desacoplada (`RWKV-7 en :18100`):**
+   * RWKV-7 recibe la consulta como texto plano puro, instruido por system prompt para ceñirse a la evidencia provista en `<contexto_verificado>` sin mencionar etiquetas técnicas.
+   * Genera a máxima velocidad sin fricción de llamadas a funciones.
+4. **Protección del Historial en Open-WebUI (Zero UI Pollution):**
+   * La inyección de `<contexto_verificado>` se realiza exclusivamente en tránsito en el Gateway hacia `llama-server`.
+   * Hacia Open-WebUI solo se transmite la respuesta final del asistente, garantizando que el historial de chat se mantenga limpio, legible y sin inflar la base de datos de MongoDB/SQLite.
+
+---
+
+### 14.4. Plan de Implementación Futura
+
+1. **Variables de Configuración (`.env` / `.env.example`):**
+   ```bash
+   # Modo Despachador RAG Autónomo (para modelos sin soporte nativo de Tool Calling)
+   GATEWAY_DISPATCHER_MODE=pre_rag       # 'direct' (estándar actual) | 'pre_rag' (desacoplado)
+   GATEWAY_DISPATCHER_MAX_HOPS=3        # Máximo de saltos agénticos internos en evaluador
+   ```
+2. **Módulo de Despacho en `gateway/core/`:**
+   * Crear `gateway/core/pre_rag_dispatcher.py` para aislar la máquina de estados agéntica previa (Ley 1).
+3. **Compatibilidad hacia Atrás:**
+   * Si `GATEWAY_DISPATCHER_MODE=direct`, el Gateway preserva el flujo actual de Qwen / Gemma sin alterar la lógica existente (Ley 3).
