@@ -222,6 +222,29 @@ class TestRagEvaluator(unittest.TestCase):
         self.assertIn(suffix, user_msg)
         self.assertNotIn(middle, user_msg)
 
+    @patch("urllib.request.urlopen")
+    def test_evaluator_custom_timeout_env_passed_to_urlopen(self, mock_urlopen):
+        mock_resp = MagicMock()
+        mock_resp.status = 200
+        mock_resp.read.return_value = b'{"choices": [{"message": {"content": "{\\"suficiente\\": true, \\"motivo\\": \\"OK\\"}"}}]}'
+        mock_resp.__enter__.return_value = mock_resp
+        mock_urlopen.return_value = mock_resp
+
+        with patch.dict("os.environ", {
+            "EVALUATOR_MODEL": "$LLAMA_DIR/models/twil-lm3-q4_k_m.gguf",
+            "EVALUATOR_ALIAS": "twil-lm3-q4_k_m",
+            "EVALUATOR_TIMEOUT": "5.0"
+        }):
+            res = evaluate_context_sufficiency(
+                query="Consulta",
+                context=[{"similarity": 0.60, "content": "Texto de prueba"}]
+            )
+
+        self.assertTrue(res["suficiente"])
+        # Verificar que el timeout pasado a urlopen sea 5.0
+        kwargs = mock_urlopen.call_args[1]
+        self.assertEqual(kwargs.get("timeout"), 5.0)
+
 
 if __name__ == "__main__":
     unittest.main()

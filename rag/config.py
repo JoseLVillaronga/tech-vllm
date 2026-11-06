@@ -18,6 +18,7 @@ EVALUATOR_MODEL = os.getenv("EVALUATOR_MODEL", "")
 EVALUATOR_ALIAS = os.getenv("EVALUATOR_ALIAS", "")
 EVALUATOR_TWIL_MAX_CHARS = int(os.getenv("EVALUATOR_TWIL_MAX_CHARS", "5000"))
 EVALUATOR_RWKV_MAX_CHARS = int(os.getenv("EVALUATOR_RWKV_MAX_CHARS", "30000"))
+EVALUATOR_TIMEOUT = float(os.getenv("EVALUATOR_TIMEOUT", "5.0"))
 
 TECCAM_PDF_URL_BASE = os.getenv("TECCAM_PDF_URL_BASE", "http://127.0.0.1:5022").rstrip("/")
 TECCAM_PDF_API_KEY = os.getenv("TECCAM_PDF_API_KEY", "").strip()
@@ -35,6 +36,7 @@ __all__ = [
     "EVALUATOR_ALIAS",
     "EVALUATOR_TWIL_MAX_CHARS",
     "EVALUATOR_RWKV_MAX_CHARS",
+    "EVALUATOR_TIMEOUT",
     "MASTER_KEY",
     "get_mongo_uri",
     "MONGO_DB",

@@ -21,6 +21,7 @@ from .config import (
     EVALUATOR_ALIAS,
     EVALUATOR_TWIL_MAX_CHARS,
     EVALUATOR_RWKV_MAX_CHARS,
+    EVALUATOR_TIMEOUT,
     MASTER_KEY,
 )
 
@@ -215,7 +216,7 @@ def evaluate_context_sufficiency(
     query: str,
     context: Union[str, List[Dict[str, Any]]],
     fast_pass_threshold: float = 0.85,
-    timeout: float = 3.5
+    timeout: Optional[float] = None
 ) -> Dict[str, Any]:
     """
     Evalúa si la evidencia documental recuperada es lógica y deductivamente suficiente
@@ -227,6 +228,14 @@ def evaluate_context_sufficiency(
     - faltantes (list): Lista de elementos ausentes si no es suficiente.
     - evaluador (str): 'fast_pass' | 'twil-lm3' | 'fallback_heuristico' | 'vacio'
     """
+    if timeout is None:
+        try:
+            effective_timeout = float(os.getenv("EVALUATOR_TIMEOUT", str(EVALUATOR_TIMEOUT)))
+        except Exception:
+            effective_timeout = 5.0
+    else:
+        effective_timeout = timeout
+
     query_str = (query or "").strip()
     if not query_str:
         return {
@@ -347,10 +356,10 @@ def evaluate_context_sufficiency(
     backend_port = EVALUATOR_BACKEND_PORT or int(os.getenv("EVALUATOR_BACKEND_PORT", "18300"))
     try:
         if _is_rwkv_evaluator():
-            rwkv_timeout = max(timeout, 6.5) if len(context_text) > 15000 else timeout
+            rwkv_timeout = max(effective_timeout, 6.5) if len(context_text) > 15000 else effective_timeout
             eval_res = _evaluate_with_rwkv_linear(query_str, context_text, backend_port, rwkv_timeout)
         else:
-            eval_res = _evaluate_with_twil_json(query_str, context_text, backend_port, timeout)
+            eval_res = _evaluate_with_twil_json(query_str, context_text, backend_port, effective_timeout)
 
         if eval_res:
             return eval_res
