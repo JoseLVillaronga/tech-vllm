@@ -1,0 +1,23 @@
+"""
+Módulo de micro-routers para herramientas desacopladas del Gateway.
+"""
+from gateway2.tools.web_search import handle_web_search, perform_ollama_web_search
+from gateway2.tools.pdf_generator import handle_pdf_generation, handle_pdf_download
+from gateway2.tools.doc_reader import handle_doc_reader
+from gateway2.tools.rag_endpoints import handle_rag_search, handle_rag_document, handle_rag_structure
+from gateway2.tools.vision import handle_vision_analysis, bridge_multimodal_messages, is_vision_enabled, is_local_backend_multimodal
+
+__all__ = [
+    "handle_web_search",
+    "perform_ollama_web_search",
+    "handle_pdf_generation",
+    "handle_pdf_download",
+    "handle_doc_reader",
+    "handle_rag_search",
+    "handle_rag_document",
+    "handle_rag_structure",
+    "handle_vision_analysis",
+    "bridge_multimodal_messages",
+    "is_vision_enabled",
+    "is_local_backend_multimodal"
+]

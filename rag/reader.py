@@ -751,10 +751,16 @@ def get_library_index(
                 }
             docs_map[d_id]["chunks_count"] += 1
 
-        # Filtrar si se solicitó
+        # Filtrar si se solicitó con fallback resiliente para evitar índices vacíos (Ley 4)
         filtered_docs = list(docs_map.values())
+        applied_filter_note = ""
         if solo_vigentes:
-            filtered_docs = [d for d in filtered_docs if d["vigencia"] == "vigente"]
+            vigentes_only = [d for d in filtered_docs if d["vigencia"] == "vigente"]
+            if vigentes_only:
+                filtered_docs = vigentes_only
+            else:
+                applied_filter_note += " (No se hallaron normas exclusivamente 'vigentes', incluyendo catálogo general)"
+
         if tema and tema.strip():
             # Separar por comas, barras, guiones o espacios para búsqueda tolerante (ej: 'Filosofia/Etica')
             clean_terms = [
@@ -764,10 +770,17 @@ def get_library_index(
             ]
             clean_terms = [t for t in clean_terms if len(t) >= 3]
             if clean_terms:
-                filtered_docs = [
+                topic_matches = [
                     d for d in filtered_docs
                     if any(term in d["topic"].lower() for term in clean_terms)
                 ]
+                if topic_matches:
+                    filtered_docs = topic_matches
+                else:
+                    # Fallback resiliente: Si no hay coincidencia exacta con el tema descriptivo,
+                    # no devolver una lista vacía; restaurar todas las obras para que el SLM vea los dominios reales.
+                    filtered_docs = list(docs_map.values())
+                    applied_filter_note += f"\n> ℹ️ *Aviso de Navegación:* No se encontraron obras categorizadas bajo el término específico '{tema.strip()}'. Se lista a continuación el catálogo completo de dominios disponibles para orientar la búsqueda."
 
         # Agrupar por Dominio / Tema
         domains = {}
@@ -796,8 +809,10 @@ def get_library_index(
         md_lines = [
             "# 🗺️ Mapa Ontológico Global de la Biblioteca (Base RAG Teccam)",
             f"**Obras Disponibles:** {total_docs} | **Dominios:** {len(domains)} | **Total Fragmentos:** {total_chunks:,} | **Tokens Acumulados:** ~{total_tokens:,}\n",
-            "A continuación se detalla el catálogo temático jerarquizado para orientar consultas y navegación precisa:\n"
         ]
+        if applied_filter_note.strip():
+            md_lines.append(f"{applied_filter_note.strip()}\n")
+        md_lines.append("A continuación se detalla el catálogo temático jerarquizado para orientar consultas y navegación precisa:\n")
         
         for dom, d_list in sorted(domains.items()):
             icon = "⚖️" if "derecho" in dom.lower() else "🛠️" if "procedimiento" in dom.lower() or "soporte" in dom.lower() else "🧠" if "filosof" in dom.lower() or "etica" in dom.lower() else "💻" if "patron" in dom.lower() or "ingenier" in dom.lower() else "📚"

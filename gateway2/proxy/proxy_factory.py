@@ -1,0 +1,827 @@
+import os
+import sys
+import json
+import time
+import asyncio
+from typing import Optional
+from datetime import datetime, timezone
+from urllib.parse import urlparse
+
+import httpx
+from fastapi import FastAPI, Request, Response, HTTPException, status, BackgroundTasks
+from fastapi.responses import StreamingResponse, FileResponse
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+
+from config import API_KEY as MASTER_KEY
+from gateway2.core.ip_resolver import resolve_client_ip
+from gateway2.core.ip_rules import is_ip_allowed, check_ip_access
+from gateway2.core.fail2ban import register_failed_attempt
+from gateway2.core.auth import extract_token, get_key_doc, validate_token_doc
+from gateway2.telemetry.usage_logger import save_usage_log
+from gateway2.telemetry.blocked_logger import save_blocked_request_log
+from gateway2.tools.web_search import handle_web_search, perform_ollama_web_search
+from gateway2.tools.pdf_generator import handle_pdf_generation, handle_pdf_download
+from gateway2.tools.doc_reader import handle_doc_reader
+from gateway2.tools.vision import handle_vision_analysis, bridge_multimodal_messages
+from gateway2.tools.image_gen import handle_image_generation_request
+from gateway2.tools.rag_endpoints import handle_rag_search, handle_rag_document, handle_rag_structure, handle_rag_library_index
+from gateway2.cloud.cloud_router import handle_models_list, resolve_cloud_model
+from gateway2.cloud.local_fallback import is_local_fallback_enabled, is_local_engine_healthy, mark_local_engine_down, get_local_fallback_target
+from gateway2.core.alignment_engine import enrich_chat_payload
+from gateway2.core.slot_flusher import flush_llama_slots
+from gateway2.core.router_synthesizer import process_router_synthesizer
+from gateway2.core.tool_governor import parse_raw_tool_calls, deduplicate_tool_calls
+
+# Cliente HTTP compartido globalmente para evitar fugas de sockets y memoria
+_http_client = None
+
+
+def get_http_client():
+    global _http_client
+    if _http_client is None:
+        limits = httpx.Limits(max_connections=500, max_keepalive_connections=100)
+        timeout = httpx.Timeout(10.0, connect=10.0, read=300.0, write=60.0)
+        _http_client = httpx.AsyncClient(limits=limits, timeout=timeout)
+    return _http_client
+
+
+async def close_http_client():
+    global _http_client
+    if _http_client is not None:
+        print("🛑 Cerrando pool de conexiones HTTP del Gateway...")
+        await _http_client.aclose()
+        _http_client = None
+
+
+def create_proxy_app(
+    service_name: str,
+    target_port: int,
+    fallback_port: Optional[int] = None,
+    include_alignment: bool = True,
+    alignment_mode: Optional[str] = None
+) -> FastAPI:
+    """
+    Fábrica de aplicaciones proxy para cada puerto del Gateway.
+    Integra seguridad, cuotas, interceptores de tools y enrutamiento inteligente.
+    alignment_mode: 'full' (defecto con include_alignment=True), 'agentic' (Deepseek Harness / raw) o 'off'.
+    """
+    app = FastAPI(title=f"Gateway Proxy - {service_name}", docs_url=None, redoc_url=None)
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    # Montar directorio de imágenes generadas para servicio de imagen o gemma
+    images_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "outputs", "images")
+    if os.path.exists(images_dir):
+        app.mount("/outputs/images", StaticFiles(directory=images_dir), name="images")
+
+    @app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD", "PATCH"])
+    async def proxy(request: Request, path: str, background_tasks: BackgroundTasks):
+        if request.method == "OPTIONS":
+            return Response(status_code=200)
+
+        current_service = service_name
+        current_target_port = target_port
+
+        # 1. Validar reglas de IP antes de cualquier otra comprobación
+        client_ip = resolve_client_ip(request)
+        try:
+            import ipaddress
+            client_ip_obj = ipaddress.ip_address(client_ip)
+            allowed, reason, silent_drop = check_ip_access(client_ip_obj)
+            if not allowed:
+                if silent_drop:
+                    # Drop silencioso para IPs en lista negra: respuesta vacía de 0 bytes,
+                    # cierre inmediato de socket y 0 consumo de CPU/I/O de base de datos.
+                    return Response(
+                        content=b"",
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        headers={"Connection": "close"}
+                    )
+                asyncio.create_task(asyncio.to_thread(save_blocked_request_log, client_ip, current_service, path, f"ip_rule_blocked:{reason}"))
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=f"Acceso denegado: {reason}"
+                )
+        except HTTPException:
+            raise
+        except Exception as e:
+            print(f"⚠️ Error validando IP del cliente '{client_ip}': {e}", file=sys.stderr, flush=True)
+
+        # 2. Descargas públicas de PDFs generados con TTL (variante 2 params: file_id/filename, variante 1 param: filename)
+        if current_service == "gemma" and path.startswith("api/tools/pdf/download/") and request.method == "GET":
+            parts = path.split("/")
+            if len(parts) >= 6:
+                file_id = parts[4]
+                dl_filename = parts[5]
+                return handle_pdf_download(file_id, dl_filename)
+            elif len(parts) == 5:
+                dl_filename = parts[4]
+                return handle_pdf_download(file_id=dl_filename, dl_filename=dl_filename)
+
+        # 3. Autenticación y Extracción de Tokens
+        token = extract_token(request)
+
+        if not token:
+            await register_failed_attempt(client_ip)
+            asyncio.create_task(asyncio.to_thread(save_blocked_request_log, client_ip, current_service, path, "api_key"))
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="API Key faltante. Debe proporcionarse en la cabecera 'Authorization: Bearer <key>' o 'X-Api-Key: <key>'."
+            )
+
+        # Validar intento de uso de Master Key en endpoints del Gateway
+        allow_master = os.getenv("ALLOW_MASTER_KEY_ON_GATEWAY", "false").lower() in ["true", "1", "yes"]
+        if token == MASTER_KEY and not allow_master:
+            await register_failed_attempt(client_ip)
+            asyncio.create_task(asyncio.to_thread(save_blocked_request_log, client_ip, current_service, path, "master_key_forbidden"))
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Acceso denegado: La Clave Maestra está reservada exclusivamente para comunicaciones internas de microservicios. Utiliza una API Key autorizada generada desde el Dashboard."
+            )
+
+        # 4. Validar token y permisos de servicio
+        key_doc = get_key_doc(token)
+        if not validate_token_doc(key_doc, current_service):
+            await register_failed_attempt(client_ip)
+            asyncio.create_task(asyncio.to_thread(save_blocked_request_log, client_ip, current_service, path, "api_key"))
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="API Key inválida, desactivada, expirada o sin permisos para este servicio."
+            )
+
+        # 5. Validar cupo máximo de tokens
+        if token != MASTER_KEY and key_doc:
+            max_tokens = int(key_doc.get("max_tokens") or 0)
+            used_tokens = int(key_doc.get("used_tokens") or 0)
+            if max_tokens > 0 and used_tokens >= max_tokens:
+                asyncio.create_task(asyncio.to_thread(save_blocked_request_log, client_ip, current_service, path, f"token_quota_exceeded:{used_tokens}/{max_tokens}"))
+                raise HTTPException(
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    detail=f"Cupo de tokens agotado para esta clave API ({used_tokens:,} / {max_tokens:,} consumidos). Contacta al administrador para renovar o reiniciar tu cupo."
+                )
+
+        # 6. Interceptores de Tools Desacopladas (Gemma / Puerto 8000)
+        if current_service == "gemma" and path.strip("/") in ["api/tools/web-search", "v1/tools/web_search", "v1/tools/web-search"] and request.method == "POST":
+            return await handle_web_search(request)
+
+        if current_service == "gemma" and path.strip("/") in ["api/tools/generate-pdf", "v1/tools/generate-pdf", "api/tools/pdf", "v1/tools/pdf"] and request.method == "POST":
+            return await handle_pdf_generation(request, gateway_port=8000, key_doc=key_doc)
+
+        if current_service == "gemma" and path.strip("/") in ["api/tools/read-file", "v1/tools/read_file", "v1/tools/read-file", "api/tools/extract-document", "api/tools/docling"] and request.method == "POST":
+            return await handle_doc_reader(request)
+
+        if current_service == "gemma" and path.strip("/") in ["api/tools/vision", "v1/tools/vision", "api/tools/analyze-image", "v1/tools/analyze-image"] and request.method == "POST":
+            return await handle_vision_analysis(request)
+
+        if current_service == "gemma" and path.strip("/") == "v1/models" and request.method == "GET":
+            return await handle_models_list(token, key_doc, current_target_port)
+
+        # Clonar y sanitizar cabeceras
+        headers = {k.lower(): v for k, v in request.headers.items()}
+        headers.pop("connection", None)
+        headers.pop("keep-alive", None)
+        headers.pop("transfer-encoding", None)
+        headers.pop("upgrade", None)
+        headers.pop("content-length", None)
+        headers["accept-encoding"] = "identity"
+
+        body = await request.body()
+        start_time = datetime.now(timezone.utc).replace(tzinfo=None)
+
+        model_name = current_service
+        if current_service == "whisper":
+            model_name = "openai/whisper-large-v3-turbo"
+        elif current_service == "tts":
+            model_name = "SWivid/F5-TTS"
+        elif current_service == "diarization":
+            model_name = "pyannote/speaker-diarization-3.1"
+        elif current_service == "embeddings":
+            model_name = "Qwen/Qwen3-Embedding-0.6B"
+
+        # Interceptar /v1/embeddings en gemma proxy (puerto 8000)
+        if current_service == "gemma" and path.strip("/") in ["v1/embeddings", "embeddings"] and request.method == "POST":
+            is_master = (token == MASTER_KEY)
+            allowed_services = key_doc.get("services", []) if key_doc else []
+            if not is_master and ("embeddings" not in allowed_services):
+                asyncio.create_task(asyncio.to_thread(save_blocked_request_log, client_ip, "embeddings", path, "service_denied:embeddings"))
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Tu clave API no tiene permisos autorizados para el servicio de Embeddings."
+                )
+            embeddings_backend_port = int(os.getenv("EMBEDDINGS_BACKEND_PORT", "18005"))
+            current_target_port = embeddings_backend_port
+            current_service = "embeddings"
+            model_name = "Qwen/Qwen3-Embedding-0.6B"
+
+        # Interceptar /v1/images/generations en gemma proxy (puerto 8000) o image proxy (puerto 8006)
+        if (current_service in ["gemma", "image"]) and path.strip("/") in ["v1/images/generations", "images/generations"] and request.method == "POST":
+            is_master = (token == MASTER_KEY)
+            allowed_services = key_doc.get("services", []) if key_doc else []
+            if not is_master and ("image" not in allowed_services):
+                asyncio.create_task(asyncio.to_thread(save_blocked_request_log, client_ip, "image", path, "service_denied:image"))
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Tu clave API no tiene permisos autorizados para el servicio de Generación de Imágenes."
+                )
+            image_backend_port = int(os.getenv("IMAGE_BACKEND_PORT", "18004"))
+            model_name = os.getenv("IMAGE_MODEL", "stabilityai/sdxl-turbo")
+            return await handle_image_generation_request(
+                request=request,
+                body=body,
+                backend_port=image_backend_port,
+                model_name=model_name,
+                client_ip=client_ip,
+                token=token,
+                background_tasks=background_tasks
+            )
+
+        # Interceptar búsqueda RAG directa en LanceDB
+        if path.strip("/") in ["v1/rag/search", "rag/search", "api/tools/rag-search"] and request.method == "POST":
+            return await handle_rag_search(request, body, key_doc=key_doc)
+
+        # Interceptar síntesis y lectura de documento RAG
+        if path.strip("/") in ["v1/rag/document", "rag/document", "api/tools/rag-document", "api/tools/read-document"] and request.method == "POST":
+            return await handle_rag_document(request, body, key_doc=key_doc)
+
+        # Interceptar consulta de estructura y GPS Documental RAG
+        if path.strip("/") in ["v1/rag/structure", "rag/structure", "api/tools/rag-structure", "api/tools/document-structure"] and request.method == "POST":
+            return await handle_rag_structure(request, body, key_doc=key_doc)
+
+        # Interceptar consulta de índice jerárquico macro de biblioteca RAG
+        if path.strip("/") in ["v1/rag/library-index", "rag/library-index", "api/tools/rag-library-index", "api/tools/library-index"] and request.method in ["GET", "POST"]:
+            return await handle_rag_library_index(request, body, key_doc=key_doc)
+
+        # Resolución de modelos y enrutamiento inteligente (Cloud vs Local)
+        is_cloud_request = False
+        cloud_provider = None
+        valid_tool_names = set()
+        is_local_fallback_active = False
+        original_client_model = ""
+        active_fb_model = ""
+
+        if current_service in ["gemma", "gemma_raw"] and body:
+            try:
+                data = json.loads(body)
+                req_model = data.get("model", "")
+                is_cloud_request, actual_model, cloud_provider, apply_rag_injection, base_vllm_model = await resolve_cloud_model(req_model, token, key_doc)
+
+                if base_vllm_model:
+                    data["model"] = base_vllm_model
+                else:
+                    data["model"] = actual_model
+
+                model_name = actual_model or service_name
+                original_client_model = req_model or model_name
+
+                # Circuit Breaker: Si el motor local fue marcado como caído en memoria, conmutar directamente a la nube
+                if not is_cloud_request and is_local_fallback_enabled() and not is_local_engine_healthy():
+                    fb_prov, fb_mod = get_local_fallback_target()
+                    if fb_prov:
+                        is_cloud_request = True
+                        cloud_provider = fb_prov
+                        actual_model = fb_mod
+                        data["model"] = fb_mod
+                        is_local_fallback_active = True
+                        active_fb_model = fb_mod
+                        print(f"🔄 [Circuit Breaker Directo] Motor local no disponible en memoria. Despachando a Cloud Fallback ({fb_prov['provider_name']} / {fb_mod}).", flush=True)
+
+                # Extraer catálogo de herramientas válidas enviadas por el cliente
+                if isinstance(data, dict) and "tools" in data and isinstance(data["tools"], list):
+                    for t in data["tools"]:
+                        if isinstance(t, dict):
+                            fn = t.get("function", {})
+                            if isinstance(fn, dict) and "name" in fn:
+                                valid_tool_names.add(fn["name"])
+                            elif "name" in t:
+                                valid_tool_names.add(t["name"])
+
+                # Delegar puente multimodal, enriquecimiento de prompt, invariantes MEA, web search y RAG al submódulo especializado
+                if path.strip("/") == "v1/chat/completions":
+                    if "messages" in data and isinstance(data["messages"], list):
+                        try:
+                            await bridge_multimodal_messages(data["messages"], is_cloud_request=is_cloud_request, model_name=actual_model)
+                        except Exception as bridge_err:
+                            print(f"⚠️ Error en Vision Bridge: {bridge_err}", file=sys.stderr, flush=True)
+
+                    target_rag_table = None
+                    if key_doc and isinstance(key_doc, dict):
+                        target_rag_table = key_doc.get("rag_table") or key_doc.get("company_profile", {}).get("rag_table")
+
+                    data = await enrich_chat_payload(
+                        data=data,
+                        actual_model=actual_model,
+                        is_cloud_request=is_cloud_request,
+                        apply_rag_injection=apply_rag_injection,
+                        include_alignment=include_alignment,
+                        alignment_mode=alignment_mode,
+                        company_profile=key_doc.get("company_profile") if key_doc and isinstance(key_doc, dict) else None,
+                        rag_table=target_rag_table
+                    )
+
+                    # Despachador RAG Autónomo (Router-Synthesizer para modelos sin tool calling nativo)
+                    if not is_cloud_request and os.getenv("GATEWAY_DISPATCHER_MODE", "").strip().lower() == "pre_rag":
+                        try:
+                            data = await process_router_synthesizer(data, key_doc=key_doc, target_table=target_rag_table)
+                        except Exception as router_err:
+                            print(f"⚠️ Error en Router-Synthesizer: {router_err}", file=sys.stderr, flush=True)
+
+                    if isinstance(data, dict) and data.get("_delegated_tool_calls"):
+                        delegated_calls = data.pop("_delegated_tool_calls")
+                        is_stream = bool(data.get("stream", False))
+                        cmpl_id = f"chatcmpl-{int(time.time() * 1000)}"
+                        created_ts = int(time.time())
+                        model_resp = requested_model or actual_model or "local/CorpAI-Gen"
+                        if is_stream:
+                            async def _stream_delegated_tool_calls():
+                                indexed_calls = []
+                                for idx, tc in enumerate(delegated_calls):
+                                    tc_copy = dict(tc)
+                                    tc_copy["index"] = idx
+                                    indexed_calls.append(tc_copy)
+                                chunk_1 = {
+                                    "id": cmpl_id,
+                                    "object": "chat.completion.chunk",
+                                    "created": created_ts,
+                                    "model": model_resp,
+                                    "choices": [{
+                                        "index": 0,
+                                        "delta": {
+                                            "role": "assistant",
+                                            "content": None,
+                                            "tool_calls": indexed_calls
+                                        },
+                                        "finish_reason": None
+                                    }]
+                                }
+                                chunk_2 = {
+                                    "id": cmpl_id,
+                                    "object": "chat.completion.chunk",
+                                    "created": created_ts,
+                                    "model": model_resp,
+                                    "choices": [{
+                                        "index": 0,
+                                        "delta": {},
+                                        "finish_reason": "tool_calls"
+                                    }]
+                                }
+                                yield f"data: {json.dumps(chunk_1, ensure_ascii=False)}\n\n"
+                                yield f"data: {json.dumps(chunk_2, ensure_ascii=False)}\n\n"
+                                yield "data: [DONE]\n\n"
+                            return StreamingResponse(_stream_delegated_tool_calls(), media_type="text/event-stream")
+                        else:
+                            resp_obj = {
+                                "id": cmpl_id,
+                                "object": "chat.completion",
+                                "created": created_ts,
+                                "model": model_resp,
+                                "choices": [{
+                                    "index": 0,
+                                    "message": {
+                                        "role": "assistant",
+                                        "content": None,
+                                        "tool_calls": delegated_calls
+                                    },
+                                    "finish_reason": "tool_calls"
+                                }],
+                                "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+                            }
+                            return Response(content=json.dumps(resp_obj, ensure_ascii=False), media_type="application/json", status_code=200)
+
+                    # Tier 2: Si se podó el contexto (data["cache_prompt"] == False), programar vaciado físico de slots en llama-server
+                    if not is_cloud_request and data.get("cache_prompt") is False:
+                        background_tasks.add_task(flush_llama_slots, current_target_port)
+
+                    # Gobernanza Perimétrica Central de Muestreo (Sampling Defaults)
+                    # Red de seguridad condicional: solo inyecta el baseline si el cliente/modelo virtual no especificó sus propios parámetros.
+                    if not is_cloud_request and isinstance(data, dict):
+                        if data.get("temperature") is None:
+                            try:
+                                data["temperature"] = float(os.getenv("GATEWAY_DEFAULT_TEMPERATURE", "0.80"))
+                            except (ValueError, TypeError):
+                                data["temperature"] = 0.80
+                        if data.get("min_p") is None:
+                            try:
+                                data["min_p"] = float(os.getenv("GATEWAY_DEFAULT_MIN_P", "0.05"))
+                            except (ValueError, TypeError):
+                                data["min_p"] = 0.05
+                        if data.get("top_p") is None:
+                            try:
+                                data["top_p"] = float(os.getenv("GATEWAY_DEFAULT_TOP_P", "0.95"))
+                            except (ValueError, TypeError):
+                                data["top_p"] = 0.95
+                        if data.get("top_k") is None:
+                            try:
+                                data["top_k"] = int(os.getenv("GATEWAY_DEFAULT_TOP_K", "40"))
+                            except (ValueError, TypeError):
+                                data["top_k"] = 40
+                        if data.get("repeat_penalty") is None:
+                            try:
+                                data["repeat_penalty"] = float(os.getenv("GATEWAY_DEFAULT_REPEAT_PENALTY", "1.15"))
+                            except (ValueError, TypeError):
+                                data["repeat_penalty"] = 1.15
+                        if data.get("repeat_last_n") is None:
+                            data["repeat_last_n"] = 256
+                        if data.get("presence_penalty") is None:
+                            try:
+                                data["presence_penalty"] = float(os.getenv("GATEWAY_DEFAULT_PRESENCE_PENALTY", "0.20"))
+                            except (ValueError, TypeError):
+                                data["presence_penalty"] = 0.20
+
+                body = json.dumps(data).encode("utf-8")
+            except Exception as json_err:
+                print(f"⚠️ Error al interceptar y parsear JSON en el Gateway: {json_err}", file=sys.stderr, flush=True)
+
+        if is_cloud_request and cloud_provider:
+            base_url = cloud_provider['base_url'].rstrip("/")
+            if base_url.endswith("/v1") and path.startswith("v1/"):
+                target_url = f"{base_url[:-3]}/{path}"
+            else:
+                target_url = f"{base_url}/{path}"
+            parsed_url = urlparse(cloud_provider['base_url'])
+            headers["host"] = parsed_url.netloc
+            headers["authorization"] = f"Bearer {cloud_provider['api_key']}"
+        else:
+            target_url = f"http://127.0.0.1:{current_target_port}/{path}"
+            headers["host"] = f"127.0.0.1:{current_target_port}"
+            headers["authorization"] = f"Bearer {MASTER_KEY}"
+
+        client = get_http_client()
+        resp = None
+
+        try:
+            try:
+                if not is_cloud_request and current_service in ["gemma", "gemma_raw"]:
+                    try:
+                        conn_to = float(os.getenv("LOCAL_FALLBACK_CONNECT_TIMEOUT", "1.0"))
+                    except (ValueError, TypeError):
+                        conn_to = 1.0
+                    req_timeout = httpx.Timeout(300.0, connect=conn_to)
+                else:
+                    req_timeout = httpx.Timeout(300.0, connect=10.0)
+
+                req = client.build_request(
+                    method=request.method,
+                    url=target_url,
+                    headers=headers,
+                    content=body,
+                    params=request.query_params,
+                    timeout=req_timeout
+                )
+                resp = await client.send(req, stream=True)
+
+                if resp.status_code in (502, 503) and not is_cloud_request:
+                    await resp.aclose()
+                    resp = None
+                    raise httpx.ConnectError(f"Backend principal retornó HTTP {resp.status_code if resp else 502}")
+            except (httpx.ConnectError, httpx.ConnectTimeout, httpx.TimeoutException, httpx.ReadTimeout, httpx.NetworkError) as primary_err:
+                # Conmutación de emergencia a Fallback Cloud (Circuit Breaker Reactivo)
+                if current_service in ["gemma", "gemma_raw"] and not is_cloud_request and is_local_fallback_enabled():
+                    mark_local_engine_down()
+                    fb_provider, fb_model = get_local_fallback_target()
+                    if fb_provider:
+                        print(f"⚠️ [Circuit Breaker Reactivo] Error conectando con motor local ({primary_err}). Conmutando a Cloud Fallback ({fb_provider['provider_name']} / {fb_model})...", flush=True)
+                        is_local_fallback_active = True
+                        active_fb_model = fb_model
+                        fb_base_url = fb_provider['base_url'].rstrip("/")
+                        if fb_base_url.endswith("/v1") and path.startswith("v1/"):
+                            fb_target_url = f"{fb_base_url[:-3]}/{path}"
+                        else:
+                            fb_target_url = f"{fb_base_url}/{path}"
+                        fb_parsed_url = urlparse(fb_provider['base_url'])
+                        fb_headers = dict(headers)
+                        fb_headers["host"] = fb_parsed_url.netloc
+                        fb_headers["authorization"] = f"Bearer {fb_provider['api_key']}"
+
+                        try:
+                            fb_data = json.loads(body)
+                            fb_data["model"] = fb_model
+                            fb_body = json.dumps(fb_data).encode("utf-8")
+                        except Exception:
+                            fb_body = body
+
+                        req_fb = client.build_request(
+                            method=request.method,
+                            url=fb_target_url,
+                            headers=fb_headers,
+                            content=fb_body,
+                            params=request.query_params,
+                            timeout=httpx.Timeout(300.0, connect=10.0)
+                        )
+                        resp = await client.send(req_fb, stream=True)
+                    elif fallback_port:
+                        fallback_url = f"http://127.0.0.1:{fallback_port}/{path}"
+                        fallback_headers = dict(headers)
+                        fallback_headers["host"] = f"127.0.0.1:{fallback_port}"
+                        req_fb = client.build_request(
+                            method=request.method,
+                            url=fallback_url,
+                            headers=fallback_headers,
+                            content=body,
+                            params=request.query_params
+                        )
+                        resp = await client.send(req_fb, stream=True)
+                    else:
+                        raise primary_err
+                elif fallback_port and not is_cloud_request:
+                    fallback_url = f"http://127.0.0.1:{fallback_port}/{path}"
+                    fallback_headers = dict(headers)
+                    fallback_headers["host"] = f"127.0.0.1:{fallback_port}"
+                    print(f"⚠️ [Gateway Failover] Backend principal ({current_service} :{current_target_port}) no disponible ({primary_err}). Reenviando a Fallback CPU (:{fallback_port})...", flush=True)
+                    req_fb = client.build_request(
+                        method=request.method,
+                        url=fallback_url,
+                        headers=fallback_headers,
+                        content=body,
+                        params=request.query_params
+                    )
+                    resp = await client.send(req_fb, stream=True)
+                else:
+                    raise primary_err
+
+            resp_headers = dict(resp.headers)
+            resp_headers.pop("content-length", None)
+            resp_headers.pop("transfer-encoding", None)
+            resp_headers.pop("connection", None)
+            resp_headers.pop("content-encoding", None)
+
+            async def event_generator():
+                buffer = b""
+                total_bytes_yielded = 0
+                accumulated_text = ""
+                usage_data = None
+                is_streaming = "text/event-stream" in resp_headers.get("content-type", "").lower()
+                non_stream_body = b""
+                evaluating_tool_fallback = bool(valid_tool_names and is_streaming and current_service in ["gemma", "gemma_raw"])
+                is_raw_tool_call = False
+                held_stream_chunks = []
+                last_stream_chunk_id = None
+                native_streamed_tool_calls = {}
+                has_native_tool_calls = False
+
+                fb_model_bytes = active_fb_model.encode("utf-8") if active_fb_model else b""
+                client_model_bytes = original_client_model.encode("utf-8") if original_client_model else b""
+
+                try:
+                    async for chunk in resp.aiter_bytes():
+                        if is_local_fallback_active and fb_model_bytes and (fb_model_bytes in chunk):
+                            chunk = chunk.replace(fb_model_bytes, client_model_bytes)
+
+                        total_bytes_yielded += len(chunk)
+                        if not is_streaming:
+                            non_stream_body += chunk
+
+                        if current_service in ["gemma", "gemma_raw"] and resp.status_code == 200 and is_streaming:
+                            try:
+                                chunk_str = chunk.decode("utf-8", errors="ignore")
+                                for line in chunk_str.split("\n"):
+                                    line = line.strip()
+                                    if line.startswith("data: "):
+                                        data_str = line[6:].strip()
+                                        if data_str == "[DONE]":
+                                            continue
+                                        try:
+                                            obj = json.loads(data_str)
+                                            if "id" in obj:
+                                                last_stream_chunk_id = obj["id"]
+                                            if "usage" in obj and obj["usage"]:
+                                                usage_data = obj["usage"]
+                                            if "choices" in obj and obj["choices"]:
+                                                delta = obj["choices"][0].get("delta", {})
+                                                content = delta.get("content", "")
+                                                if content:
+                                                    accumulated_text += content
+                                                tcs = delta.get("tool_calls")
+                                                if tcs and isinstance(tcs, list):
+                                                    has_native_tool_calls = True
+                                                    for tc in tcs:
+                                                        if isinstance(tc, dict):
+                                                            idx = tc.get("index", len(native_streamed_tool_calls))
+                                                            if idx not in native_streamed_tool_calls:
+                                                                native_streamed_tool_calls[idx] = {
+                                                                    "index": idx,
+                                                                    "id": tc.get("id", ""),
+                                                                    "type": "function",
+                                                                    "function": {"name": "", "arguments": ""}
+                                                                }
+                                                            if "id" in tc and tc["id"]:
+                                                                native_streamed_tool_calls[idx]["id"] = tc["id"]
+                                                            if "function" in tc and isinstance(tc["function"], dict):
+                                                                fn = tc["function"]
+                                                                if "name" in fn and fn["name"]:
+                                                                    native_streamed_tool_calls[idx]["function"]["name"] += fn["name"]
+                                                                if "arguments" in fn and fn["arguments"]:
+                                                                    native_streamed_tool_calls[idx]["function"]["arguments"] += fn["arguments"]
+                                        except Exception:
+                                            pass
+                            except Exception:
+                                pass
+
+                        # Auto-guardia de streaming para llamadas a herramientas en texto plano (Mistral Fallback)
+                        if evaluating_tool_fallback:
+                            stripped_acc = accumulated_text.strip()
+                            if stripped_acc and not stripped_acc.startswith("["):
+                                # No empieza con corchete -> respuesta de texto estándar, liberar de inmediato (0 delay)
+                                evaluating_tool_fallback = False
+                                for h in held_stream_chunks:
+                                    buffer += h
+                                    if b"<turn|>" in buffer:
+                                        buffer = buffer.replace(b"<turn|>", b"")
+                                    if len(buffer) > 10:
+                                        yield buffer[:-10]
+                                        buffer = buffer[-10:]
+                                held_stream_chunks.clear()
+                            else:
+                                held_stream_chunks.append(chunk)
+                                if stripped_acc.startswith("[") and (stripped_acc.endswith("]") or len(stripped_acc) > 800):
+                                    recovered = parse_raw_tool_calls(stripped_acc, valid_tool_names)
+                                    if recovered:
+                                        is_raw_tool_call = True
+                                        evaluating_tool_fallback = False
+                                        event_id = last_stream_chunk_id or f"chatcmpl-{uuid.uuid4().hex[:12]}"
+                                        fallback_event = {
+                                            "id": event_id,
+                                            "object": "chat.completion.chunk",
+                                            "created": int(datetime.now(timezone.utc).timestamp()),
+                                            "model": model_name,
+                                            "choices": [{
+                                                "index": 0,
+                                                "delta": {
+                                                    "role": "assistant",
+                                                    "content": None,
+                                                    "tool_calls": recovered
+                                                },
+                                                "finish_reason": "tool_calls"
+                                            }]
+                                        }
+                                        yield f"data: {json.dumps(fallback_event)}\n\ndata: [DONE]\n\n".encode("utf-8")
+                                        held_stream_chunks.clear()
+                                        print(f"🛡️ [Auto-Guardia RAG] Tool call recuperado desde texto plano en streaming ({len(recovered)} llamada/s promovida/s).", flush=True)
+                                    else:
+                                        evaluating_tool_fallback = False
+                                        for h in held_stream_chunks:
+                                            buffer += h
+                                            if b"<turn|>" in buffer:
+                                                buffer = buffer.replace(b"<turn|>", b"")
+                                            if len(buffer) > 10:
+                                                yield buffer[:-10]
+                                                buffer = buffer[-10:]
+                                        held_stream_chunks.clear()
+                                continue
+
+                        if not is_raw_tool_call:
+                            buffer += chunk
+                            if b"<turn|>" in buffer:
+                                buffer = buffer.replace(b"<turn|>", b"")
+                            if len(buffer) > 10:
+                                yield buffer[:-10]
+                                buffer = buffer[-10:]
+                except asyncio.CancelledError:
+                    print(f"🔌 Cliente cerró la conexión para {current_service} prematuramente.")
+                finally:
+                    if evaluating_tool_fallback and held_stream_chunks:
+                        recovered = parse_raw_tool_calls(accumulated_text, valid_tool_names)
+                        if recovered:
+                            is_raw_tool_call = True
+                            event_id = last_stream_chunk_id or f"chatcmpl-{uuid.uuid4().hex[:12]}"
+                            fallback_event = {
+                                "id": event_id,
+                                "object": "chat.completion.chunk",
+                                "created": int(datetime.now(timezone.utc).timestamp()),
+                                "model": model_name,
+                                "choices": [{
+                                    "index": 0,
+                                    "delta": {
+                                        "role": "assistant",
+                                        "content": None,
+                                        "tool_calls": recovered
+                                    },
+                                    "finish_reason": "tool_calls"
+                                }]
+                            }
+                            yield f"data: {json.dumps(fallback_event)}\n\ndata: [DONE]\n\n".encode("utf-8")
+                            print(f"🛡️ [Auto-Guardia RAG] Tool call recuperado en fin de stream ({len(recovered)} llamada/s promovida/s).", flush=True)
+                        else:
+                            # Si no era fallback de texto plano, verificar si contenía tool_calls nativas con duplicados
+                            if has_native_tool_calls and native_streamed_tool_calls:
+                                sorted_calls = [native_streamed_tool_calls[k] for k in sorted(native_streamed_tool_calls.keys())]
+                                deduped_calls, dups = deduplicate_tool_calls(sorted_calls)
+                                if dups > 0:
+                                    is_raw_tool_call = True
+                                    event_id = last_stream_chunk_id or f"chatcmpl-{uuid.uuid4().hex[:12]}"
+                                    clean_event = {
+                                        "id": event_id,
+                                        "object": "chat.completion.chunk",
+                                        "created": int(datetime.now(timezone.utc).timestamp()),
+                                        "model": model_name,
+                                        "choices": [{
+                                            "index": 0,
+                                            "delta": {
+                                                "role": "assistant",
+                                                "content": None,
+                                                "tool_calls": deduped_calls
+                                            },
+                                            "finish_reason": "tool_calls"
+                                        }]
+                                    }
+                                    yield f"data: {json.dumps(clean_event)}\n\ndata: [DONE]\n\n".encode("utf-8")
+                                    print(f"🧹 [Tool Governor] Deduplicadas {dups} llamada/s a herramientas idénticas en streaming nativo ({len(sorted_calls)} ➔ {len(deduped_calls)} llamadas).", flush=True)
+                            if not is_raw_tool_call:
+                                for h in held_stream_chunks:
+                                    buffer += h
+                        held_stream_chunks.clear()
+
+                    if buffer and not is_raw_tool_call:
+                        if b"<turn|>" in buffer:
+                            buffer = buffer.replace(b"<turn|>", b"")
+                        total_bytes_yielded += len(buffer)
+                        yield buffer
+                    await resp.aclose()
+
+                    if not is_streaming and non_stream_body and resp.status_code == 200:
+                        try:
+                            resp_json = json.loads(non_stream_body.decode("utf-8", errors="ignore"))
+                            if "choices" in resp_json and resp_json["choices"]:
+                                msg = resp_json["choices"][0].get("message", {})
+                                raw_c = msg.get("content", "")
+                                if valid_tool_names and raw_c and not msg.get("tool_calls"):
+                                    recovered = parse_raw_tool_calls(raw_c, valid_tool_names)
+                                    if recovered:
+                                        msg["tool_calls"] = recovered
+                                        msg["content"] = None
+                                        resp_json["choices"][0]["finish_reason"] = "tool_calls"
+                                        non_stream_body = json.dumps(resp_json).encode("utf-8")
+                                        print(f"🛡️ [Auto-Guardia RAG] Tool call recuperado desde texto plano no-streaming ({len(recovered)} llamada/s promovida/s).", flush=True)
+                                elif msg.get("tool_calls"):
+                                    deduped, dups = deduplicate_tool_calls(msg["tool_calls"])
+                                    if dups > 0:
+                                        msg["tool_calls"] = deduped
+                                        non_stream_body = json.dumps(resp_json).encode("utf-8")
+                                        print(f"🧹 [Tool Governor] Deduplicadas {dups} llamada/s a herramientas idénticas en respuesta no-streaming ({len(msg['tool_calls']) + dups} ➔ {len(deduped)}).", flush=True)
+                            if "usage" in resp_json and resp_json["usage"]:
+                                usage_data = resp_json["usage"]
+                        except Exception as parse_err:
+                            print(f"⚠️ Error parseando respuesta no-streaming: {parse_err}", file=sys.stderr, flush=True)
+
+                    if resp.status_code == 200:
+                        duration_sec = (datetime.now(timezone.utc).replace(tzinfo=None) - start_time).total_seconds()
+                        prompt_tokens = 0
+                        completion_tokens = 0
+                        audio_duration_sec = 0.0
+
+                        if current_service == "gemma":
+                            if usage_data:
+                                prompt_tokens = usage_data.get("prompt_tokens", 0)
+                                completion_tokens = usage_data.get("completion_tokens", 0)
+                            else:
+                                completion_tokens = len(accumulated_text) // 4
+                                try:
+                                    req_data = json.loads(body)
+                                    messages = req_data.get("messages", [])
+                                    prompt_chars = sum(len(m.get("content", "")) for m in messages if isinstance(m, dict))
+                                    prompt_tokens = prompt_chars // 4
+                                    if prompt_chars > 0 and prompt_tokens == 0:
+                                        prompt_tokens = 1
+                                    if len(accumulated_text) > 0 and completion_tokens == 0:
+                                        completion_tokens = 1
+                                except Exception:
+                                    pass
+                        elif current_service == "tts":
+                            if total_bytes_yielded > 44:
+                                audio_duration_sec = (total_bytes_yielded - 44) / 48000.0
+                        elif current_service in ("whisper", "diarization"):
+                            if body:
+                                audio_duration_sec = len(body) / 32000.0
+
+                        background_tasks.add_task(
+                            save_usage_log,
+                            client_ip,
+                            token,
+                            current_service,
+                            path,
+                            model_name,
+                            prompt_tokens,
+                            completion_tokens,
+                            audio_duration_sec,
+                            duration_sec
+                        )
+
+            return StreamingResponse(
+                event_generator(),
+                status_code=resp.status_code,
+                headers=resp_headers
+            )
+
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"Error al conectar con el motor de inferencia local ({current_service}): {str(e)}"
+            )
+
+    return app
